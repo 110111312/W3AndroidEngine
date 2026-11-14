@@ -145,6 +145,11 @@ public final class LayeredDataSource implements DataSource {
 		return this.data.read(resolve(path));
 	}
 
+	/** The Classic file of this path, which a package's file of the same name replaces; null when there is none. */
+	public ByteBuffer readClassic(final String filepath) throws IOException {
+		return this.data.has(filepath) ? this.data.read(filepath) : null;
+	}
+
 	@Override
 	public boolean has(final String filepath) {
 		return isLayered(filepath) || this.data.has(filepath);

@@ -24,8 +24,10 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.abil
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.ability.AbilityBuilderActiveAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.ability.CAbilityAbilityBuilderGenericActive;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorCategory;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorMove;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.skills.CBehaviorTargetSpellBase;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.COrderNoTarget;
@@ -49,7 +51,6 @@ public interface CCreepCastAbility {
 	// Measured on 1.29: a hero 160 to 250 from the group, out of the area, also keeps the Frost Revenant from casting.
 	float GROUP_CAST_HERO_AREA_FACTOR = 2;
 	float ATTACKER_SEARCH_RANGE = 1000;
-	int HIT_MEMORY_TICKS = CTimer.wholeSteps(2.0f);
 	float HEAL_EXTRA_REACH = 300;
 	float SELF_HEAL_LIFE_FRACTION = 0.55f;
 	// Attacks up to this range count as melee (Murloc Mutant 100, Furbolg 100, Footman 90).
@@ -57,6 +58,14 @@ public interface CCreepCastAbility {
 	// Measured on 1.29: a creep buffs itself (Bloodlust, Inner Fire) only from its third thought in a fight on, other
 	// fighting allies already from the second.
 	int SELF_BUFF_THINKS = 2;
+	// Measured on 1.29: Ensnare is tried once, 0.45 s after the creep is made or woken by an ally's alert (an enemy that
+	// walks up is then in reach; a creep that is idle or whose fight began later never casts it), and only when no
+	// creep of the same owner has cast it in the second before: of Trappers made together only the first casts.
+	int OPENING_CAST_DELAY_TICKS = CTimer.wholeSteps(0.45f);
+	// Measured on 1.29: a creep that is ordered to attack later thinks of Ensnare on the next half second of its own age,
+	// at once when the order falls on one.
+	int OPENING_CAST_BEAT_TICKS = CTimer.wholeSteps(0.5f);
+	int OPENING_CAST_SPACING_TICKS = CTimer.wholeSteps(1.0f);
 	// Thinks after which a hero stops waiting for a summon he cannot cast yet.
 	int SUMMON_WAIT_THINKS = 2;
 
@@ -141,12 +150,15 @@ public interface CCreepCastAbility {
 	 * @return true when the creep was ordered to cast
 	 */
 	static boolean tryCreepCastRule(final CSimulation game, final CUnit creep, final CAbility ability,
-			final CUnit attackTarget, final boolean think, final int thinks) {
+			final CUnit attackTarget, final boolean think, final boolean opening, final int thinks) {
 		if (!(ability instanceof GenericSingleIconActiveAbility)) {
 			return false;
 		}
 		final GenericSingleIconActiveAbility spell = (GenericSingleIconActiveAbility) ability;
 		final int orderId = spell.getBaseOrderId();
+		if (isHitCastOrder(orderId)) {
+			return false;
+		}
 		Rule rule = Rule.of(orderId);
 		// Measured on 1.29: a hero rains Blizzard on an enemy sent against him at once, hero or not, like Inferno, but
 		// only once; he did not rain it again in 14 more seconds.
@@ -164,7 +176,8 @@ public interface CCreepCastAbility {
 				&& ((rule == Rule.TOGGLE_ON) || (rule == Rule.ENEMY_LATE) || isWhirlingAround(creep))) {
 			return false;
 		}
-		if ((rule == null) || (!rule.everyTick && !think) || (thinks < rule.minimumThinks)) {
+		if ((rule == null) || ((rule == Rule.ENEMY_OPENING) ? !(opening || (think && (thinks >= 1)))
+				: ((!rule.everyTick && !think) || (thinks < rule.minimumThinks)))) {
 			return false;
 		}
 		final BooleanAbilityActivationReceiver activation = BooleanAbilityActivationReceiver.INSTANCE.reset();
@@ -172,7 +185,7 @@ public interface CCreepCastAbility {
 		if (!activation.isOk()) {
 			return false;
 		}
-		final boolean cast = tryRuleCast(game, creep, ability, orderId, rule, attackTarget, thinks);
+		final boolean cast = tryRuleCast(game, creep, ability, orderId, rule, attackTarget, thinks, opening);
 		if (cast && once) {
 			creep.markCastOnce(orderId);
 		}
@@ -180,7 +193,7 @@ public interface CCreepCastAbility {
 	}
 
 	private static boolean tryRuleCast(final CSimulation game, final CUnit creep, final CAbility ability,
-			final int orderId, final Rule rule, final CUnit attackTarget, final int thinks) {
+			final int orderId, final Rule rule, final CUnit attackTarget, final int thinks, final boolean opening) {
 		switch (rule) {
 		case AREA: {
 			if (!isFighting(game, creep)) {
@@ -227,6 +240,17 @@ public interface CCreepCastAbility {
 		case ENEMY:
 		case ENEMY_ATTACKING:
 			return tryEnemyCast(game, creep, ability, orderId, attackTarget, rule == Rule.ENEMY_ATTACKING);
+		case ENEMY_OPENING: {
+			final CPlayer owner = game.getPlayer(creep.getPlayerIndex());
+			final int tick = game.getGameTurnTick();
+			if (opening && ((tick - owner.getLastCreepOpeningCastTick()) >= OPENING_CAST_SPACING_TICKS)
+					&& tryEnemyCast(game, creep, ability, orderId, attackTarget, false, rule, CBehaviorTargetSpellBase.AUTO_CAST_REACH_SLACK)) {
+				owner.setLastCreepOpeningCastTick(tick);
+				return true;
+			}
+			// A flyer is ensnared at any later thought too.
+			return (thinks >= 1) && tryEnemyCast(game, creep, ability, orderId, attackTarget, false, Rule.ENEMY_AIR);
+		}
 		case ENEMY_AIR:
 		case ENEMY_RANGED:
 		case ENEMY_FAERIE:
@@ -435,7 +459,12 @@ public interface CCreepCastAbility {
 
 	static boolean tryEnemyCast(final CSimulation game, final CUnit creep, final CAbility ability, final int orderId,
 			final CUnit attackTarget, final boolean onlyAttackers, final Rule only) {
-		final float range = getCastRange(ability);
+		return tryEnemyCast(game, creep, ability, orderId, attackTarget, onlyAttackers, only, 0);
+	}
+
+	static boolean tryEnemyCast(final CSimulation game, final CUnit creep, final CAbility ability, final int orderId,
+			final CUnit attackTarget, final boolean onlyAttackers, final Rule only, final float extraReach) {
+		final float range = getCastRange(ability) + extraReach;
 		// Measured on 1.29: a creep that shoots from afar casts Faerie Fire only on flyers, one that fights in melee
 		// on anyone.
 		final Rule rule = ((only == Rule.ENEMY_FAERIE) && !isMelee(creep)) ? Rule.ENEMY_AIR : only;
@@ -457,18 +486,6 @@ public interface CCreepCastAbility {
 			return false;
 		});
 		CUnit target = best[0];
-		// Measured on 1.29: Flame Strike and Shadow Strike come only once an enemy has hurt the caster while at least
-		// two enemies are around, and go to the enemy behind his hardest recent hit (a hero before a footman), not to
-		// the nearest or to the one he attacks.
-		if ((orderId == OrderIds.flamestrike) || (orderId == OrderIds.shadowstrike)) {
-			final CUnit hurtBy = creep.getHeaviestHitBy(game.getGameTurnTick(), HIT_MEMORY_TICKS);
-			if ((hurtBy == null) || hurtBy.isDead() || hurtBy.isHidden() || hurtBy.isUnitAlly(player)
-					|| !creep.canReach(hurtBy, range) || !canTarget(game, creep, ability, orderId, hurtBy)
-					|| (countEnemiesAround(game, creep, player) < 2)) {
-				return false;
-			}
-			target = hurtBy;
-		}
 		if ((target == null) && creep.canReach(attackTarget, range)
 				&& (!onlyAttackers || isAttacking(game, attackTarget, player)) && isRuleTarget(rule, attackTarget)
 				&& canTarget(game, creep, ability, orderId, attackTarget)) {
@@ -482,15 +499,104 @@ public interface CCreepCastAbility {
 				|| creep.order(game, orderId, new AbilityPointTarget(target.getX(), target.getY()), true);
 	}
 
+	static boolean isHitCastOrder(final int orderId) {
+		return (orderId == OrderIds.flamestrike) || (orderId == OrderIds.shadowstrike);
+	}
+
+	static boolean hasHitCastSpell(final CUnit hero) {
+		for (final CAbility ability : hero.getAbilities()) {
+			if (!ability.isDisabled() && (ability instanceof GenericSingleIconActiveAbility)
+					&& isHitCastOrder(((GenericSingleIconActiveAbility) ability).getBaseOrderId())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Measured on 1.29: the hero answers a hit with Flame Strike or Shadow Strike on the unit that struck him, when at
+	 * least two enemies are around.
+	 *
+	 * @return true when the hero was ordered to cast
+	 */
+	static boolean tryCastOnHitSource(final CSimulation game, final CUnit hero, final CUnit hitSource) {
+		final CPlayer player = game.getPlayer(hero.getPlayerIndex());
+		if (hitSource.isDead() || hitSource.isHidden() || hitSource.isUnitAlly(player)
+				|| (countEnemiesAround(game, hero, player) < 2)) {
+			return false;
+		}
+		final CUnit source = findAttackingEnemyHero(game, hero, player, hitSource);
+		final CBehavior behavior = hero.getCurrentBehavior();
+		if ((behavior != null) && (behavior.getBehaviorCategory() == CBehaviorCategory.SPELL)) {
+			return false;
+		}
+		for (final CAbility ability : hero.getAbilities()) {
+			if (ability.isDisabled() || !(ability instanceof GenericSingleIconActiveAbility)) {
+				continue;
+			}
+			final int orderId = ((GenericSingleIconActiveAbility) ability).getBaseOrderId();
+			if (!isHitCastOrder(orderId)) {
+				continue;
+			}
+			final BooleanAbilityActivationReceiver activation = BooleanAbilityActivationReceiver.INSTANCE.reset();
+			ability.checkCanUse(game, hero, hero.getPlayerIndex(), orderId, true, activation);
+			if (activation.isOk() && hero.canReach(source, getCastRange(ability))
+					&& canTarget(game, hero, ability, orderId, source) && hero.order(game, orderId, source, true)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Measured on 1.29: of the enemies that fight the hero, an enemy hero is the one he answers with the spell,
+	 * even when another enemy struck the hit that made him cast.
+	 */
+	private static CUnit findAttackingEnemyHero(final CSimulation game, final CUnit hero, final CPlayer player,
+			final CUnit hitSource) {
+		if (hitSource.getHeroData() != null) {
+			return hitSource;
+		}
+		final CUnit[] found = { null };
+		game.getWorldCollision().enumUnitsInRange(hero.getX(), hero.getY(), ATTACKER_SEARCH_RANGE, (enumUnit) -> {
+			if ((enumUnit.getHeroData() != null) && !enumUnit.isDead() && !enumUnit.isHidden()
+					&& !enumUnit.isUnitAlly(player) && isAttacking(game, enumUnit, player)
+					&& (((CBehaviorAttack) enumUnit.getCurrentBehavior()).getTarget()
+							.visit(AbilityTargetVisitor.UNIT) == hero)
+					&& ((found[0] == null) || (hero.distance(enumUnit) < hero.distance(found[0])))) {
+				found[0] = enumUnit;
+			}
+			return false;
+		});
+		return (found[0] != null) ? found[0] : hitSource;
+	}
+
+	/**
+	 * Measured on 1.29: only enemies that were sent against the player's units count (whatever their owner, a hostile
+	 * neutral that attacks counts); enemies standing around, even next to the fight, do not.
+	 */
 	static int countEnemiesAround(final CSimulation game, final CUnit unit, final CPlayer player) {
 		final int[] count = { 0 };
 		game.getWorldCollision().enumUnitsInRange(unit.getX(), unit.getY(), ATTACKER_SEARCH_RANGE, (enumUnit) -> {
-			if (!enumUnit.isDead() && !enumUnit.isHidden() && !enumUnit.isUnitAlly(player)) {
+			if (!enumUnit.isDead() && !enumUnit.isHidden() && !enumUnit.isUnitAlly(player)
+					&& isAttackingOrApproaching(enumUnit, player)) {
 				count[0]++;
 			}
 			return false;
 		});
 		return count[0];
+	}
+
+	static boolean isAttackingOrApproaching(final CUnit unit, final CPlayer player) {
+		CBehavior behavior = unit.getCurrentBehavior();
+		if (behavior instanceof CBehaviorMove) {
+			behavior = ((CBehaviorMove) behavior).getRangedBehavior();
+		}
+		if (!(behavior instanceof CBehaviorAttack)) {
+			return false;
+		}
+		final CUnit target = ((CBehaviorAttack) behavior).getTarget().visit(AbilityTargetVisitor.UNIT);
+		return (target != null) && target.isUnitAlly(player);
 	}
 
 	static boolean isRuleTarget(final Rule rule, final CUnit target) {
@@ -683,8 +789,10 @@ public interface CCreepCastAbility {
 	 * are cast already at the first thought; Purge, Chain Lightning, Frost Nova, Firebolt and Immolation at a later
 	 * one. War Stomp, Slam and Heal are cast as soon as they are ready, and so are buffs on allies from the second
 	 * thought on and Slow, Curse and buffs on the creep itself from the third (again right when the cooldown ends).
-	 * Cyclone and Cripple come at the first thought, Cripple only on enemies that shoot from afar; Ensnare only on
-	 * flyers; Sleep (on an enemy attacking the creep's side), Death Coil (heroes first), Frost Armor and Unholy Frenzy (on the creep itself) at the second;
+	 * Cyclone and Cripple come at the first thought, Cripple only on enemies that shoot from afar; Ensnare (on any
+	 * enemy, flyer or not) comes once, 0.6 s after the creep is made or alerted, and on a flyer at any later thought;
+	 * Sleep (on an enemy attacking the creep's side), Death Coil (heroes first), Frost Armor and Unholy Frenzy (on the
+	 * creep itself) at the second;
 	 * Faerie Fire and Raise Dead (with corpses near) at the third; Carrion Swarm and Crushing Wave at the fourth.
 	 * Frost Armor also goes on an ally an enemy is sent against before the fight, like Heal. Polymorph, Hex, Roar,
 	 * Abolish Magic and Rejuvenation on allies were never seen cast. Heroes of such a player also cast Mirror Image,
@@ -698,9 +806,9 @@ public interface CCreepCastAbility {
 	enum Rule {
 		AREA(true, 0), GROUP(false, 0), ALLY_BUFF(true, 1), ALLY_HEAL(true, 0), ENEMY_ATTACKING(true, 2),
 		ENEMY(false, 1), TOGGLE_ON(false, 1), ENEMY_AIR(false, 1), ENEMY_RANGED(false, 0), ENEMY_FAERIE(false, 2),
-		ENEMY_FIRST(false, 0), ENEMY_LATE(false, 3), ENEMY_HERO(false, 1), ARMOR(false, 1), SELF_BUFF(false, 1),
-		SELF_HEAL(true, 0), CORPSES(false, 2), SLEEP(false, 1), FIGHT(false, 0), BLADESTORM(false, 1), TREE(false, 0),
-		CORPSE_TARGET(false, 0);
+		ENEMY_FIRST(false, 0), ENEMY_OPENING(false, 0), ENEMY_LATE(false, 3), ENEMY_HERO(false, 1), ARMOR(false, 1),
+		SELF_BUFF(false, 1), SELF_HEAL(true, 0), CORPSES(false, 2), SLEEP(false, 1), FIGHT(false, 0),
+		BLADESTORM(false, 1), TREE(false, 0), CORPSE_TARGET(false, 0);
 
 		private final boolean everyTick;
 		private final int minimumThinks;
@@ -728,7 +836,7 @@ public interface CCreepCastAbility {
 			case OrderIds.curse:
 				return ENEMY_ATTACKING;
 			case OrderIds.ensnare:
-				return ENEMY_AIR;
+				return ENEMY_OPENING;
 			case OrderIds.cyclone:
 				return ENEMY_FIRST;
 			case OrderIds.carrionswarm:

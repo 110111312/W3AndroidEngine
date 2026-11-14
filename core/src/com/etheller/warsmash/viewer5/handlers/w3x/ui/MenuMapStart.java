@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.etheller.warsmash.WarsmashGdxMapScreen;
@@ -17,6 +18,8 @@ import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.datasources.GraphicsSet;
 import com.etheller.warsmash.datasources.GraphicsSettings;
+import com.etheller.warsmash.lan.LanGameStart;
+import com.etheller.warsmash.lan.LockstepTurnManager;
 import com.etheller.warsmash.networking.GameTurnManager;
 import com.etheller.warsmash.networking.WarsmashClient;
 import com.etheller.warsmash.networking.WarsmashClientSendingOrderListener;
@@ -37,6 +40,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.replay.GameReplays;
 import com.etheller.warsmash.viewer5.handlers.w3x.replay.ReplayPlayback;
 import com.etheller.warsmash.viewer5.handlers.w3x.replay.ReplayRecording;
 import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedGame;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.SimulationChecksum;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.ai.AIDifficulty;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CSaveStorage;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.config.CBasePlayer;
@@ -84,6 +89,8 @@ final class MenuMapStart {
 	private int campaign = -1;
 	/** The map prepared last when it is made for the Reforged graphics alone, else null. */
 	private String reforgedGraphicsMap;
+	/** The start locations of a LAN game come from its shared seed, so every player's game has the same ones. */
+	private Random startLocationRandomOverride;
 
 	MenuMapStart(final MenuUI menu) {
 		this.menu = menu;
@@ -205,14 +212,21 @@ final class MenuMapStart {
 		setPendingLoad(null, false);
 		this.loadingReplayHeader = null;
 		final CReplay replay = this.menu.beginGameInformation.replay;
+		final LanGameStart lan = this.menu.beginGameInformation.lan;
 		if (replay != null) {
 			viewer.setGameSeed(replay.getHeader().getSeed());
 		}
-		else if (!loadingSavedGame
+		else if (lan != null) {
+			viewer.setGameSeed((int) lan.setup().seed);
+		}
+		if ((replay == null) && !loadingSavedGame
 				&& GameReplays.isRecorded(mapFilename, this.menu.beginGameInformation.hostInetAddress != null)) {
 			try {
-				this.loadingReplayHeader = GameReplays.header(codebase, mapFilename, viewer,
-						this.menu.currentMapConfig, localPlayerIndex);
+				this.loadingReplayHeader = lan != null
+						? GameReplays.header(codebase, mapFilename, viewer, this.menu.currentMapConfig,
+								localPlayerIndex, lan.recordedAt())
+						: GameReplays.header(codebase, mapFilename, viewer, this.menu.currentMapConfig,
+								localPlayerIndex);
 			}
 			catch (final IOException | RuntimeException e) {
 				Log.error("The game is not recorded: " + e);
@@ -282,9 +296,18 @@ final class MenuMapStart {
 			if (this.loadingMap.activeMapLoader != null) {
 				if (loadingScreen.isMapDone() || this.loadingMap.activeMapLoader.process()) {
 					loadingScreen.markMapDone();
+					if (beginGameInformation.lan != null) {
+						// Every player's game starts together, when the host says so.
+						beginGameInformation.lan.loaded();
+						loadingScreen.updateLanLoad();
+						if (!beginGameInformation.lan.isGo()) {
+							loadingScreen.showWaitingForPlayers(deltaTime);
+							return true;
+						}
+					}
 					// A replay starts at once, as in the original.
 					if (loadingScreen.holdsForTap() && (beginGameInformation.hostInetAddress == null)
-							&& (beginGameInformation.replay == null)) {
+							&& (beginGameInformation.replay == null) && (beginGameInformation.lan == null)) {
 						loadingScreen.showTapToContinue(deltaTime);
 						return true;
 					}
@@ -310,6 +333,14 @@ final class MenuMapStart {
 						warsmashClientWriter.joinGame();
 						warsmashClientWriter.send();
 						uiOrderListener = new WarsmashClientSendingOrderListener(warsmashClientWriter);
+					}
+					else if (beginGameInformation.lan != null) {
+						final War3MapViewer mapViewer = this.loadingMap.viewer;
+						final LockstepTurnManager turns = beginGameInformation.lan.createTurnManager(mapViewer);
+						turns.setRecording(startRecording(mapViewer, turns.checksumFunction()));
+						mapViewer.setGameTurnManager(turns);
+						uiOrderListener = beginGameInformation.lan.commandSender();
+						warsmashClient = null;
 					}
 					else if (beginGameInformation.replay != null) {
 						final ReplayPlayback playback = new ReplayPlayback(beginGameInformation.replay,
@@ -364,6 +395,10 @@ final class MenuMapStart {
 				}
 				else {
 					loadingScreen.setLoadingProgress(this.loadingMap.activeMapLoader.getCompletionRatio());
+					if (beginGameInformation.lan != null) {
+						beginGameInformation.lan.loadProgress(this.loadingMap.activeMapLoader.getCompletionRatio());
+						loadingScreen.updateLanLoad();
+					}
 				}
 			}
 			else {
@@ -476,6 +511,53 @@ final class MenuMapStart {
 	}
 
 	/**
+	 * Starts a LAN game: the map's setup is read the way a single player start reads it, with the lobby's slots, teams
+	 * and colors put over it and the start locations drawn from the game's shared seed, then the map is loaded and the
+	 * game waits for the host's go.
+	 *
+	 * @return false when the map cannot be read
+	 */
+	boolean startLan(final LanGameStart lan) {
+		final String mapFilename = lan.mapFile();
+		this.startLocationRandomOverride = new Random(lan.setup().seed);
+		try {
+			if (!prepareMapConfigs(mapFilename)) {
+				return false;
+			}
+		}
+		finally {
+			this.startLocationRandomOverride = null;
+		}
+		final War3MapConfig currentMapConfig = this.menu.currentMapConfig;
+		setCampaign(-1, false);
+		this.menu.mainMenuFrame.setVisible(false);
+		this.menu.campaigns.hideScreens();
+		this.menu.campaigns.setMissionSelectMenuVisible(false);
+		this.menu.skirmish.hide();
+		this.menu.setGlueLayersSequence("Death");
+		lan.applyTo(currentMapConfig, WarsmashConstants.RACE_MANAGER);
+		final BeginGameInformation beginGameInformation = new BeginGameInformation();
+		this.menu.beginGameInformation = beginGameInformation;
+		beginGameInformation.gameMapLookup = new CurrentNetGameMapLookupPath(mapFilename);
+		beginGameInformation.lan = lan;
+		this.menu.loadingScreen.setLanGame(lan);
+		int localPlayerIndex = lan.localSlot();
+		// every machine finds the seat a referee pauses from, not only the watchers
+		lan.setWatchSlot(observerSlot(currentMapConfig));
+		if (localPlayerIndex == -1) {
+			localPlayerIndex = observerSlot(currentMapConfig);
+			if (localPlayerIndex == -1) {
+				this.menu.beginGameInformation = null;
+				Log.error("No slot is left to watch the game from: " + mapFilename);
+				return false;
+			}
+		}
+		beginGameInformation.localPlayerIndex = localPlayerIndex;
+		this.menu.menuState = MenuState.GOING_TO_MAP;
+		return true;
+	}
+
+	/**
 	 * A game in which only computers play is watched from a slot no one plays, as an observer: the game is the same as
 	 * without a local player, which is what determinism tests and replays of such games need.
 	 *
@@ -499,13 +581,17 @@ final class MenuMapStart {
 	}
 
 	private ReplayRecording startRecording(final War3MapViewer viewer) {
+		return startRecording(viewer, SimulationChecksum::compute);
+	}
+
+	private ReplayRecording startRecording(final War3MapViewer viewer, final ToIntFunction<CSimulation> checksum) {
 		final CReplayHeader header = this.loadingReplayHeader;
 		this.loadingReplayHeader = null;
 		if (header == null) {
 			return null;
 		}
 		try {
-			return GameReplays.startRecording(viewer, header);
+			return GameReplays.startRecording(viewer, header, checksum);
 		}
 		catch (final IOException | RuntimeException e) {
 			Log.error("The game is not recorded: " + e);
@@ -580,7 +666,8 @@ final class MenuMapStart {
 		war3MapConfig.applyMapInformation(mapInfo);
 		Jass2.loadConfig(map, this.menu.uiViewport, this.menu.uiScene, this.menu.rootFrame, war3MapConfig,
 				WarsmashConstants.JASS_FILE_LIST).config();
-		shuffleStartLocations(war3MapConfig, prepareMeleeLobby(war3MapConfig, mapInfo));
+		shuffleStartLocations(war3MapConfig, prepareMeleeLobby(war3MapConfig, mapInfo),
+				this.startLocationRandomOverride != null ? this.startLocationRandomOverride : startLocationRandom());
 		this.loadedFixedPlayerSettings = mapInfo.hasFlag(War3MapW3iFlags.FIXED_PLAYER_SETTINGS_FOR_CUSTOM_FORCES);
 		this.menu.currentMapConfig = war3MapConfig;
 	}
@@ -637,12 +724,15 @@ final class MenuMapStart {
 	 * take the free locations nearest to their first member's.
 	 */
 	static void shuffleStartLocations(final War3MapConfig config, final int playerCount) {
+		shuffleStartLocations(config, playerCount, startLocationRandom());
+	}
+
+	static void shuffleStartLocations(final War3MapConfig config, final int playerCount, final Random random) {
 		// Measured: a script's SetGamePlacement(MAP_PLACEMENT_FIXED) keeps each player on the start location its
 		// SetPlayerStartLocation gave it.
 		if (config.getPlacement() == CMapPlacement.FIXED) {
 			return;
 		}
-		final Random random = startLocationRandom();
 		final List<Integer> locations = new ArrayList<>();
 		for (int i = 0; i < playerCount; i++) {
 			locations.add(config.getPlayer(i).getStartLocationIndex());

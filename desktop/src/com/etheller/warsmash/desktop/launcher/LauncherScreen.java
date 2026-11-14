@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -35,15 +36,25 @@ import com.etheller.warsmash.datasources.GraphicsSet;
 import com.etheller.warsmash.datasources.GraphicsSettings;
 import com.etheller.warsmash.launcher.CampaignChoice;
 import com.etheller.warsmash.launcher.CampaignResult;
+import com.etheller.warsmash.launcher.CustomContent;
 import com.etheller.warsmash.launcher.CustomGame;
 import com.etheller.warsmash.launcher.CustomKeys;
 import com.etheller.warsmash.launcher.DataFolderCheck;
 import com.etheller.warsmash.launcher.DataPackage;
+import com.etheller.warsmash.input.touch.ControlScheme;
+import com.etheller.warsmash.input.touch.PenButton;
+import com.etheller.warsmash.input.touch.TouchInputRouter;
+import com.etheller.warsmash.input.touch.TouchStyle;
 import com.etheller.warsmash.launcher.EngineSettings;
 import com.etheller.warsmash.launcher.GameCatalog;
 import com.etheller.warsmash.launcher.GameResult;
+import com.etheller.warsmash.launcher.MapListCache;
+import com.etheller.warsmash.launcher.MapSections;
+import com.etheller.warsmash.lan.LanSessions;
 import com.etheller.warsmash.launcher.GlueText;
 import com.etheller.warsmash.launcher.HotkeyCatalog;
+import com.etheller.warsmash.launcher.KeyEditor;
+import com.etheller.warsmash.launcher.LaunchGuard;
 import com.etheller.warsmash.launcher.LaunchRequest;
 import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.LauncherKeys;
@@ -90,9 +101,9 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		{ "KEY_OPTIONS", "Options" }, { "KEY_HELP", "Help" } };
 	private static final int[] RAIL_KEYS = { Input.Keys.C, Input.Keys.L, Input.Keys.R, Input.Keys.U, Input.Keys.N,
 		Input.Keys.O, Input.Keys.H };
-	private static final boolean[] RAIL_OPEN = { true, true, true, true, false, true, true };
+	private static final boolean[] RAIL_OPEN = { true, true, true, true, true, true, true };
 
-	private enum Page {
+	enum Page {
 		HOME,
 		CAMPAIGN,
 		MISSIONS,
@@ -101,10 +112,11 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		REPLAY,
 		OPTIONS,
 		HELP,
-		PROFILE
+		PROFILE,
+		LAN
 	}
 
-	private enum Dialog {
+	enum Dialog {
 		NONE,
 		EXIT,
 		MESSAGE,
@@ -117,20 +129,25 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		RENAME,
 		PORTRAIT,
 		ADVANCED,
-		UPDATE
+		UPDATE,
+		LAN_IP,
+		LAN_NOTICE,
+		LAN_BLOCK,
+		LAN_LEAVE,
+		LAN_MAP
 	}
 
 	private final WarsmashGdxMultiScreenGame game;
 	private final String iniPath;
-	private DataTable ini;
-	private File iniFile;
-	private final Gui gui = new Gui();
+	DataTable ini;
+	File iniFile;
+	final Gui gui = new Gui();
 	/** The campaign mission's result the Missions page shows instead of the chapters, until Continue or Back. */
 	private GameResult campaignResult;
 	private final Preferences launcherPreferences;
-	private final DesktopStore preferences;
+	final DesktopStore preferences;
 	private final DesktopStore engineStore;
-	private final File saves = new File("Save");
+	final File saves = new File("Save");
 	private LauncherStrings strings;
 	private Map<String, String> glue = new HashMap<>();
 	private volatile DataSource data;
@@ -138,14 +155,14 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	private LauncherCursor cursor;
 	private volatile boolean dataFailed;
 	private volatile boolean dataReady;
-	private LauncherArt art;
+	LauncherArt art;
 	private boolean skinChanged;
-	private Profiles profiles;
-	private GameCatalog catalog;
+	Profiles profiles;
+	GameCatalog catalog;
 	private GameCatalog.Campaigns campaigns;
-	private List<GameCatalog.MapEntry> maps;
-	private GameCatalog.MapDetails mapDetails;
-	private TextureRegion minimap;
+	List<GameCatalog.MapEntry> maps;
+	GameCatalog.MapDetails mapDetails;
+	TextureRegion minimap;
 	private List<GameCatalog.SaveEntry> saveList;
 	private final CustomGame lobby = new CustomGame();
 	private GlueBackdropRenderer renderer;
@@ -156,15 +173,15 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	private final SceneRecording[] recordings = new SceneRecording[2];
 	/** Whether the game data has a scene recording, by its name. */
 	private final Map<String, Boolean> recorded = new HashMap<>();
-	private LauncherBoard board;
+	LauncherBoard board;
 
 	/** The newer engine release the launcher found, once the check is done; the check runs once per launch. */
 	private volatile UpdateCheck.Release updateRelease;
 	private volatile boolean updateChecked;
 	private boolean updateStarted;
 	private boolean updateHandled;
-	private Page page = Page.HOME;
-	private Dialog dialog = Dialog.NONE;
+	Page page = Page.HOME;
+	Dialog dialog = Dialog.NONE;
 	private String messageTitle;
 	private String messageLine;
 	private int optionsTab;
@@ -177,6 +194,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	private final StringBuilder saveFilter = new StringBuilder();
 	private Map<String, CCampaignProgress.Snapshot> profileProgress;
 	private boolean launching;
+	LanPages lan;
 	private WarsmashGdxMenuScreen menuScreen;
 	private LaunchRequest launched;
 	private Music music;
@@ -189,7 +207,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	private File readabilityWalk;
 	private HotkeyCatalog hotkeys;
 	private boolean readingHotkeys;
-	private CustomKeys customKeys;
+	private KeyEditor keyEditor;
 	private int keysRace = 1;
 	private int keysUnit;
 	private int keysCard;
@@ -211,6 +229,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		}
 		useIni(ini, iniPath);
 		this.profiles = new Profiles(this.engineStore, this.preferences, this.saves);
+		this.lan = new LanPages(this);
 		openData();
 	}
 
@@ -256,9 +275,10 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		this.recorded.clear();
 		this.art = new LauncherArt(this.data, reforgedSkin());
 		this.catalog = new GameCatalog(this.ini, GameCatalog.dataKey(this.ini), this.saves,
-				() -> GameCatalog.currentProfile(this.engineStore), new File("Logs/launcher-maps.txt"),
+				() -> GameCatalog.currentProfile(this.engineStore), new File(com.etheller.warsmash.desktop.DesktopLauncher.MAP_LIST_FILE),
 				Gdx.app::postRunnable, this.data);
 		readCatalog();
+		this.lan.dataOpened();
 		try {
 			this.click = Gdx.audio.newSound(new DataSourceFileHandle(this.data, "Sound\\Interface\\MouseClick1.ogg"));
 		}
@@ -317,11 +337,11 @@ public final class LauncherScreen implements Screen, InputProcessor {
 				&& (this.data == null || this.data.has("webui\\common\\homescreen.jpg"));
 	}
 
-	private String s(final String name) {
+	String s(final String name) {
 		return this.strings.get(name);
 	}
 
-	private String glue(final String key, final String fallback) {
+	String glue(final String key, final String fallback) {
 		final String value = this.glue.get(key.toUpperCase(Locale.ROOT));
 		return value != null ? value : fallback;
 	}
@@ -384,11 +404,17 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			Gdx.gl.glDisable(GL20.GL_CULL_FACE);
 			Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 		}
+		this.lan.update(delta);
 		this.gui.topLayer = this.gui.menuOpen() ? 99 : this.dialog != Dialog.NONE ? 1 : 0;
 		this.gui.begin(this.art, this.board, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 		final String[] scenes = { null, null };
+		final boolean dialogWasOpen = this.dialog != Dialog.NONE;
 		drawPage(scenes);
 		if (this.dialog != Dialog.NONE) {
+			if (!dialogWasOpen) {
+				// The key that opened the dialog is not its answer.
+				this.gui.keys.removeAll(java.util.Collections.singleton(Input.Keys.ENTER));
+			}
 			this.gui.layer = 1;
 			drawDialog();
 			this.gui.layer = 0;
@@ -504,6 +530,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 
 	@Override
 	public void dispose() {
+		this.lan.dispose();
 		stopRenderer();
 		disposeCursor();
 		stopMusic();
@@ -668,6 +695,11 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			profilePage();
 			shell(-1, false);
 			break;
+		case LAN:
+			editionBackdrop(scenes, true);
+			this.lan.page();
+			shell(4, false);
+			break;
 		default:
 			editionBackdrop(scenes, false);
 			homePage(scenes);
@@ -725,12 +757,13 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		}
 		for (int i = 0; i < RAIL.length; i++) {
 			final float y = b.holderY + (i * b.holderPitch);
-			if (railEntry("rail" + i, glue(RAIL[i][0], RAIL[i][1]), y, i == selected, RAIL_OPEN[i])) {
+			if (railEntry("rail" + i, glue(RAIL[i][0], RAIL[i][1]), y, i == selected, RAIL_OPEN[i],
+					(i == 4) && this.lan.lit())) {
 				railChosen(i);
 			}
 		}
 		if (b.quitY > 0) {
-			if (railEntry("quit", glue("KEY_QUIT", "Quit"), b.quitY, false, true)) {
+			if (railEntry("quit", glue("KEY_QUIT", "Quit"), b.quitY, false, true, false)) {
 				this.dialog = Dialog.EXIT;
 			}
 		}
@@ -741,7 +774,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	}
 
 	private boolean railEntry(final Object id, final String label, final float y, final boolean selected,
-			final boolean open) {
+			final boolean open, final boolean lit) {
 		final Gui g = this.gui;
 		final LauncherBoard b = this.board;
 		final float hw = b.holderW;
@@ -757,6 +790,23 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		else {
 			g.image(SkinArt.HOLDER, x, y, hw, hh);
 			clicked = g.button(id, label, x + (hw * 0.0455f), y + (hh * 0.188f), hw * 0.909f, hh * 0.594f, size, tone);
+		}
+		if (lit && !g.over(x, y, hw, hh)) {
+			// The lobby changed while another page was shown: the entry lights as the mouse over it does, with the
+			// star the game's Quests button flashes.
+			g.additive(true);
+			final TextureRegion star = this.art.image(SkinArt.GLOWSTAR);
+			if (star != null) {
+				g.image(star, x + (hw * 0.04f) - (hh * 0.3f), y - (hh * 0.15f), hh * 1.3f, hh * 1.3f, 0.9f);
+				g.image(star, x + (hw * 0.88f) - (hh * 0.2f), y + (hh * 0.1f), hh * 0.9f, hh * 0.9f, 0.7f);
+			}
+			if (this.art.reforged) {
+				g.drawButton(x + (hw * 0.04f), y + (hh * 0.14f), hw * 0.92f, hh * 0.72f, tone, 0.22f);
+			}
+			else {
+				g.drawButton(x + (hw * 0.0455f), y + (hh * 0.188f), hw * 0.909f, hh * 0.594f, tone, 0.22f);
+			}
+			g.additive(false);
 		}
 		if (!open && g.over(x, y, hw, hh)) {
 			g.tip(s("launcher_later"));
@@ -780,7 +830,12 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			showPage(Page.REPLAY);
 			break;
 		case 3:
+			// Maps added to the folders since the list was read are found by reading it again.
+			this.catalog.maps(found -> this.maps = found);
 			showPage(Page.CUSTOM);
+			break;
+		case 4:
+			showPage(Page.LAN);
 			break;
 		case 5:
 			this.optionsTab = 0;
@@ -1686,52 +1741,69 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		}
 	}
 
-	private String mapTitle(final GameCatalog.MapDetails details) {
+	String mapTitle(final GameCatalog.MapDetails details) {
 		final int players = CampaignChoice.players(details);
 		final String gold = String.format(Locale.ROOT, "|c%08X", this.gui.palette.gold);
 		return (players > 0 ? gold + players + "|r " : "") + details.name;
 	}
 
-	private void mapList(final float x, final float y, final float w, final float h, final float rowH) {
+	boolean lanMapList;
+	private String shownChosenMap;
+
+	void mapList(final float x, final float y, final float w, final float h, final float rowH) {
 		final Gui g = this.gui;
 		final String chosen = CampaignChoice.chosenMap(this.preferences.getString(LauncherKeys.KEY_MAP, null),
 				this.maps);
-		final String folder = CampaignChoice.shownMapFolder(this.preferences.getString(LauncherKeys.KEY_MAP_FOLDER,
-				null), chosen, this.maps);
-		final String prefix = folder.isEmpty() ? "" : folder + "/";
-		final List<String[]> rows = new ArrayList<>();
-		if (!folder.isEmpty()) {
-			final int up = folder.lastIndexOf('/');
-			rows.add(new String[] { "..", up < 0 ? "" : folder.substring(0, up), null });
-		}
-		for (final String child : CampaignChoice.childFolders(this.maps, folder)) {
-			rows.add(new String[] { CampaignChoice.folderName(child.substring(prefix.length())), child, null });
-		}
-		final List<GameCatalog.MapEntry> shown = new ArrayList<>();
-		for (final GameCatalog.MapEntry entry : this.maps) {
-			if (CampaignChoice.mapFolder(entry.path).equalsIgnoreCase(folder)) {
-				shown.add(entry);
+		// As in the engine menu: a heading for every folder, its maps, then the files of it that are not maps.
+		final List<MapSections.Line> lines = MapSections.lines(this.maps,
+				this.lanMapList ? Collections.emptyList() : this.catalog.skippedMaps());
+		final float headingH = rowH * 0.6f;
+		float contentH = this.lanMapList ? 0 : rowH;
+		float chosenTop = -1;
+		for (final MapSections.Line line : lines) {
+			if ((line.map != null) && line.map.path.equals(chosen)) {
+				chosenTop = contentH;
 			}
+			contentH += line.heading != null ? headingH : rowH;
 		}
-		final float contentH = (rows.size() + shown.size()) * rowH;
-		final float offset = g.beginList("maps" + folder, x, y, w, h, contentH);
+		// A map chosen elsewhere (an import) is brought into view once.
+		if ((chosenTop >= 0) && !chosen.equals(this.shownChosenMap)) {
+			g.reveal("maps", chosenTop, rowH, h);
+		}
+		this.shownChosenMap = chosen;
+		final float offset = g.beginList("maps", x, y, w, h, contentH);
 		float rowY = y - offset;
 		final float line = Math.min(rowH * 0.86f, 84);
 		final float icon = line * 0.82f;
-		for (final String[] row : rows) {
-			final int state = g.hit("folder" + row[1], x, rowY, w, rowH);
-			if ((state & Gui.HOVER) != 0) {
+		if (!this.lanMapList) {
+			final int importState = g.hit("importMap", x, rowY, w, rowH);
+			if ((importState & Gui.HOVER) != 0) {
 				g.image(this.art.image(SkinArt.ROW_HIGHLIGHT), x, rowY, w, rowH, 0.5f);
 			}
-			g.image(SkinArt.ICON_FOLDER, x + 8, rowY + ((rowH - icon) / 2), icon, icon);
-			g.text(row[0], x + 8 + icon + 24, rowY, w - icon - 40, rowH, line * 0.56f, g.palette.text, Align.left);
-			if ((state & Gui.CLICK) != 0) {
+			g.text(s("game_import_map"), x + 8 + 24, rowY, w - 40, rowH, line * 0.56f, g.palette.gold, Align.left);
+			if ((importState & Gui.CLICK) != 0) {
 				playClick();
-				this.preferences.edit().putString(LauncherKeys.KEY_MAP_FOLDER, row[1]).apply();
+				importMap();
 			}
 			rowY += rowH;
 		}
-		for (final GameCatalog.MapEntry entry : shown) {
+		for (final MapSections.Line item : lines) {
+			if (item.heading != null) {
+				g.text(item.heading, x + 8 + 24, rowY, w - 40, headingH, line * 0.46f, g.palette.gold, Align.left);
+				rowY += headingH;
+				continue;
+			}
+			if (item.skipped != null) {
+				final MapListCache.Skipped skip = item.skipped;
+				final String reason = s(skip.problem == MapListCache.Problem.UNREADABLE ? "game_map_problem_unreadable"
+						: "game_map_problem_information");
+				g.text("!", x + 8, rowY + ((rowH - icon) / 2), icon, icon, icon * 0.5f, g.palette.gold, Align.center);
+				g.text(MapSections.fileName(skip.path) + " · " + reason, x + 8 + icon + 24, rowY, w - icon - 40, rowH,
+						line * 0.46f, g.palette.text2, Align.left);
+				rowY += rowH;
+				continue;
+			}
+			final GameCatalog.MapEntry entry = item.map;
 			final int state = g.hit("map" + entry.path, x, rowY, w, rowH);
 			final boolean isChosen = entry.path.equals(chosen);
 			if (isChosen || ((state & Gui.HOVER) != 0)) {
@@ -1754,10 +1826,10 @@ public final class LauncherScreen implements Screen, InputProcessor {
 					this.preferences.edit().putString(LauncherKeys.KEY_MAP, entry.path).apply();
 					loadMapDetails(entry.path);
 				}
-				if ((state & Gui.DOUBLE) != 0) {
+				if (((state & Gui.DOUBLE) != 0) && !this.lanMapList) {
 					startWhenRead(entry.path);
 				}
-				if ((state & Gui.RIGHT) != 0) {
+				if (((state & Gui.RIGHT) != 0) && !this.lanMapList) {
 					g.contextMenu("mapMenu", new String[] { glue("KEY_START_GAME", "Start Game") }, null,
 							choice -> startWhenRead(entry.path));
 				}
@@ -1765,8 +1837,8 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			rowY += rowH;
 		}
 		g.endList();
-		if (this.maps.isEmpty()) {
-			g.text(s("game_no_maps"), x, y, w, rowH, this.board.body, g.palette.text2, Align.left);
+		if (this.maps.isEmpty() && this.catalog.skippedMaps().isEmpty()) {
+			g.text(s("game_no_maps"), x, y + rowH, w, rowH, this.board.body, g.palette.text2, Align.left);
 		}
 		if ((chosen != null) && ((this.mapDetails == null) || !this.mapDetails.path.equals(chosen))
 				&& !chosen.equals(this.loadingMap)) {
@@ -2481,6 +2553,37 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			break;
 		case 2:
 			engineRows(rows, rowY, index, x, w, controlX, engine, LauncherOptions.GAMEPLAY);
+			rows.add(radioRow(rowY, index, x, w, controlX, s("options_control_scheme"),
+					new String[] { s("options_scheme_mouse"), s("options_scheme_touch") }, null,
+					engine.controlScheme(ControlScheme.MOUSE_KEYBOARD).ordinal(), choice -> {
+						final ControlScheme scheme = ControlScheme.values()[choice];
+						engine.setControlScheme(scheme);
+						LanSessions.onControlSchemeChanged(scheme);
+						final TouchInputRouter router = TouchInputRouter.installedRouter();
+						if (router != null) {
+							router.setScheme(scheme);
+						}
+					}));
+			rows.add(radioRow(rowY, index, x, w, controlX, s("options_touch_style"),
+					new String[] { s("options_style_hold"), s("options_style_double") }, null,
+					engine.touchStyle().ordinal(), choice -> {
+						final TouchStyle style = TouchStyle.values()[choice];
+						engine.setTouchStyle(style);
+						final TouchInputRouter router = TouchInputRouter.installedRouter();
+						if (router != null) {
+							router.setStyle(style);
+						}
+					}));
+			rows.add(radioRow(rowY, index, x, w, controlX, s("options_pen_button"),
+					new String[] { s("options_pen_shift"), s("options_pen_ctrl"), s("options_pen_drag"), s("options_pen_right") }, null,
+					engine.penButton().ordinal(), choice -> {
+						final PenButton button = PenButton.values()[choice];
+						engine.setPenButton(button);
+						final TouchInputRouter router = TouchInputRouter.installedRouter();
+						if (router != null) {
+							router.setPenButton(button);
+						}
+					}));
 			rows.add(infoRow(rowY, index, x, w, controlX, s("options_profile"), this.profiles.current()));
 			break;
 		case 3:
@@ -2743,25 +2846,15 @@ public final class LauncherScreen implements Screen, InputProcessor {
 
 	// ---------------------------------------------------------------- Options > Controls
 
-	private CustomKeys customKeys() {
-		if (this.customKeys == null) {
-			this.customKeys = CustomKeys.read(CustomKeys.playerFile(),
-					CustomKeys.LAYOUT_GRID.equals(this.engineStore.getString(CustomKeys.KEY_LAYOUT, "")));
+	private KeyEditor keyEditor() {
+		if (this.keyEditor == null) {
+			this.keyEditor = KeyEditor.open(CustomKeys.playerFile(), this.engineStore);
 		}
-		return this.customKeys;
-	}
-
-	private void saveKeys() {
-		try {
-			customKeys().write(CustomKeys.playerFile());
-		}
-		catch (final IOException e) {
-			LauncherLog.w("Unable to write the hotkeys", e);
-		}
+		return this.keyEditor;
 	}
 
 	private String keyOf(final HotkeyCatalog.Command command) {
-		return customKeys().key(command.section, command.field, command.dataKey, command.x, command.y);
+		return keyEditor().keyOf(command);
 	}
 
 	private String commandName(final HotkeyCatalog.Command command) {
@@ -2787,7 +2880,8 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		final float inner = bottom - pf - (16 * k);
 		final float big = Math.max(t ? 32 : 22, b.body * k);
 		final float small = Math.max(t ? 28 : 19, b.small * k);
-		final CustomKeys keys = customKeys();
+		final KeyEditor editor = keyEditor();
+		final CustomKeys keys = editor.keys();
 
 		final float headH = 80 * k;
 		g.text(s("controls_layout"), x0, y0, (360 * k) + 60, headH, big, g.palette.gold, Align.left);
@@ -2798,19 +2892,16 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			if (g.radio("layout" + j, rx, y0 + ((headH - radio) / 2), radio, keys.grid() == (j == 1), t ? 360 : 230)) {
 				playClick();
 				this.capturing = null;
-				keys.setGrid(j == 1);
-				this.engineStore.edit().putString(CustomKeys.KEY_LAYOUT, j == 1 ? CustomKeys.LAYOUT_GRID : "classic")
-						.apply();
+				editor.setGrid(j == 1, this.engineStore);
 			}
 			g.text(layouts[j], rx + radio + 14, y0, t ? 320 : 210, headH, big, g.palette.text, Align.left);
 		}
 		final float resetW = t ? 520 : 330;
 		if (g.button("resetKeys", s("controls_reset"), right - resetW, y0 - 4, resetW, t ? 96 : 76, t ? 32 : 22,
-				keys.isEmpty() ? Gui.TONE_OFF : Gui.TONE_NORMAL)) {
+				editor.anyChanged() ? Gui.TONE_NORMAL : Gui.TONE_OFF)) {
 			playClick();
 			this.capturing = null;
-			keys.clear();
-			saveKeys();
+			editor.resetAll();
 		}
 
 		if (this.hotkeys == null) {
@@ -2892,7 +2983,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		final HotkeyCatalog.Unit unit = race.units.get(this.keysUnit);
 		this.keysCard = Math.max(0, Math.min(unit.cards.size() - 1, this.keysCard));
 		final HotkeyCatalog.Card card = unit.cards.get(this.keysCard);
-		final java.util.Set<String> conflicts = HotkeyCatalog.conflicts(card, keys);
+		final java.util.Set<String> conflicts = editor.conflicts(card);
 		final float cell = t ? 118 : 56;
 		final float gap = t ? 10 : 5;
 		final float cardW = (4 * cell) + (3 * gap);
@@ -2997,7 +3088,8 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			g.cover(command.icon == null ? null : this.art.picture(command.icon), kx + 6, ry + (rowH * 0.1f), icon,
 					icon, 0.5f);
 			final String name = commandName(command);
-			final boolean cut = g.text(name, kx + icon + 22, ry, kw - keyW - icon - 40, rowH, small * 1.05f,
+			final float defaultW = t ? 190 : 110;
+			final boolean cut = g.text(name, kx + icon + 22, ry, kw - keyW - defaultW - icon - 52, rowH, small * 1.05f,
 					bad ? 0xFFFF8A7A : g.palette.text, Align.left);
 			if (cut && ((state & Gui.HOVER) != 0)) {
 				g.tip(name);
@@ -3008,6 +3100,13 @@ public final class LauncherScreen implements Screen, InputProcessor {
 				this.capturing = null;
 			}
 			final float keyX = (kx + kw) - keyW;
+			if (g.button("default" + command.id(), s("controls_default"), keyX - defaultW - 12, ry + (rowH * 0.1f),
+					defaultW, rowH * 0.8f, small * 0.8f, editor.changed(command) ? Gui.TONE_NORMAL : Gui.TONE_OFF)
+					&& editor.changed(command)) {
+				playClick();
+				this.capturing = null;
+				editor.restore(command);
+			}
 			final int keyState = g.hit("key" + command.id(), keyX, ry + (rowH * 0.1f), keyW, rowH * 0.8f);
 			g.edit(keyX, ry + (rowH * 0.1f), keyW, rowH * 0.8f, t ? 12 : 8, waiting ? 0xE63C2D05 : 0xD9000000);
 			if ((keyState & Gui.HOVER) != 0) {
@@ -3071,17 +3170,13 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			return;
 		}
 		playClick();
-		final CustomKeys keys = customKeys();
+		final KeyEditor editor = keyEditor();
 		for (final HotkeyCatalog.Race race : this.hotkeys.races) {
 			for (final HotkeyCatalog.Unit unit : race.units) {
 				for (final HotkeyCatalog.Card card : unit.cards) {
 					for (final HotkeyCatalog.Command found : card.commands) {
 						if (found.id().equals(command)) {
-							keys.remove(found.section, found.field);
-							if (!key.equals(CustomKeys.shown(keyOf(found)))) {
-								keys.set(found.section, found.field, key);
-							}
-							saveKeys();
+							editor.bind(found, key);
 							return;
 						}
 					}
@@ -3204,8 +3299,129 @@ public final class LauncherScreen implements Screen, InputProcessor {
 					this.gui.tip(status);
 				}
 			}
+			rowY[0] += b.rowH;
 		});
 		index[0] = buttons;
+		customContentRows(rows, rowY, index, x, w, controlX);
+	}
+
+	/** The player's content folder: where it is and the buttons that choose or leave it. */
+	private void customContentRows(final List<Runnable> rows, final float[] rowY, final int[] index, final float x,
+			final float w, final float controlX) {
+		final File custom = customFolder();
+		rows.add(infoRow(rowY, index, x, w, controlX, s("options_custom_folder"),
+				custom == null ? s("options_custom_none") : custom.getAbsolutePath()));
+		rows.add(() -> {
+			final LauncherBoard b = this.board;
+			final float buttonW = b.tablet ? 480 : 300;
+			final float chooseW = buttonW * 1.6f;
+			final float y = rowY[0] + (b.tablet ? 20 : 8);
+			if (this.gui.button("customFolder", s("options_custom_choose"), x + b.labelX, y, chooseW, b.buttonH,
+					b.buttonText, Gui.TONE_NORMAL)) {
+				playClick();
+				chooseCustomFolder();
+			}
+			if ((custom != null) && this.gui.button("customClear", s("options_custom_clear"),
+					x + b.labelX + chooseW + (b.tablet ? 32 : 16), y, buttonW, b.buttonH, b.buttonText,
+					Gui.TONE_NORMAL)) {
+				playClick();
+				useCustomFolder(null);
+			}
+			rowY[0] += b.rowH;
+		});
+	}
+
+	private File customFolder() {
+		return new EngineSettings(this.saves, this.profiles.current(), this.iniFile).customFolder();
+	}
+
+	private void chooseCustomFolder() {
+		GameDataFolders.chooseFolder(customFolder(), chosen -> Gdx.app.postRunnable(() -> {
+			if (chosen != null) {
+				useCustomFolder(chosen);
+			}
+		}));
+	}
+
+	/** Names the content folder in the engine configuration (null: none) and reads the game data again with it. */
+	private void useCustomFolder(final File folder) {
+		if ((folder != null) && ((!folder.isDirectory() && !folder.mkdirs()) || !CustomContent.ensureStructure(folder))) {
+			this.messageTitle = s("options_custom_choose");
+			this.messageLine = s("custom_folder_unwritable");
+			this.dialog = Dialog.MESSAGE;
+			return;
+		}
+		new EngineSettings(this.saves, this.profiles.current(), this.iniFile)
+				.setCustomFolder(folder == null ? null : folder.getAbsoluteFile());
+		reopen(com.etheller.warsmash.desktop.DesktopLauncher.loadWarsmashIni(this.iniFile.getPath()), this.iniFile);
+	}
+
+	/** Asks for a map file and copies it into the custom maps, away from the window's thread. */
+	private void importMap() {
+		GameDataFolders.chooseMap(file -> {
+			if (file != null) {
+				copyMap(file);
+			}
+		});
+	}
+
+	private void copyMap(final File file) {
+		final File chosen = customFolder();
+		final File root = (chosen != null ? chosen : new File("Custom")).getAbsoluteFile();
+		root.mkdirs();
+		final Thread thread = new Thread(() -> {
+			String message;
+			boolean added = false;
+			try (InputStream in = Files.newInputStream(file.toPath())) {
+				message = this.strings.get("game_import_done", CustomContent.importMap(root, file.getName(), in).getName());
+				added = true;
+			}
+			catch (final CustomContent.ImportException e) {
+				message = this.strings.get(importMessage(e.problem), file.getName());
+				LauncherLog.w("The map was not imported: " + file, e);
+			}
+			catch (final IOException | RuntimeException e) {
+				message = this.strings.get("game_import_failed", file.getName());
+				LauncherLog.w("The map could not be copied: " + file, e);
+			}
+			final boolean done = added;
+			final String shown = message;
+			Gdx.app.postRunnable(() -> {
+				if (done) {
+					mapImported(chosen == null ? root : null, file.getName());
+				}
+				this.messageTitle = s("game_import_title");
+				this.messageLine = shown;
+				this.dialog = Dialog.MESSAGE;
+			});
+		}, "MapImport");
+		thread.setDaemon(true);
+		thread.start();
+	}
+
+	/** The list opens with the new map chosen; a folder made for it is named in the configuration. */
+	private void mapImported(final File madeFolder, final String name) {
+		this.preferences.edit().putString(LauncherKeys.KEY_MAP, "Maps\\Custom\\" + CustomContent.mapFileName(name)).apply();
+		if (madeFolder != null) {
+			useCustomFolder(madeFolder);
+			return;
+		}
+		this.catalog.maps(found -> this.maps = found);
+	}
+
+	private static String importMessage(final CustomContent.Problem problem) {
+		switch (problem) {
+		case NOT_A_MAP_NAME:
+			return "game_import_not_map";
+		case UNREADABLE:
+			return "game_import_unreadable";
+		case NO_INFORMATION:
+			return "game_import_no_information";
+		case NO_FOLDER:
+			return "game_import_no_folder";
+		default:
+			return "game_import_failed";
+		}
 	}
 
 	private void findInstalledGame() {
@@ -3272,7 +3488,9 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		}
 		try {
 			// The engine's own folders of warsmash.ini are added to these when the file is read.
-			final String section = DataFolderCheck.dataSourcesSection(kind, folder);
+			// The player's own settings (graphics, content folder) outlive a change of game data.
+			final String section = DataFolderCheck.dataSourcesSection(kind, folder) + "\n"
+					+ EngineSettings.ownSections(new File(USER_INI));
 			Files.write(new File(USER_INI).toPath(), section.getBytes(StandardCharsets.UTF_8));
 		}
 		catch (final IOException e) {
@@ -3758,6 +3976,13 @@ public final class LauncherScreen implements Screen, InputProcessor {
 					}, 0);
 			break;
 		}
+		case LAN_IP:
+		case LAN_NOTICE:
+		case LAN_BLOCK:
+		case LAN_LEAVE:
+		case LAN_MAP:
+			this.lan.dialog(this.dialog);
+			break;
 		case RENAME:
 			renameDialog();
 			break;
@@ -3836,7 +4061,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	}
 
 	/** A question box: the title, a line and its buttons; Enter takes the first button, the safe one. */
-	private void question(final String title, final String line, final String[] buttons,
+	void question(final String title, final String line, final String[] buttons,
 			final java.util.function.IntConsumer chosen, final int enterChoice) {
 		final Gui g = this.gui;
 		final LauncherBoard b = this.board;
@@ -3983,7 +4208,13 @@ public final class LauncherScreen implements Screen, InputProcessor {
 
 	// ---------------------------------------------------------------- navigation and games
 
-	private void showPage(final Page next) {
+	void showPage(final Page next) {
+		if (next == Page.LAN) {
+			this.lan.opened();
+		}
+		else if (this.page == Page.LAN) {
+			this.lan.closed();
+		}
 		if (next != Page.MISSIONS) {
 			this.campaignResult = null;
 		}
@@ -4015,6 +4246,12 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			}
 			showPage(Page.CAMPAIGN);
 			break;
+		case LAN:
+			// A lobby is left with its own button, never by a slip of the key.
+			if (!this.lan.model.inSession()) {
+				showPage(Page.HOME);
+			}
+			break;
 		default:
 			showPage(Page.HOME);
 			break;
@@ -4029,6 +4266,9 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			break;
 		case CUSTOM:
 			startCustom();
+			break;
+		case LAN:
+			this.lan.mainAction();
 			break;
 		case LOAD: {
 			final GameCatalog.SaveEntry entry = this.saveList == null ? null : chosenSave();
@@ -4057,7 +4297,12 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	}
 
 	/** Starts a game in this window; the launcher comes back when it ends, on the page given. */
-	private void launchGame(final LaunchRequest request, final Page returnPage) {
+	void launchGame(final LaunchRequest request, final Page returnPage) {
+		final LaunchGuard.Blocked blocked = LaunchGuard.check(request);
+		if (blocked != null) {
+			this.lan.blocked(blocked);
+			return;
+		}
 		if (this.launching) {
 			return;
 		}
@@ -4120,6 +4365,10 @@ public final class LauncherScreen implements Screen, InputProcessor {
 				LauncherLog.w("Unable to let go of the engine's menu", e);
 			}
 		}
+		final boolean lanGame = (this.launched != null) && this.launched.lan;
+		if (lanGame) {
+			this.lan.gameEnded();
+		}
 		returned.source = this.launched == null ? LaunchRequest.SOURCE_LOAD : this.launched.source(returned);
 		returned.profile = this.launched == null ? "" : this.launched.profile;
 		returned.finished = System.currentTimeMillis();
@@ -4137,10 +4386,12 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			// The result is of the campaign the game played, which a save loaded in the game may have changed.
 			edit.putInt(LauncherKeys.KEY_CAMPAIGN, returned.campaign).remove(LauncherKeys.KEY_MISSION);
 		}
-		if (LaunchRequest.SOURCE_CUSTOM.equals(returned.source) && !returned.failed() && !"exit".equals(result)
-				&& !returned.profile.isEmpty()) {
+		final boolean lanSource = LaunchRequest.SOURCE_LAN.equals(returned.source);
+		if ((LaunchRequest.SOURCE_CUSTOM.equals(returned.source) || lanSource) && !returned.failed()
+				&& !"exit".equals(result) && !returned.profile.isEmpty()) {
+			// A LAN game counts too; a random race is counted as the race it drew.
 			final int played = (race > 0) && (race < CustomGame.RACES.length) ? race
-					: this.preferences.getInt(LauncherKeys.KEY_LAUNCH_RACE, 0);
+					: lanSource ? 0 : this.preferences.getInt(LauncherKeys.KEY_LAUNCH_RACE, 0);
 			this.profiles.record(returned.profile, result, played);
 		}
 		if ("victory".equals(result) && LaunchRequest.SOURCE_CAMPAIGN.equals(returned.source)) {
@@ -4178,7 +4429,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 
 	// ---------------------------------------------------------------- sound
 
-	private void playClick() {
+	void playClick() {
 		if (this.click != null) {
 			this.click.play(0.6f);
 		}

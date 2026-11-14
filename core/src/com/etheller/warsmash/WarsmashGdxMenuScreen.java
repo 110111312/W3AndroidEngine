@@ -672,7 +672,6 @@ public class WarsmashGdxMenuScreen implements InputProcessor, Screen, SingleMode
 	private com.etheller.warsmash.viewer5.handlers.mdx.Camera modelCamera;
 	private final float[] cameraPositionTemp = new float[3];
 	private final float[] cameraTargetTemp = new float[3];
-	private final boolean firstFrame = true;
 	private Scene scene;
 
 	@Override
@@ -791,17 +790,12 @@ public class WarsmashGdxMenuScreen implements InputProcessor, Screen, SingleMode
 	class CameraManager {
 		private CanvasProvider canvas;
 		private Camera camera;
-		private float moveSpeed;
-		private float rotationSpeed;
-		private float zoomFactor;
 		private float horizontalAngle;
 		private float verticalAngle;
 		private float distance;
 		private Vector3 position;
 		private Vector3 target;
 		private Vector3 worldUp;
-		private Vector3 vecHeap;
-		private Vector3 vecHeap2;
 		private Quaternion quatHeap;
 		private Quaternion quatHeap2;
 
@@ -813,17 +807,12 @@ public class WarsmashGdxMenuScreen implements InputProcessor, Screen, SingleMode
 		private void setupCamera(final Scene scene) {
 			this.canvas = scene.viewer.canvas;
 			this.camera = scene.camera;
-			this.moveSpeed = 2;
-			this.rotationSpeed = (float) (Math.PI / 180);
-			this.zoomFactor = 0.1f;
 			this.horizontalAngle = (float) (Math.PI / 2);
 			this.verticalAngle = (float) (Math.PI / 4);
 			this.distance = 500;
 			this.position = new Vector3();
 			this.target = new Vector3(0, 0, 50);
 			this.worldUp = new Vector3(0, 0, 1);
-			this.vecHeap = new Vector3();
-			this.vecHeap2 = new Vector3();
 			this.quatHeap = new Quaternion();
 			this.quatHeap2 = new Quaternion();
 

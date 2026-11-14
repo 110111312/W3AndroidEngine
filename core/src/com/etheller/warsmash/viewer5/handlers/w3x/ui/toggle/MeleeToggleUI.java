@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui.toggle;
 
+import com.etheller.warsmash.input.touch.PointKind;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.CineFilter;
 import java.util.List;
 
@@ -341,6 +342,16 @@ public class MeleeToggleUI implements WarsmashUI {
 	@Override
 	public int touchOverlaySlotAt(final int screenX, final int screenY) {
 		return this.meleeUI.touchOverlaySlotAt(screenX, screenY);
+	}
+
+	@Override
+	public PointKind pointKindAt(final int screenX, final int screenY) {
+		return this.meleeUI.pointKindAt(screenX, screenY);
+	}
+
+	@Override
+	public boolean hasOrderableSelection() {
+		return this.meleeUI.hasOrderableSelection();
 	}
 
 	@Override

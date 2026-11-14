@@ -22,7 +22,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import java.util.zip.CRC32;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.etheller.warsmash.WarsmashGdxMapScreen;
@@ -62,11 +61,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.ui.menu.CampaignMission;
  * worker thread, the answers come back on the thread the platform's main poster runs them on.
  */
 public class GameCatalog {
-	// 2: test maps are no longer listed, so lists kept by format 1 are made again.
-	// 3: the header also holds a fingerprint of the map files, so added, removed and changed maps are noticed.
-	private static final int MAP_LIST_FORMAT = 3;
-	private static final int MAP_FOLDER_DEPTH = 8;
-
 	/** The campaigns and how far the current profile got. */
 	public static final class Campaigns {
 		public final CampaignCatalog catalog;
@@ -265,7 +259,9 @@ public class GameCatalog {
 	private DataSource data;
 	private CampaignCatalog campaignCatalog;
 	private Set<String> campaignMovies;
-	private List<MapEntry> maps;
+	private volatile List<MapEntry> maps;
+	private volatile String mapsHeader;
+	private volatile List<MapListCache.Skipped> skipped = Collections.emptyList();
 	private Element tilesets;
 	private DataTable worldEditData;
 	private boolean closed;
@@ -374,6 +370,27 @@ public class GameCatalog {
 		run(() -> HotkeyCatalog.read(data(), words), done);
 	}
 
+	/** The pictures of the game data at the given paths (without extension); a path it has none for is left out. */
+	public void icons(final java.util.Collection<String> paths, final Consumer<Map<String, ArgbImage>> done) {
+		final List<String> wanted = new ArrayList<>(paths);
+		run(() -> {
+			final Map<String, ArgbImage> found = new HashMap<>();
+			final DataSource data = data();
+			for (final String path : wanted) {
+				try {
+					final ArgbImage image = LauncherImages.decode(data, path);
+					if (image != null) {
+						found.put(path, image);
+					}
+				}
+				catch (final IOException | RuntimeException e) {
+					LauncherLog.w("Unable to read " + path, e);
+				}
+			}
+			return found;
+		}, done);
+	}
+
 	/** null when the game data cannot be read */
 	public void campaigns(final Consumer<Campaigns> done) {
 		run(() -> {
@@ -444,156 +461,140 @@ public class GameCatalog {
 		}
 	}
 
-	/** The maps of the custom game list, ordered as the engine orders them; kept on disk for the same game data. */
+	/**
+	 * The maps of the custom game list, ordered as the engine orders them; kept on disk for the same game data. A map
+	 * added, replaced or removed since the last answer makes the list again.
+	 */
 	public void maps(final Consumer<List<MapEntry>> done) {
 		run(() -> {
-			if (this.maps == null) {
-				final String header = mapListHeader();
-				this.maps = readMapList(header);
-				if (this.maps == null) {
-					this.maps = scanMaps();
-					writeMapList(header, this.maps);
+			final String header = MapListCache.header(this.dataKey, this.ini);
+			if ((this.maps == null) || !header.equals(this.mapsHeader)) {
+				MapListCache.Listing listing = MapListCache.read(this.mapList, header);
+				if (listing == null) {
+					listing = MapListCache.scan(data());
+					MapListCache.write(this.mapList, header, listing);
 				}
+				this.mapsHeader = header;
+				this.maps = listing.maps;
+				this.skipped = listing.skipped;
 				labelNamesakes(this.maps);
 			}
 			return this.maps;
 		}, done);
 	}
 
-	private String mapListHeader() {
-		return MAP_LIST_FORMAT + "|" + this.dataKey + "|" + mapFingerprint(this.ini);
+	/** A map of the list prepared for a LAN game it hosts. */
+	public static final class LanMap {
+		public final File file;
+		public final net.warsmash.lan.protocol.LanData.MapInfo info;
+		public final int playerSlots;
+		public final boolean usesSync;
+
+		LanMap(final File file, final net.warsmash.lan.protocol.LanData.MapInfo info, final int playerSlots,
+				final boolean usesSync) {
+			this.file = file;
+			this.info = info;
+			this.playerSlots = playerSlots;
+			this.usesSync = usesSync;
+		}
 	}
 
 	/**
-	 * Tells when the maps of the game data may have changed without opening the data: the map files of the folder
-	 * sources and the files the other sources are kept in, by name, size and time, and the folders that may hold maps
-	 * by time.
+	 * The map of the list as the host of a LAN game announces it: its file, size and hashes, how many play, and
+	 * whether its script calls natives a LAN game cannot yet run alike. Null when the map is not a file that can be
+	 * shared.
 	 */
-	static String mapFingerprint(final DataTable ini) {
-		final Element sources = ini.get("DataSources");
-		final StringBuilder facts = new StringBuilder();
-		for (int i = 0; (sources != null) && (i < sources.size()); i++) {
-			final String id = String.format(Locale.ROOT, "%02d", i);
-			final String path = sources.getField("Path" + id);
-			if ((path == null) || path.isEmpty()) {
-				continue;
-			}
-			final File root = new File(path);
-			facts.append('#').append(i).append('\n');
-			if ("Folder".equals(sources.getField("Type" + id))) {
-				addMapFacts(facts, root, "", 0, false);
-			}
-			else {
-				addFileFacts(facts, root, "");
-				// A CASC storage is updated through its build information.
-				addFileFacts(facts, new File(root, ".build.info"), ".build.info");
-			}
-		}
-		final CRC32 crc = new CRC32();
-		crc.update(facts.toString().getBytes(StandardCharsets.UTF_8));
-		return Long.toHexString(crc.getValue()) + "-" + facts.length();
-	}
-
-	private static void addFileFacts(final StringBuilder facts, final File file, final String name) {
-		facts.append(name).append('\t').append(file.length()).append('\t').append(file.lastModified()).append('\n');
-	}
-
-	/**
-	 * A folder source can hold maps in its root, in the folder of a game data layer and below Maps at any depth;
-	 * nothing else is looked into, since the data folders hold tens of thousands of files.
-	 */
-	private static void addMapFacts(final StringBuilder facts, final File folder, final String name, final int depth,
-			final boolean inMaps) {
-		final File[] children = folder.listFiles();
-		if (children == null) {
-			return;
-		}
-		Arrays.sort(children);
-		addFileFacts(facts, folder, name + "/");
-		for (final File child : children) {
-			final String childName = name + "/" + child.getName();
-			if (child.isDirectory()) {
-				final boolean maps = child.getName().equalsIgnoreCase("Maps");
-				if ((depth < MAP_FOLDER_DEPTH) && (inMaps || maps || (depth == 0))) {
-					addMapFacts(facts, child, childName, depth + 1, inMaps || maps);
-				}
-			}
-			else {
-				final String lower = child.getName().toLowerCase(Locale.ROOT);
-				if (lower.endsWith(".w3x") || lower.endsWith(".w3m")) {
-					addFileFacts(facts, child, childName);
-				}
-			}
-		}
-	}
-
-	private List<MapEntry> readMapList(final String header) {
-		final File file = this.mapList;
-		if (!file.isFile()) {
-			return null;
-		}
-		try {
-			final List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
-			if (lines.isEmpty() || !lines.get(0).equals(header)) {
+	public void lanMap(final String path, final net.warsmash.lan.maps.LanMapIndex index,
+			final Consumer<LanMap> done) {
+		run(() -> {
+			final File file = data().getFile(path);
+			final net.warsmash.lan.protocol.LanData.MapInfo info = index.describe(file);
+			final String problem = net.warsmash.lan.maps.MapRules.checkInfo(info);
+			if (problem != null) {
+				LauncherLog.w("The map cannot be shared in a LAN game: " + problem);
 				return null;
 			}
-			final List<MapEntry> entries = new ArrayList<>();
-			for (int i = 1; i < lines.size(); i++) {
-				final String[] parts = lines.get(i).split("\t", -1);
-				if (parts.length == 4) {
-					entries.add(new MapEntry(parts[0], Integer.parseInt(parts[1]), parts[2], "1".equals(parts[3])));
+			final War3Map map = War3MapViewer.beginLoadingMap(data(), path);
+			try {
+				final War3MapW3i w3i = map.readMapInformation();
+				final int players = w3i.getPlayers().size();
+				info.title = trigStr(Warcraft3MapObjectData.loadWTS(map), w3i.getName());
+				final int[] playable = w3i.getPlayableSize();
+				info.playableWidth = Math.max(0, Math.min(65535, playable[0]));
+				info.playableHeight = Math.max(0, Math.min(65535, playable[1]));
+				boolean sync = false;
+				for (final String script : new String[] { "war3map.j", "Scripts\\war3map.j", "war3map.lua" }) {
+					if (map.has(script)) {
+						sync = com.etheller.warsmash.launcher.lan.LanMapScan
+								.usesSync(java.nio.charset.StandardCharsets.ISO_8859_1.decode(map.read(script)).toString());
+						break;
+					}
+				}
+				return new LanMap(file, info, Math.max(1, Math.min(players, 24)), sync);
+			}
+			finally {
+				map.close();
+			}
+		}, done);
+	}
+
+	/**
+	 * The maps of the game data as the LAN search can look into them: a map that is only in the game's archives is
+	 * found there by its name and told from another of that name by its content. Reads happen on the catalog's thread.
+	 */
+	public net.warsmash.lan.maps.LanMapIndex.VirtualMaps virtualMaps() {
+		return new net.warsmash.lan.maps.LanMapIndex.VirtualMaps() {
+			@Override
+			public List<String> pathsNamed(final String fileName) {
+				final List<MapEntry> listed = GameCatalog.this.maps;
+				final List<String> paths = new ArrayList<>();
+				if (listed != null) {
+					for (final MapEntry entry : listed) {
+						if (fileName(entry.path).equalsIgnoreCase(fileName)) {
+							paths.add(entry.path);
+						}
+					}
+				}
+				return paths;
+			}
+
+			@Override
+			public File extract(final String path) throws IOException {
+				if (GameCatalog.this.closed) {
+					return null;
+				}
+				try {
+					return GameCatalog.this.worker.submit(() -> data().getFile(path)).get();
+				}
+				catch (final InterruptedException e) {
+					Thread.currentThread().interrupt();
+					throw new IOException(e);
+				}
+				catch (final java.util.concurrent.ExecutionException | java.util.concurrent.RejectedExecutionException e) {
+					throw new IOException(e);
 				}
 			}
-			return entries;
-		}
-		catch (final IOException | RuntimeException e) {
-			return null;
-		}
+
+			@Override
+			public long stamp() {
+				final String header = GameCatalog.this.mapsHeader;
+				return (header == null ? GameCatalog.this.dataKey : header).hashCode();
+			}
+		};
 	}
 
-	private void writeMapList(final String header, final List<MapEntry> entries) {
-		final StringBuilder text = new StringBuilder().append(header).append('\n');
-		for (final MapEntry entry : entries) {
-			text.append(entry.path).append('\t').append(entry.players).append('\t')
-					.append(entry.name.replace('\t', ' ').replace('\n', ' ')).append('\t')
-					.append(entry.melee ? '1' : '0').append('\n');
-		}
-		try {
-			final File file = this.mapList;
-			file.getParentFile().mkdirs();
-			Files.write(file.toPath(), text.toString().getBytes(StandardCharsets.UTF_8));
-		}
-		catch (final IOException e) {
-			LauncherLog.w("Unable to keep the map list", e);
-		}
+	/** The checksum of the game data, which the players of a LAN game compare. */
+	public void dataChecksum(final Consumer<Long> done) {
+		run(() -> com.etheller.warsmash.lan.LanGameStart.dataChecksum(data()), done);
 	}
 
-	private List<MapEntry> scanMaps() {
-		final DataSource data = data();
-		final List<MapEntry> entries = new ArrayList<>();
-		final Set<String> seen = new HashSet<>();
-		for (final String path : data.getListfile()) {
-			// Several data sources can list the same file, also spelled with other case or separators.
-			if (!MapListContainer.isListedMap(path)
-					|| !seen.add(path.replace('\\', '/').toLowerCase(Locale.ROOT))) {
-				continue;
-			}
-			try {
-				final War3Map map = new War3Map(data, path);
-				final War3MapW3i info = map.readMapInformation();
-				final WTS wts = Warcraft3MapObjectData.loadWTS(map);
-				entries.add(new MapEntry(path, info.getPlayers().size(), trigStr(wts, info.getName()),
-						info.hasFlag(War3MapW3iFlags.MELEE_MAP)));
-			}
-			catch (final IOException | RuntimeException e) {
-				// The engine's list leaves out a map it cannot read, too.
-				LauncherLog.w("Skipping map with unreadable info: " + path, e);
-			}
-		}
-		// As the engine's list sorts them: by players, then by name.
-		Collections.sort(entries, (a, b) -> a.players == b.players ? a.name.compareTo(b.name)
-				: Integer.compare(a.players, b.players));
-		return entries;
+	/** The maps of the player's own folders left out of the list by the last answer of maps(), with the reason. */
+	public List<MapListCache.Skipped> skippedMaps() {
+		return this.skipped;
+	}
+
+	static String mapFingerprint(final DataTable ini) {
+		return MapListCache.fingerprint(ini);
 	}
 
 	/**

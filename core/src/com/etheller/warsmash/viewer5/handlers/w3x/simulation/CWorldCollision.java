@@ -10,12 +10,14 @@ import java.util.Set;
 import com.badlogic.gdx.math.Rectangle;
 import com.etheller.warsmash.util.Quadtree;
 import com.etheller.warsmash.util.QuadtreeIntersector;
+import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
 
 public class CWorldCollision {
 	private static final float MINIMUM_COLLISION_SIZE = 0.001f /* THIS IS TO STOP QUADTREE FROM BUSTING */;
 	private static final Rectangle tempRect = new Rectangle();
+	private static final Rectangle tempFootprintArea = new Rectangle();
 	private final Quadtree<CUnit> deadUnitCollision;
 	private final Quadtree<CUnit> groundUnitCollision;
 	private final Quadtree<CUnit> airUnitCollision;
@@ -373,6 +375,45 @@ public class CWorldCollision {
 		return false;
 	}
 
+	/**
+	 * Whether a ground unit of the given footprint (PathingGrid.getFootprintCells) at x, y shares a pathing cell with the
+	 * footprint of another ground unit. Measured: this, not the overlap of collision squares, is what keeps a unit from
+	 * being put next to another one, so two Footmen need two cells between their positions and a Knight a Footman
+	 * has on its high side one more than on its low side.
+	 */
+	public boolean intersectsFootprintOtherThan(final PathingGrid pathingGrid, final float x, final float y,
+			final int footprintCells, final CUnit sourceUnitToIgnore, final MovementType movementType) {
+		return intersectsFootprintOtherThan(pathingGrid, x, y, footprintCells, sourceUnitToIgnore, null, movementType,
+				NOT_A_TICK);
+	}
+
+	/** As above, but units walking at gameTurnTick do not count. */
+	public boolean intersectsFootprintOtherThan(final PathingGrid pathingGrid, final float x, final float y,
+			final int footprintCells, final CUnit sourceUnitToIgnore, final CUnit sourceSecondUnitToIgnore,
+			final MovementType movementType, final int gameTurnTick) {
+		final int firstX = pathingGrid.getFootprintCellX(x, footprintCells);
+		final int firstY = pathingGrid.getFootprintCellY(y, footprintCells);
+		final float reach = 32f * (footprintCells + PathingGrid.getFootprintCells(this.maxCollisionRadius) + 1);
+		final Rectangle area = tempFootprintArea;
+		area.set(x - reach, y - reach, reach * 2, reach * 2);
+		final AnyUnitExceptTwoIntersector intersector = this.anyUnitExceptTwoIntersector;
+		intersector.ignoreControlledBy(null, -1);
+		intersector.reset(sourceUnitToIgnore, sourceSecondUnitToIgnore, false);
+		intersector.footprint(pathingGrid, firstX, firstY, footprintCells);
+		intersector.walkingTick = gameTurnTick;
+		try {
+			if (movementType == MovementType.AMPHIBIOUS) {
+				return this.seaUnitCollision.intersect(area, intersector)
+						|| this.groundUnitCollision.intersect(area, intersector);
+			}
+			return this.groundUnitCollision.intersect(area, intersector);
+		}
+		finally {
+			intersector.walkingTick = NOT_A_TICK;
+			intersector.footprint(null, 0, 0, 0);
+		}
+	}
+
 	public void translate(final CUnit unit, final float xShift, final float yShift) {
 		final MovementType movementType = unit.getMovementType();
 		final Rectangle bounds = unit.getCollisionRectangle();
@@ -443,6 +484,17 @@ public class CWorldCollision {
 		private CSimulation simulation;
 		private int ignoredControllerIndex = -1;
 		private int walkingTick = NOT_A_TICK;
+		private PathingGrid footprintGrid;
+		private int footprintX;
+		private int footprintY;
+		private int footprintCells;
+
+		public void footprint(final PathingGrid pathingGrid, final int firstX, final int firstY, final int cells) {
+			this.footprintGrid = pathingGrid;
+			this.footprintX = firstX;
+			this.footprintY = firstY;
+			this.footprintCells = cells;
+		}
 
 		public AnyUnitExceptTwoIntersector reset(final CUnit firstUnit, final CUnit secondUnit,
 				final boolean forConstruction) {
@@ -477,7 +529,21 @@ public class CWorldCollision {
 					return false;
 				}
 			}
-			return (intersectingObject != this.firstUnit) && (intersectingObject != this.secondUnit);
+			if ((intersectingObject == this.firstUnit) || (intersectingObject == this.secondUnit)) {
+				return false;
+			}
+			if (this.footprintGrid == null) {
+				return true;
+			}
+			final float collisionSize = intersectingObject.getUnitType().getCollisionSize();
+			if (collisionSize <= 0f) {
+				return false;
+			}
+			final int cells = PathingGrid.getFootprintCells(collisionSize);
+			final int otherX = this.footprintGrid.getFootprintCellX(intersectingObject.getX(), cells);
+			final int otherY = this.footprintGrid.getFootprintCellY(intersectingObject.getY(), cells);
+			return (otherX < (this.footprintX + this.footprintCells)) && (this.footprintX < (otherX + cells))
+					&& (otherY < (this.footprintY + this.footprintCells)) && (this.footprintY < (otherY + cells));
 		}
 	}
 

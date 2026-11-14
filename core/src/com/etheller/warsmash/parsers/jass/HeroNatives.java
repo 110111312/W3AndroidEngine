@@ -138,7 +138,7 @@ final class HeroNatives extends CommonNatives {
 					final CAbilityHero heroData = whichUnit == null ? null : whichUnit.getHeroData();
 					if (heroData != null) {
 						if (permanent) {
-							heroData.setStrengthBase(this.simulation, whichUnit,
+							heroData.setStrengthBaseRaisingMaximums(this.simulation, whichUnit,
 									str - (heroData.getStrength().getCurrentBase() - heroData.getStrength().getBase()));
 						} // Todo add else case to handle non-permanent
 					}
@@ -152,7 +152,7 @@ final class HeroNatives extends CommonNatives {
 					final CAbilityHero heroData = whichUnit == null ? null : whichUnit.getHeroData();
 					if (heroData != null) {
 						if (permanent) {
-							heroData.setAgilityBase(this.simulation, whichUnit,
+							heroData.setAgilityBaseRaisingMaximums(this.simulation, whichUnit,
 									agi - (heroData.getAgility().getCurrentBase() - heroData.getAgility().getBase()));
 						} // Todo add else case to handle non-permanent
 					}
@@ -166,7 +166,7 @@ final class HeroNatives extends CommonNatives {
 					final CAbilityHero heroData = whichUnit == null ? null : whichUnit.getHeroData();
 					if (heroData != null) {
 						if (permanent) {
-							heroData.setIntelligenceBase(this.simulation, whichUnit,
+							heroData.setIntelligenceBaseRaisingMaximums(this.simulation, whichUnit,
 									intelligence - (heroData.getIntelligence().getCurrentBase() - heroData.getIntelligence().getBase()));
 						} // Todo add else case to handle non-permanent
 					}

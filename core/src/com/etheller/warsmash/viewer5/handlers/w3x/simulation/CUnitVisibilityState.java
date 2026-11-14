@@ -3,6 +3,8 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedTransient;
+
 final class CUnitVisibilityState {
 	byte invisLevels = 0;
 	final List<Integer> detectorLevels = new ArrayList<>(1);
@@ -14,4 +16,6 @@ final class CUnitVisibilityState {
 	boolean hideMinimapIcon;
 	long unselectablePlayers = 0;
 	long untargetablePlayers = 0;
+	@SavedTransient
+	CUnitVisionStamp visionStamp;
 }

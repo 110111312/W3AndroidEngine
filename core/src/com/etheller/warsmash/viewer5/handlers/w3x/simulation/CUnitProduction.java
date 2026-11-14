@@ -79,8 +79,8 @@ final class CUnitProduction {
 					final float cx = baseX + (cellX * 32f);
 					final float cy = baseY + (cellY * 32f);
 					if ((Math.abs(cx - trainerX) > halfWidth) || (Math.abs(cy - trainerY) > halfHeight)) {
-						CWidget.tempRect.setCenter(cx + 16f, cy + 16f);
-						if (!collision.intersectsAnythingOtherThan(CWidget.tempRect, self, self.getMovementType(), false)
+						if (!CUnitPlacement.blockedByUnit(self, cx + 16f, cy + 16f, collision, pathingGrid, collisionSize,
+								self.getMovementType())
 								&& pathingGrid.isPathable(cx, cy, self.getMovementType(), collisionSize)
 								&& pathingGrid.isPathable(cx + 16f, cy + 16f, self.getMovementType(), collisionSize)) {
 							self.setPoint(cx + 16f, cy + 16f, collision, simulation.getRegionManager());
@@ -605,5 +605,6 @@ final class CUnitProduction {
 		self.unitAnimationListener.playAnimation(true, PrimaryTag.BIRTH, SequenceUtils.EMPTY, 0.0f, true);
 		CUnitEvents.firePlayerThenUnitEvents(self, game, JassGameEventsWar3.EVENT_UNIT_UPGRADE_START,
 				JassGameEventsWar3.EVENT_PLAYER_UNIT_UPGRADE_START);
-	}
+	}
+
 }

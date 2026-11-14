@@ -201,7 +201,7 @@ public class CUnitAttackMissileSplash extends CUnitAttackMissile {
 		@Override
 		public boolean call(final CUnit enumUnit) {
 			if (enumUnit != this.source
-					&& enumUnit.canBeAreaTargetedBy(this.simulation, this.source, CAreaTargetVisibility.NOT_INVISIBLE,
+					&& enumUnit.canBeAreaTargetedBy(this.simulation, this.source, CAreaTargetVisibility.ANY,
 							this.attack.areaOfEffectTargets)) {
 				float damageDealt = damageTarget(enumUnit);
 				if (enumUnit == this.target) {

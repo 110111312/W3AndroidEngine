@@ -13,13 +13,18 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.AbstractGenericNoIconAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.SingleOrderAbility;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.CAbilityItemSpellBook;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.shop.CAbilityShopPurhaseItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTargetVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.types.CAbilityType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.ability.CAbilityAbilityBuilderActiveFlexTarget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.ability.CAbilityAbilityBuilderActivePointTarget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.ability.CAbilityAbilityBuilderActiveUnitTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.inventory.CBehaviorDropItem;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.CAbilitySpellBase;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.skills.CBehaviorNoTargetSpellBase;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.skills.CBehaviorTargetSpellBase;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.inventory.CBehaviorGetItem;
@@ -183,12 +188,24 @@ public class CAbilityInventory extends AbstractGenericNoIconAbility {
 		if (ability instanceof ItemChargeSpentOnEffect) {
 			return;
 		}
-		if ((behavior instanceof CBehaviorTargetSpellBase) || (behavior instanceof CBehaviorNoTargetSpellBase)) {
+		// A spell with a point or unit target walks into range first (its behavior then moves, it is not yet the
+		// spell's own), so its charge goes with the effect as well.
+		if ((behavior instanceof CBehaviorTargetSpellBase) || (behavior instanceof CBehaviorNoTargetSpellBase)
+				|| isRangedAbilityBuilderSpell(ability)
+				|| ((behavior != null) && (ability instanceof CAbilitySpellBase))) {
 			this.chargeOnEffectAbility = ability;
 			this.chargeOnEffectItem = cItem;
 			return;
 		}
 		consumePerishableCharge(game, caster, slot, cItem);
+	}
+
+	/** An ability builder spell with a target walks into range first, so its item charge is spent when it takes effect. */
+	private static boolean isRangedAbilityBuilderSpell(final CAbility ability) {
+		return (ability instanceof CAbilityAbilityBuilderActiveUnitTarget)
+				|| (ability instanceof CAbilityAbilityBuilderActivePointTarget)
+				|| ((ability instanceof CAbilityAbilityBuilderActiveFlexTarget)
+						&& ((CAbilityAbilityBuilderActiveFlexTarget) ability).isTargetedSpell());
 	}
 
 	private void consumePerishableCharge(final CSimulation game, final CUnit caster, final int slot,
@@ -223,6 +240,19 @@ public class CAbilityInventory extends AbstractGenericNoIconAbility {
 			return null;
 		}
 		return this.itemsHeld[slotIndex];
+	}
+
+	/** The spell book carried in the slot an item-use order names, or null if the order is not for one. */
+	public CAbilityItemSpellBook getSpellBookForOrder(final CSimulation game, final int orderId) {
+		if ((orderId < OrderIds.itemUseFirst(nineSlots(game))) || (orderId > OrderIds.itemUseLast(nineSlots(game)))) {
+			return null;
+		}
+		for (final CAbility ability : this.itemsHeldAbilities[orderId - OrderIds.itemUseFirst(nineSlots(game))]) {
+			if (ability instanceof CAbilityItemSpellBook) {
+				return (CAbilityItemSpellBook) ability;
+			}
+		}
+		return null;
 	}
 
 	/** Whether the ability is one of the abilities of an item held in this inventory. */
@@ -669,6 +699,7 @@ public class CAbilityInventory extends AbstractGenericNoIconAbility {
 		}
 		this.itemsHeld[index] = null;
 		hero.onDropItem(simulation, itemToDrop, playUserUISounds);
+		itemToDrop.setLastHolder(hero);
 		itemToDrop.setContainedInventory(null, null);
 		for (final CAbility ability : this.itemsHeldAbilities[index]) {
 			hero.remove(simulation, ability);

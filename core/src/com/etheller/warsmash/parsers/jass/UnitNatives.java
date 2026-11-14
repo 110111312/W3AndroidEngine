@@ -44,6 +44,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTargetVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CAttackType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CGenericDamageFlags;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
@@ -1461,7 +1462,15 @@ final class UnitNatives extends CommonNatives {
 				(arguments, globalScope, triggerScope) -> {
 					final CUnit whichUnit = inGame(nullable(arguments, 0, ObjectJassValueVisitor.<CUnit>getInstance()));
 					int orderId;
-					if ((whichUnit != null) && (whichUnit.isPaused() || whichUnit.isStunnedBySpell())) {
+					if ((whichUnit != null) && whichUnit.isBuilding()) {
+						// 1.29: a structure always reads 0, whatever it trains, builds or attacks.
+						orderId = 0;
+					}
+					else if ((whichUnit != null) && whichUnit.isPaused() && whichUnit.isHidden() && isLoaded(whichUnit)) {
+						// 1.29: a unit inside a transport has no order.
+						orderId = 0;
+					}
+					else if ((whichUnit != null) && (whichUnit.isPaused() || whichUnit.isStunnedBySpell())) {
 						// 1.29: a paused or stunned unit reads
 						// stunned.
 						orderId = OrderIds.stunned;
@@ -1471,9 +1480,10 @@ final class UnitNatives extends CommonNatives {
 					}
 					else if ((whichUnit != null) && (whichUnit.getCurrentOrder() != null)) {
 						orderId = whichUnit.getCurrentOrder().getOrderId();
-						// 1.29: hold position reads 0, also while it attacks; patrol
+						// 1.29: hold position reads 0, also while it attacks, and so does the
+						// ambush (Shadowmeld) state; patrol
 						// reads 851991; a Peasant raising its building reads repair.
-						if (orderId == OrderIds.holdposition) {
+						if ((orderId == OrderIds.holdposition) || (orderId == OrderIds.ambush)) {
 							orderId = 0;
 						}
 						else if (orderId == OrderIds.patrol) {
@@ -1484,8 +1494,10 @@ final class UnitNatives extends CommonNatives {
 							if ((behavior != null) && (behavior.getHighlightOrderId() == OrderIds.repair)) {
 								orderId = OrderIds.repair;
 							}
-							// Measured on 1.29: a unit given smart on its transport reads board.
+							// Measured on 1.29: a unit given smart on its transport reads board while it waits for it,
+							// and smart while it walks to meet it.
 							else if ((behavior != null) && (orderId == OrderIds.smart)
+									&& !(behavior instanceof CBehaviorMove)
 									&& (behavior.getHighlightOrderId() == OrderIds.board)) {
 								orderId = OrderIds.board;
 							}
@@ -1749,6 +1761,15 @@ final class UnitNatives extends CommonNatives {
 					final CUnit whichUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
 					return RealJassValue.of(whichUnit.getUnitType().getCastBackswingPoint());
 				});
+	}
+
+	private boolean isLoaded(final CUnit unit) {
+		for (final CUnit transport : this.simulation.getUnitsIncludingNew()) {
+			if ((transport.getCargoData() != null) && transport.getCargoData().contains(unit)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static List<CBuff> matchingBuffs(final CUnit unit, final List<JassValue> arguments, final int first) {

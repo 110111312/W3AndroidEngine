@@ -27,18 +27,27 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
 import com.badlogic.gdx.backends.lwjgl.LwjglNativesLoader;
+import com.badlogic.gdx.utils.TimeUtils;
 import com.etheller.warsmash.WarsmashGdxFDFTestRenderScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.WarsmashGdxMultiScreenGame;
+import com.etheller.warsmash.audio.OpenALAudio;
 import com.etheller.warsmash.audio.OpenALSound;
+import com.etheller.warsmash.input.touch.ControlScheme;
+import com.etheller.warsmash.input.touch.TouchInputRouter;
+import com.etheller.warsmash.input.touch.TouchSettings;
 import com.etheller.warsmash.datasources.GraphicsSet;
 import com.etheller.warsmash.datasources.GraphicsSettings;
 import com.etheller.warsmash.desktop.launcher.LauncherScreen;
 import com.etheller.warsmash.desktop.launcher.LauncherWindow;
+import com.etheller.warsmash.launcher.CustomContent;
+import com.etheller.warsmash.launcher.CustomFolderChooser;
 import com.etheller.warsmash.launcher.LauncherKeys;
+import com.etheller.warsmash.launcher.MapListCache;
 import com.etheller.warsmash.launcher.SkinArt;
 import com.etheller.warsmash.movie.GdxMoviePlayer;
 import com.etheller.warsmash.units.DataTable;
@@ -57,6 +66,16 @@ import com.etheller.warsmash.viewer5.gl.WireframeExtension;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
 
 public class DesktopLauncher {
+	/** Dots per inch of the main display against the 96 that one dp stands for. */
+	private static float screenDensity() {
+		try {
+			return Math.max(1f, java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96f);
+		}
+		catch (final Throwable e) {
+			return 1f;
+		}
+	}
+
 	public static void main(final String[] arg) {
 		Log.info("Warsmash engine is starting...");
 		final LwjglApplicationConfiguration config = new LwjglApplicationConfiguration();
@@ -152,9 +171,15 @@ public class DesktopLauncher {
 			}
 		}
 		loadExtensions();
+		com.etheller.warsmash.lan.LanSessions.setNetwork(new DesktopLanNetwork());
 		final DataTable warsmashIni = loadWarsmashIni(iniPath);
 		final Element emulatorConstants = warsmashIni.get("Emulator");
 		WarsmashConstants.loadConstants(emulatorConstants, warsmashIni);
+		// Always installed: the Options page can switch to the touch scheme without a restart.
+		final Element touchSettings = warsmashIni.get("Touch");
+		TouchInputRouter.install(new TouchInputRouter(
+				TouchSettings.fromIni(touchSettings, screenDensity(), ControlScheme.MOUSE_KEYBOARD), TimeUtils::millis,
+				(touchSettings != null) && (touchSettings.getFieldValue("ShowTouchDebug") != 0)));
 
 		if (fileToLoad != null) {
 			Log.info("About to run loading file: " + fileToLoad);
@@ -228,10 +253,16 @@ public class DesktopLauncher {
 		if ((iniPath != null) && defaultIniFile.isFile() && !sameFile(new File(iniPath), defaultIniFile)) {
 			addMissingSettings(warsmashIni, readIni(defaultIniFile));
 		}
+		MapListCache.setShared(new File(MAP_LIST_FILE));
+		CustomFolderChooser.Holder.install(
+				new com.etheller.warsmash.desktop.launcher.DesktopCustomFolder(iniPath != null ? new File(iniPath) : defaultIniFile));
+		CustomContent.apply(warsmashIni);
 		return warsmashIni;
 	}
 
 	private static final String DEFAULT_INI = "warsmash.ini";
+	/** The custom game list the launcher and the engine's menu share. */
+	public static final String MAP_LIST_FILE = "Logs/launcher-maps.txt";
 
 	private static DataTable readIni(final File iniFile) {
 		final DataTable warsmashIni = new DataTable(StringBundle.EMPTY);
@@ -350,6 +381,13 @@ public class DesktopLauncher {
 		Extensions.audio = new AudioExtension() {
 			final FloatBuffer orientation = BufferUtils.createFloatBuffer(6).clear();
 			final FloatBuffer position = BufferUtils.createFloatBuffer(3).clear();
+
+			@Override
+			public void prefetchSound(final FileHandle file) {
+				if (Gdx.audio instanceof OpenALAudio) {
+					((OpenALAudio) Gdx.audio).prefetchSound(file);
+				}
+			}
 
 			@Override
 			public long play(final Sound buffer, final float volume, final float pitch, final float x, final float y,

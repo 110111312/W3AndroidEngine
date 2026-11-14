@@ -37,6 +37,8 @@ public class RenderDestructable extends RenderDoodad implements RenderWidget {
 	private boolean changedOutOfSight;
 	private final int replaceableTextureId;
 	private String replaceableTextureFile;
+	private final War3MapViewer map;
+	private boolean active;
 
 	public RenderDestructable(final War3MapViewer map, final MdxModel model, MdxModel portraitModel,
 			final GameObject row, final float[] location3D, final float[] scale3D, final float facingRadians,
@@ -44,6 +46,7 @@ public class RenderDestructable extends RenderDoodad implements RenderWidget {
 			final BuildingShadow destructableShadow, final CDestructable simulationDestructable,
 			final int doodadVariation) {
 		super(map, model, row, location3D, scale3D, facingRadians, maxPitch, maxRoll, selectionScale, doodadVariation);
+		this.map = map;
 		this.portraitModel = portraitModel;
 		this.life = simulationDestructable.getLife();
 		this.destructableShadow = destructableShadow;
@@ -69,6 +72,34 @@ public class RenderDestructable extends RenderDoodad implements RenderWidget {
 		simulationDestructable.setUnitAnimationListener(this.unitAnimationListenerImpl);
 		this.unitAnimationListenerImpl.playAnimation(true, getAnimation(), SequenceUtils.EMPTY, 1.0f, true);
 		this.selectable = row.readSLKTagBoolean("selectable");
+		this.unitAnimationListenerImpl.setActivityObserver(this::wake);
+		((MdxComplexInstance) this.instance).sequenceEndObserver = this::wake;
+	}
+
+	/**
+	 * A destructable is only updated while something can change: the game changed it, a script gave it an animation,
+	 * or the animation ended. Everything else is a tree standing in its loop.
+	 */
+	public void wake() {
+		if (!this.active) {
+			this.active = true;
+			this.map.widgets.active.add(this);
+		}
+	}
+
+	public void sleep() {
+		this.active = false;
+	}
+
+	public boolean canSleep() {
+		return !this.changedOutOfSight;
+	}
+
+	/** Whether the game changed this destructable in a way {@link #updateAnimations} reacts to. */
+	public boolean hasPendingChange() {
+		final boolean dead = this.simulationDestructable.isDead();
+		return (dead != this.dead) || (this.simulationDestructable.isBlighted() && !this.blighted)
+				|| (!dead && (Math.abs(this.life - this.simulationDestructable.getLife()) > 0.003f));
 	}
 
 	// Only trees have blight art (AshenTreeBlight); other replaceable textures such as Cliff\Cliff0 keep their own.

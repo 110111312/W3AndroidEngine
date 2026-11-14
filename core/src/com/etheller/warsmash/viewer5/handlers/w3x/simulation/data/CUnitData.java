@@ -257,6 +257,7 @@ public class CUnitData {
 	private final Map<String, War3ID> jassLegacyNameToUnitId = new HashMap<>();
 	private final Map<War3ID, List<War3ID>> unitIdToTechEquivalents = new HashMap<>();
 	private Map<War3ID, List<War3ID>> unitIdToUpgradedFrom;
+	private int lightweightScannedKeyCount = -1;
 	private final CAbilityData abilityData;
 	private final CUpgradeData upgradeData;
 	private CItemData itemData;
@@ -1310,11 +1311,15 @@ public class CUnitData {
 
 	public Collection<CUnitType> getAllUnitTypesLightweight() {
 		final Set<String> keys = this.unitData.keySet();
-		if (this.unitIdToUnitTypeLightweight.size() < keys.size()) {
+		// Keys the map version hides never get a type, so the count of types stays below the count of keys and every
+		// call would parse the keys again; the keys are walked once for each size they have.
+		if ((this.lightweightScannedKeyCount != keys.size())
+				&& (this.unitIdToUnitTypeLightweight.size() < keys.size())) {
 			for (final String key : keys) {
 				this.getUnitTypeLightweight(War3ID.fromString(key));
 			}
 		}
+		this.lightweightScannedKeyCount = keys.size();
 		return this.unitIdToUnitTypeLightweight.values();
 	}
 

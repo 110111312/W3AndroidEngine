@@ -41,6 +41,13 @@ public final class VirtualCursor {
 		return touchDevice || fingerInput;
 	}
 
+	/** Hands the cursor back to libGDX, for when a mouse moves after the pen or a finger had it. */
+	static void useSystemCursor() {
+		if (active) {
+			active = false;
+		}
+	}
+
 	static void moveTo(final int screenX, final int screenY) {
 		x = screenX;
 		y = screenY;

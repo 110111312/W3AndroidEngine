@@ -27,9 +27,14 @@ public final class CustomGame {
 	public static final String[][] COLOR_NAMES = { { "COLOR_RED", "Red" }, { "COLOR_BLUE", "Blue" },
 		{ "COLOR_TEAL", "Teal" }, { "COLOR_PURPLE", "Purple" }, { "COLOR_YELLOW", "Yellow" },
 		{ "COLOR_ORANGE", "Orange" }, { "COLOR_GREEN", "Green" }, { "COLOR_PINK", "Pink" }, { "COLOR_GRAY", "Gray" },
-		{ "COLOR_LIGHT_BLUE", "Light Blue" }, { "COLOR_DARK_GREEN", "Dark Green" }, { "COLOR_BROWN", "Brown" } };
+		{ "COLOR_LIGHT_BLUE", "Light Blue" }, { "COLOR_DARK_GREEN", "Dark Green" }, { "COLOR_BROWN", "Brown" },
+		{ "COLOR_MAROON", "Maroon" }, { "COLOR_NAVY", "Navy" }, { "COLOR_TURQUOISE", "Turquoise" },
+		{ "COLOR_VIOLET", "Violet" }, { "COLOR_WHEAT", "Wheat" }, { "COLOR_PEACH", "Peach" }, { "COLOR_MINT", "Mint" },
+		{ "COLOR_LAVENDER", "Lavender" }, { "COLOR_COAL", "Coal" }, { "COLOR_SNOW", "Snow" },
+		{ "COLOR_EMERALD", "Emerald" }, { "COLOR_PEANUT", "Peanut" } };
 	public static final int[] PLAYER_COLORS = { 0xFFFF0303, 0xFF0042FF, 0xFF1CE6B9, 0xFF540081, 0xFFFFFC00,
-		0xFFFE8A0E, 0xFF20C000, 0xFFE55BB0, 0xFF959697, 0xFF7EBFF1, 0xFF106246, 0xFF4E2A04 };
+		0xFFFE8A0E, 0xFF20C000, 0xFFE55BB0, 0xFF959697, 0xFF7EBFF1, 0xFF106246, 0xFF4E2A04, 0xFF9B0000, 0xFF0000C3, 0xFF00EAFF, 0xFFBE00FE, 0xFFEBCD87, 0xFFF8A48B,
+		0xFFBFFF80, 0xFFDCB9EB, 0xFF504F55, 0xFFEBF0FF, 0xFF00781E, 0xFFA46F33 };
 
 	public int[] slotTypes = new int[0];
 	public int[] slotRaces = new int[0];

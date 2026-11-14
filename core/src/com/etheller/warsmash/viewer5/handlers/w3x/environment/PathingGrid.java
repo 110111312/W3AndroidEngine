@@ -352,6 +352,24 @@ public class PathingGrid {
 		this.scriptFlags[index] = (short) ((this.scriptFlags[index] & ~(onFlag | offFlag)) | (on ? onFlag : offFlag));
 	}
 
+	/** Whether a script has changed the walkability of a pathing cell within the given cells of a point. */
+	public boolean isTerrainScripted(final float x, final float y, final int cells) {
+		if (this.scriptFlags == null) {
+			return false;
+		}
+		final int centerX = getCellX(x);
+		final int centerY = getCellY(y);
+		for (int cellY = centerY - cells; cellY <= (centerY + cells); cellY++) {
+			for (int cellX = centerX - cells; cellX <= (centerX + cells); cellX++) {
+				if (isCellInside(cellX, cellY) && ((this.scriptFlags[(cellY * this.pathingGridSizes[0])
+						+ cellX] & (SCRIPT_PEON_BLOCKED | SCRIPT_PEON_OPEN)) != 0)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	/** The peon harvest and amphibious flags scripts set on the cell, as {@link #SCRIPT_PEON_BLOCKED} and the like. */
 	public short getScriptFlags(final float x, final float y) {
 		final int cellX = getCellX(x);

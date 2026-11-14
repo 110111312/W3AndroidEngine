@@ -98,6 +98,7 @@ public class CDestructable extends CWidget {
 			// Measured on 1.29: a destructable killed by damage reads 0 life, not the overkill.
 			this.life = 0;
 		}
+		wakeRender();
 		simulation.destructableDamageEvent(this, weaponSoundType, this.destType.getArmorType());
 		if (!wasDead && isDead()) {
 			kill(simulation);
@@ -134,6 +135,7 @@ public class CDestructable extends CWidget {
 	public void setLife(final CSimulation simulation, final float life) {
 		final boolean wasDead = isDead();
 		super.setLife(simulation, life);
+		wakeRender();
 		if (isDead() && !wasDead) {
 			kill(simulation);
 		}
@@ -249,6 +251,13 @@ public class CDestructable extends CWidget {
 
 	public void setBlighted(final boolean blighted) {
 		this.blighted = blighted;
+		wakeRender();
+	}
+
+	private void wakeRender() {
+		if (this.unitAnimationListener != null) {
+			this.unitAnimationListener.wake();
+		}
 	}
 
 	public boolean isBlighted() {

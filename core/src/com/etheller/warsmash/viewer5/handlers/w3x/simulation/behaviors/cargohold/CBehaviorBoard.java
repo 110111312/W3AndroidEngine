@@ -26,7 +26,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbility
  * footman: while the transport is on its way, the footman walks only up to 512 from the point it can reach nearest
  * to where the transport is heading and waits there; once the transport stands still, the footman walks up to it
  * and goes aboard within the cargo hold range (edge to edge). A footman already that near does not move until the
- * transport stops. Ordering either of them elsewhere ends the other's order too.
+ * transport stops. Ordering either of them elsewhere ends the other's order too. A unit that waits while the
+ * transport sails to it looks whether it is within range only every half second.
  */
 public class CBehaviorBoard implements CRangedBehavior {
 	private static final float WAIT_DISTANCE = 512f;
@@ -41,6 +42,7 @@ public class CBehaviorBoard implements CRangedBehavior {
 	private float plannedForX;
 	private float plannedForY;
 	private boolean plannedWhileTransportMoving;
+	private int startTick;
 
 	public CBehaviorBoard(final CUnit unit) {
 		this.unit = unit;
@@ -52,6 +54,7 @@ public class CBehaviorBoard implements CRangedBehavior {
 		this.transport = transport;
 		this.loadAbility = loadAbility;
 		this.walkPoint = null;
+		this.startTick = game.getGameTurnTick();
 		pair(game, this.unit, transport, loadAbility);
 		if (isWithinCargoRange()) {
 			return this;
@@ -59,8 +62,17 @@ public class CBehaviorBoard implements CRangedBehavior {
 		return plan(game);
 	}
 
+	// A transport that has been told to sail to the unit counts as under way before it has moved.
 	private boolean isTransportMoving() {
-		return this.transport.isMoving();
+		if (this.transport.isMoving()) {
+			return true;
+		}
+		if (!(this.transport.getCurrentBehavior() instanceof CBehaviorMove)) {
+			return false;
+		}
+		final AbilityPointTarget meetingPoint = transportMeetingPoint();
+		return (meetingPoint != null)
+				&& (StrictMath.hypot(meetingPoint.x - this.transport.getX(), meetingPoint.y - this.transport.getY()) > 1);
 	}
 
 	private CBehavior plan(final CSimulation game) {
@@ -112,6 +124,15 @@ public class CBehaviorBoard implements CRangedBehavior {
 		return this.unit.distance(this.walkPoint.x, this.walkPoint.y) <= 0;
 	}
 
+	private boolean isWaiting() {
+		return this.unit.getCurrentBehavior() == this;
+	}
+
+	private boolean isRangeCheckTick(final CSimulation game) {
+		final int ticks = game.getGameTurnTick() - this.startTick;
+		return (ticks > 0) && ((ticks % 10) == 0);
+	}
+
 	private boolean isWithinCargoRange() {
 		final CAbilityCargoHold cargoData = this.transport.getCargoData();
 		return (cargoData != null) && this.transport.canReach(this.unit, cargoData.getCastRange());
@@ -146,6 +167,11 @@ public class CBehaviorBoard implements CRangedBehavior {
 			return this.unit.pollNextOrderBehavior(simulation);
 		}
 		if (isWithinCargoRange()) {
+			// A unit that waits for a transport sailing to it looks whether it has come within range only every half
+			// second, as the transport does.
+			if (isWaiting() && isTransportMoving() && !isRangeCheckTick(simulation)) {
+				return this;
+			}
 			if (CAbilityLoad.loadUnit(simulation, this.transport, this.unit, true)) {
 				return this.unit.pollNextOrderBehavior(simulation);
 			}

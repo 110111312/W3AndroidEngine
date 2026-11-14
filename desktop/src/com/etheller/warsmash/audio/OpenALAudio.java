@@ -36,6 +36,11 @@ import static org.lwjgl.openal.AL10.alSourceStop;
 import static org.lwjgl.openal.AL10.alSourcei;
 
 import java.nio.FloatBuffer;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
@@ -67,6 +72,9 @@ public class OpenALAudio implements Audio {
 	private final ObjectMap<String, Class<? extends OpenALMusic>> extensionToMusicClass = new ObjectMap();
 	private OpenALSound[] recentSounds;
 	private int mostRecetSound = -1;
+
+	private final ConcurrentHashMap<String, Future<OggPcm>> prefetchedOgg = new ConcurrentHashMap<>();
+	private ExecutorService prefetchExecutor;
 
 	Array<OpenALMusic> music = new Array(false, 1, OpenALMusic.class);
 	boolean noDevice = false;
@@ -138,6 +146,51 @@ public class OpenALAudio implements Audio {
 			throw new IllegalArgumentException("musicClass cannot be null.");
 		}
 		this.extensionToMusicClass.put(extension, musicClass);
+	}
+
+	/**
+	 * Decodes an ogg sound on another thread so that the newSound of it later only has to give the buffer to OpenAL,
+	 * which stays on the calling thread. The file is read here, as data sources are not for other threads.
+	 */
+	public void prefetchSound(final FileHandle file) {
+		if (this.noDevice || (file == null) || !"ogg".equalsIgnoreCase(file.extension())
+				|| this.prefetchedOgg.containsKey(file.path())) {
+			return;
+		}
+		final byte[] bytes;
+		try {
+			bytes = file.readBytes();
+		}
+		catch (final RuntimeException e) {
+			return;
+		}
+		if (this.prefetchExecutor == null) {
+			this.prefetchExecutor = Executors.newFixedThreadPool(2, (runnable) -> {
+				final Thread thread = new Thread(runnable, "Sound prefetch");
+				thread.setDaemon(true);
+				return thread;
+			});
+		}
+		this.prefetchedOgg.put(file.path(), this.prefetchExecutor.submit(() -> Ogg.decode(
+				new java.io.ByteArrayInputStream(bytes))));
+	}
+
+	/** @return the sound decoded ahead for this file, handing it over once, or null when there is none */
+	OggPcm takePrefetched(final FileHandle file) {
+		final Future<OggPcm> future = this.prefetchedOgg.remove(file.path());
+		if (future == null) {
+			return null;
+		}
+		try {
+			return future.get();
+		}
+		catch (final InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		}
+		catch (final ExecutionException e) {
+			return null;
+		}
 	}
 
 	@Override

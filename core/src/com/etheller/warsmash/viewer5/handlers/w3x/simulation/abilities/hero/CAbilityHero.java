@@ -20,6 +20,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityC
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.GetAbilityByRawcodeVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.CLevelingAbility;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.CAbilitySpellBase;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.ability.AbilityBuilderAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.types.CAbilityType;
@@ -163,11 +165,23 @@ public class CAbilityHero extends AbstractCAbility {
 	}
 
 	/**
+	 * Gives an illusion its original's level and experience; it gains no level, so there are no level up events or
+	 * effects and no experience counts for the player.
+	 */
+	public void copyHeroLevel(final CSimulation game, final CUnit unit, final CAbilityHero source) {
+		this.xp = source.xp;
+		this.heroLevel = source.heroLevel;
+		this.skillPoints = 0;
+		calculateDerivatedFields(game, unit);
+		unit.internalPublishHeroStatsChanged();
+	}
+
+	/**
 	 * A hero restored from a game cache: back at the stored experience, without level up effects.
 	 */
 	public void setXpQuiet(final CSimulation game, final CUnit unit, final int xp) {
 		this.xp = xp;
-		levelUpHero(game, unit, false);
+		levelUpHero(game, unit, false, false);
 		calculateDerivatedFields(game, unit);
 		unit.internalPublishHeroStatsChanged();
 	}
@@ -251,6 +265,46 @@ public class CAbilityHero extends AbstractCAbility {
 			unit.remove(game, ability);
 		}
 		this.skillPoints++;
+	}
+
+	/**
+	 * Whether the hero has learned a skill that is not in cooldown: what the Tome of Retraining needs. A skill in
+	 * cooldown is kept (measured).
+	 */
+	public boolean isRetrainable(final CSimulation game, final CUnit unit) {
+		for (final CAbility ability : this.learnedAbilities) {
+			if (isRetrainableSkill(game, unit, ability)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isRetrainableSkill(final CSimulation game, final CUnit unit, final CAbility ability) {
+		if (!(ability instanceof Aliased) || !(ability instanceof CLevelingAbility)
+				|| (((CLevelingAbility) ability).getLevel() <= 0)) {
+			return false;
+		}
+		if (ability instanceof AbilityBuilderAbility) {
+			return ((AbilityBuilderAbility) ability).getCooldownRemainingTicks(game, unit) <= 0;
+		}
+		return !(ability instanceof CAbilitySpellBase)
+				|| (unit.getCooldownRemainingTicks(game, ((CAbilitySpellBase) ability).getCode()) <= 0);
+	}
+
+	/**
+	 * Forgets every learned skill that is not in cooldown and gives the skill points of their levels back.
+	 */
+	public void retrain(final CSimulation game, final CUnit unit) {
+		for (final CAbility ability : new ArrayList<>(this.learnedAbilities)) {
+			if (!(ability instanceof CLevelingAbility) || !isRetrainableSkill(game, unit, ability)) {
+				continue;
+			}
+			this.skillPoints += Math.max(0, ((CLevelingAbility) ability).getLevel());
+			this.learnedAbilities.remove(ability);
+			unit.remove(game, ability);
+		}
+		unit.internalPublishHeroStatsChanged();
 	}
 
 	/** BlzDeleteHeroAbility: the skill goes without giving its skill points back. */
@@ -415,13 +469,55 @@ public class CAbilityHero extends AbstractCAbility {
 		return this.reviving;
 	}
 
-	private void levelUpHero(final CSimulation simulation, final CUnit unit, final boolean showEffect) {
+	/**
+	 * Measured (1.29): a level gained or an attribute set by a script raises the current life and mana by the rise of
+	 * the maximums (not by their share).
+	 */
+	private void raisingMaximums(final CSimulation simulation, final CUnit unit, final Runnable change) {
+		final int oldMaximumLife = unit.getMaximumLife();
+		final float oldLife = unit.getLife();
+		final int oldMaximumMana = unit.getMaximumMana();
+		final float oldMana = unit.getMana();
+		change.run();
+		if (unit.isDead()) {
+			return;
+		}
+		final int lifeGain = unit.getMaximumLife() - oldMaximumLife;
+		final int manaGain = unit.getMaximumMana() - oldMaximumMana;
+		if (lifeGain > 0) {
+			unit.setLife(simulation, Math.min(unit.getMaximumLife(), oldLife + lifeGain));
+		}
+		if (manaGain > 0) {
+			unit.setMana(Math.min(unit.getMaximumMana(), oldMana + manaGain));
+		}
+	}
+
+	public void setStrengthBaseRaisingMaximums(final CSimulation game, final CUnit unit, final int strengthBase) {
+		raisingMaximums(game, unit, () -> setStrengthBase(game, unit, strengthBase));
+	}
+
+	public void setAgilityBaseRaisingMaximums(final CSimulation game, final CUnit unit, final int agilityBase) {
+		raisingMaximums(game, unit, () -> setAgilityBase(game, unit, agilityBase));
+	}
+
+	public void setIntelligenceBaseRaisingMaximums(final CSimulation game, final CUnit unit,
+			final int intelligenceBase) {
+		raisingMaximums(game, unit, () -> setIntelligenceBase(game, unit, intelligenceBase));
+	}
+
+	private void levelUpHero(final CSimulation simulation, final CUnit unit, final boolean showEffect,
+			final boolean fillMaximumGain) {
 		final CGameplayConstants gameplayConstants = simulation.getGameplayConstants();
 		while ((this.heroLevel < gameplayConstants.getMaxHeroLevel())
 				&& (this.xp >= gameplayConstants.getNeedHeroXPSum(this.heroLevel))) {
 			this.heroLevel++;
 			this.skillPoints++;
-			calculateDerivatedFields(simulation, unit);
+			if (fillMaximumGain) {
+				raisingMaximums(simulation, unit, () -> calculateDerivatedFields(simulation, unit));
+			}
+			else {
+				calculateDerivatedFields(simulation, unit);
+			}
 			simulation.unitGainLevelEvent(unit, showEffect);
 		}
 	}
@@ -430,7 +526,7 @@ public class CAbilityHero extends AbstractCAbility {
 		final int before = this.xp;
 		this.xp += xp * simulation.getPlayer(unit.getPlayerIndex()).getHandicapXP();
 		simulation.getPlayer(unit.getPlayerIndex()).addExperienceGained(this.xp - before);
-		levelUpHero(simulation, unit, showEffect);
+		levelUpHero(simulation, unit, showEffect, true);
 		unit.internalPublishHeroStatsChanged();
 	}
 

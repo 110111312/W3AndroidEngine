@@ -22,7 +22,6 @@ import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import com.etheller.warsmash.datasources.DataSource;
-import com.etheller.warsmash.fdfparser.FDFParser;
 import com.etheller.warsmash.fdfparser.FrameDefinitionVisitor;
 import com.etheller.warsmash.parsers.fdf.datamodel.AnchorDefinition;
 import com.etheller.warsmash.parsers.fdf.datamodel.BackdropCornerFlags;
@@ -270,8 +269,7 @@ public final class GameUI extends AbstractUIFrame implements UIFrame {
 			String line;
 			int tocLines = 0;
 			while ((line = reader.readLine()) != null) {
-				final FDFParser firstFileParser = dataSourceFDFParserBuilder.build(line);
-				fdfVisitor.visit(firstFileParser.program());
+				fdfVisitor.visit(dataSourceFDFParserBuilder.buildProgram(line));
 				tocLines++;
 			}
 			Log.info("TOC file loaded " + tocLines + " lines");

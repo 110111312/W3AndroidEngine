@@ -58,7 +58,7 @@ public class ListItemMapDisplay extends AbstractListItemDisplay {
         ListItemMapProperty mapProperty = (ListItemMapProperty) itemProperty;
 
         mapName.setText(mapProperty.mapName);
-        mapPlayerCount.setText(Integer.toString(mapProperty.playerCount));
+        mapPlayerCount.setText(mapProperty.unreadable ? "!" : Integer.toString(mapProperty.playerCount));
         if (mapProperty.mapType == MapType.MELEE_MAP) {
             mapBackdrop.setBackground(gameUI.loadTexture("ui\\widgets\\glues\\icon-file-melee.blp"));
         } else {

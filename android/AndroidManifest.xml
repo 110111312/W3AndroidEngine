@@ -6,6 +6,19 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- LAN play: local addresses and whether a network exists -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- WifiManager, for the Wi-Fi and multicast locks -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Broadcast datagrams of the game search are dropped by many Wi-Fi chips without the multicast lock -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- The Wi-Fi lock and the CPU lock that keep a hosted game's turns going with the screen off -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The session service keeps the process and its network thread alive while the app is in the background -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+: the service notification; the service runs when it is denied -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
@@ -46,6 +59,14 @@
             android:exported="false"
             android:screenOrientation="sensorLandscape"
             android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
+        <service
+            android:name=".LanSessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a local network game connected while the app is in the background" />
+        </service>
         <activity
             android:name=".AndroidLauncher"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout"

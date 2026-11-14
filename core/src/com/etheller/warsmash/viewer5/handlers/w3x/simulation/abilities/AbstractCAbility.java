@@ -13,6 +13,7 @@ public abstract class AbstractCAbility extends CExtensibleHandleAbstract impleme
 	private byte disabled = 0;
 	private boolean hero = false;
 	private boolean iconShowing = true;
+	private int containerMenuOrderId;
 	private boolean permanent = false;
 	/**
 	 * The level scripts read for an ability without levels of its own (attack, move, train queue): 1, or what
@@ -93,6 +94,15 @@ public abstract class AbstractCAbility extends CExtensibleHandleAbstract impleme
 
 	@Override
 	public void setClickDisabled(final boolean disabled, final CAbilityDisableType type) {
+	}
+
+	@Override
+	public int getContainerMenuOrderId() {
+		return this.containerMenuOrderId;
+	}
+
+	public void setContainerMenuOrderId(final int containerMenuOrderId) {
+		this.containerMenuOrderId = containerMenuOrderId;
 	}
 
 	@Override

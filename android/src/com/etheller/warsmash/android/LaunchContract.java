@@ -54,6 +54,8 @@ final class LaunchContract {
 	static final String EXTRA_PORTRAIT = "portrait";
 	/** The player profile the game is played with, by its name. */
 	static final String EXTRA_PROFILE = "profile";
+	/** The game is the one of the process's LAN session. */
+	static final String EXTRA_LAN = "lan";
 	static final String EXTRA_TOKEN = "launchToken";
 	/** Given to the launcher when a game returns to it. */
 	static final String EXTRA_RETURNED = "returned";
@@ -86,6 +88,9 @@ final class LaunchContract {
 			intent.putExtra(EXTRA_PORTRAIT, request.portrait);
 		}
 		putString(intent, EXTRA_PROFILE, request.profile);
+		if (request.lan) {
+			intent.putExtra(EXTRA_LAN, true);
+		}
 	}
 
 	private static void putString(final Intent intent, final String key, final String value) {
@@ -111,6 +116,10 @@ final class LaunchContract {
 		request.skin = intent.getStringExtra(EXTRA_SKIN);
 		request.portrait = intent.getIntExtra(EXTRA_PORTRAIT, 0);
 		request.profile = intent.getStringExtra(EXTRA_PROFILE);
+		request.lan = intent.getBooleanExtra(EXTRA_LAN, false);
+		if (request.lan) {
+			request.lanSession = com.etheller.warsmash.lan.LanSessions.current();
+		}
 		return request;
 	}
 

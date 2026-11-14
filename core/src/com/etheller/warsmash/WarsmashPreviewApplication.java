@@ -12,8 +12,6 @@ import java.util.Arrays;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
 import com.etheller.warsmash.datasources.CompoundDataSource;
@@ -37,13 +35,10 @@ import com.hiveworkshop.rms.parsers.mdlx.util.MdxUtils;
 public class WarsmashPreviewApplication extends ApplicationAdapter implements CanvasProvider {
 	private DataSource codebase;
 	private ModelViewer viewer;
-	private MdxModel model;
 	private PortraitCameraManager cameraManager;
 	public static int VAO;
 	private final Rectangle tempRect = new Rectangle();
 
-	private BitmapFont font;
-	private SpriteBatch batch;
 	private final DataTable warsmashIni;
 
 	public WarsmashPreviewApplication(final DataTable warsmashIni) {
@@ -84,8 +79,6 @@ public class WarsmashPreviewApplication extends ApplicationAdapter implements Ca
 		Log.info("Loaded");
 		Gdx.gl30.glClearColor(0.5f, 0.5f, 0.5f, 1); // TODO remove white background
 
-		this.font = new BitmapFont();
-		this.batch = new SpriteBatch();
 	}
 
 	public static void bindDefaultVertexArray() {
@@ -94,11 +87,6 @@ public class WarsmashPreviewApplication extends ApplicationAdapter implements Ca
 
 	private int frame = 0;
 	private MdxComplexInstance mainInstance;
-	private MdxModel mainModel;
-	private com.etheller.warsmash.viewer5.handlers.mdx.Camera modelCamera;
-	private final float[] cameraPositionTemp = new float[3];
-	private final float[] cameraTargetTemp = new float[3];
-	private final boolean firstFrame = true;
 	private Scene scene;
 	private MdxHandler mdxHandler;
 
@@ -159,7 +147,6 @@ public class WarsmashPreviewApplication extends ApplicationAdapter implements Ca
 		catch (final IOException e) {
 			throw new RuntimeException(e);
 		}
-		this.mainModel = mdx;
 		final MdxComplexInstance instance = (MdxComplexInstance) mdx.addInstance();
 //		this.cameraManager.setModelInstance(instance, mdx);
 		instance.setScene(this.scene);
@@ -173,7 +160,6 @@ public class WarsmashPreviewApplication extends ApplicationAdapter implements Ca
 			this.mainInstance.detach();
 			this.mainInstance = null;
 		}
-		this.mainModel = null;
 	}
 
 	public PortraitCameraManager getCameraManager() {

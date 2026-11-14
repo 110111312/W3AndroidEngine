@@ -61,7 +61,7 @@ public class COrderNoTarget implements COrder {
 		ability.checkCanUse(game, caster, this.playerIndex, this.orderId, this.autoOrder, this.abilityActivationReceiver.reset());
 		if (this.abilityActivationReceiver.isUseOk()) {
 			final ExternStringMsgTargetCheckReceiver<Void> targetReceiver = (ExternStringMsgTargetCheckReceiver<Void>) targetCheckReceiver;
-			ability.checkCanTargetNoTarget(game, caster, this.playerIndex, this.orderId, this.autoOrder, targetReceiver);
+			ability.checkCanTargetNoTarget(game, caster, this.playerIndex, this.orderId, this.autoOrder, targetReceiver.reset());
 			if (targetReceiver.getExternStringKey() == null) { 
 				caster.fireOrderEvents(game, this);
 				return ability.beginNoTarget(game, caster, this.playerIndex, this.orderId, this.autoOrder);

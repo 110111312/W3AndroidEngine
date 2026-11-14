@@ -23,7 +23,7 @@ public class ABConditionIsUnitEnemy extends ABCondition {
 		}
 
 		if (theUnit != null) {
-			return !game.getPlayer(theUnit.getPlayerIndex()).hasAlliance(theCaster.getPlayerIndex(),
+			return !game.getPlayer(theCaster.getPlayerIndex()).hasAlliance(theUnit.getPlayerIndex(),
 					CAllianceType.PASSIVE);
 		}
 		return false;

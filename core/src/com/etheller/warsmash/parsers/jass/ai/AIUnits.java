@@ -1,8 +1,11 @@
 package com.etheller.warsmash.parsers.jass.ai;
 
+import java.util.ArrayList;
 import java.util.List;
 
+import com.etheller.warsmash.parsers.jass.triggers.UnitGroup;
 import com.etheller.warsmash.util.War3ID;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitClassification;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitTypeRequirement;
@@ -24,6 +27,17 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
  */
 final class AIUnits {
 	private AIUnits() {
+	}
+
+	/**
+	 * The order the computer player picks the units it claims in: that of a unit group, units made after the start
+	 * newest first. An AddAssault with spare units, a SuicideUnit, a worker for a structure and a producer with equal
+	 * queues all take the most recently made unit first.
+	 */
+	static List<CUnit> inClaimOrder(final CSimulation simulation) {
+		final List<CUnit> units = new ArrayList<>(simulation.getUnits());
+		units.sort((a, b) -> UnitGroup.precedes(a, b) ? -1 : (UnitGroup.precedes(b, a) ? 1 : 0));
+		return units;
 	}
 
 	static boolean isWorkerType(final CUnit unit) {

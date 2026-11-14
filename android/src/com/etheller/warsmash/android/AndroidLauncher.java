@@ -44,13 +44,20 @@ import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.WarsmashGdxMultiScreenGame;
 import com.etheller.warsmash.datasources.GraphicsSettings;
+import com.etheller.warsmash.input.touch.ControlScheme;
 import com.etheller.warsmash.input.touch.OnscreenKeyboard;
 import com.etheller.warsmash.input.touch.TouchInputRouter;
 import com.etheller.warsmash.input.touch.TouchSettings;
+import com.etheller.warsmash.lan.LanHeadless;
+import com.etheller.warsmash.lan.LanProperties;
+import com.etheller.warsmash.lan.LanSession;
+import com.etheller.warsmash.lan.LanSessions;
+import com.etheller.warsmash.launcher.CustomContent;
 import com.etheller.warsmash.launcher.DataFolderCheck;
 import com.etheller.warsmash.launcher.GameResult;
 import com.etheller.warsmash.launcher.LaunchRequest;
 import com.etheller.warsmash.launcher.LauncherKeys;
+import com.etheller.warsmash.launcher.MapListCache;
 import com.etheller.warsmash.movie.Movies;
 import com.etheller.warsmash.units.Element;
 import com.etheller.warsmash.units.DataTable;
@@ -189,20 +196,23 @@ public class AndroidLauncher extends AndroidApplication {
 			finish();
 			return;
 		}
+		MapListCache.setShared(GameCatalog.mapListFile(this));
 		WarsmashConstants.loadConstants(warsmashIni.get("Emulator"), warsmashIni);
+		// The warsmash.lan.* test settings of the ini are for runs started with a map, not for the launcher's games,
+		// and only a test (debuggable) build takes them.
+		final boolean testBuild = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+		LanProperties.apply(this.fromLauncher || !testBuild ? null : warsmashIni.get("Emulator"));
 		GraphicsSettings.applyDefaultTextureSize(warsmashIni, defaultTextureSize(this));
 		final Element touchSettings = warsmashIni.get("Touch");
-		if ((touchSettings == null) || !"Off".equalsIgnoreCase(touchSettings.getField("TouchControls"))) {
-			final TouchInputRouter router = new TouchInputRouter(
-					TouchSettings.fromIni(touchSettings, getResources().getDisplayMetrics().density),
-					SystemClock::uptimeMillis,
-					(touchSettings != null) && (touchSettings.getFieldValue("ShowTouchDebug") != 0));
-			router.setPenCapable(AndroidPointerSource.hasStylus());
-			TouchInputRouter.install(router);
-			this.pointerSource = new AndroidPointerSource(router,
-					AndroidPointerSource.touchMajorScale(getResources().getDisplayMetrics().widthPixels,
-							getResources().getDisplayMetrics().heightPixels));
-		}
+		final TouchInputRouter router = new TouchInputRouter(
+				TouchSettings.fromIni(touchSettings, getResources().getDisplayMetrics().density,
+						ControlScheme.TOUCH),
+				SystemClock::uptimeMillis, (touchSettings != null) && (touchSettings.getFieldValue("ShowTouchDebug") != 0));
+		router.setPenCapable(AndroidPointerSource.hasStylus());
+		TouchInputRouter.install(router);
+		this.pointerSource = new AndroidPointerSource(router,
+				AndroidPointerSource.touchMajorScale(getResources().getDisplayMetrics().widthPixels,
+						getResources().getDisplayMetrics().heightPixels));
 		loadExtensions(new File(getCacheDir(), "sounds"));
 		this.moviePlayer = (movies, done) -> runOnUiThread(() -> {
 			if (isFinishing() || isDestroyed() || (this.afterMovies != null)) {
@@ -310,7 +320,20 @@ public class AndroidLauncher extends AndroidApplication {
 		}
 		game.setScreen(menuScreen);
 		if (!this.fromLauncher && (save == null) && (fileToLoad != null)) {
-			menuScreen.startMap(fileToLoad);
+			if (LanHeadless.requested()) {
+				// A LAN test run: the ini names the role, as the desktop's system properties do.
+				// After a lost GL context the session is still there: the game is rejoined, not begun a second time.
+				if (LanHeadless.isActive()) {
+					menuScreen.whenLoaded(LanHeadless::resume);
+				}
+				else {
+					menuScreen.whenLoaded(
+							menu -> LanHeadless.begin(menu, fileToLoad, System.getProperty("warsmash.lan.computer")));
+				}
+			}
+			else {
+				menuScreen.startMap(fileToLoad);
+			}
 		}
 	}
 
@@ -321,6 +344,15 @@ public class AndroidLauncher extends AndroidApplication {
 	private void contextLost(final WarsmashGdxMultiScreenGame game, final DataTable warsmashIni,
 			final String fileToLoad) {
 		final WarsmashGdxMapScreen running = game.getRunningMapScreen();
+		final LanSession lan = LanSessions.current();
+		if (this.fromLauncher && (running != null) && (lan != null) && (lan.client() != null)
+				&& lan.client().isInGame() && !running.getViewer().isGameEnded()) {
+			// A network game cannot be saved; the host has every turn of it, so it is played through again from there.
+			final GameResult result = running.gameResult(running.localPlayerResult());
+			game.disposeLostScreens();
+			lan.rejoinInPlace(() -> startEngine(game, warsmashIni, fileToLoad, null), () -> gameEnded(result));
+			return;
+		}
 		final FileHandle save = Gdx.files.local(CONTEXT_LOSS_SAVE);
 		final boolean saved = (running != null) && running.saveAfterContextLoss(save);
 		final GameResult result = (running != null) && !saved ? running.gameResult(running.localPlayerResult())
@@ -356,6 +388,7 @@ public class AndroidLauncher extends AndroidApplication {
 	/** Leaves the result for the launcher and gives the screen back to it. */
 	private void gameEnded(final GameResult result) {
 		writeResult(result);
+		endLanSession();
 		runOnUiThread(() -> {
 			final Intent intent = new Intent(this, LauncherActivity.class);
 			intent.putExtra(LaunchContract.EXTRA_RETURNED, true);
@@ -363,6 +396,14 @@ public class AndroidLauncher extends AndroidApplication {
 			finish();
 			overridePendingTransition(0, 0);
 		});
+	}
+
+	/** A LAN session lasts until the game is left for the launcher; closing it waits for its threads, so not here. */
+	private static void endLanSession() {
+		final LanSession session = LanSessions.current();
+		if (session != null) {
+			new Thread(() -> LanSessions.end(session), "lan-end").start();
+		}
 	}
 
 	private void writeResult(final GameResult written) {
@@ -427,11 +468,15 @@ public class AndroidLauncher extends AndroidApplication {
 		PreparedMusic.pauseAll();
 		PooledSounds.pauseAll();
 		super.onPause();
+		// The game cannot draw or step while the app is away; the session service keeps the connection, and the
+		// host and the others are told why this player stands still.
+		LanSessions.appState(true);
 	}
 
 	@Override
 	protected void onResume() {
 		super.onResume();
+		LanSessions.appState(false);
 		PreparedMusic.resumeAll();
 		PooledSounds.resumeAll();
 	}
@@ -477,6 +522,9 @@ public class AndroidLauncher extends AndroidApplication {
 		// Exit Program in the game menu closes the program; the launcher hears that it was no crash.
 		if (this.fromLauncher && isFinishing()) {
 			writeResult(withoutGame("exit"));
+		}
+		if (isFinishing()) {
+			endLanSession();
 		}
 		if (!this.initialized) {
 			skipKeyboardHeightClose();
@@ -575,6 +623,7 @@ public class AndroidLauncher extends AndroidApplication {
 		try (InputStream stream = new FileInputStream(iniFile)) {
 			warsmashIni.readTXT(stream, true);
 		}
+		CustomContent.apply(warsmashIni);
 		return warsmashIni;
 	}
 

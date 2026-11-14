@@ -84,6 +84,7 @@ final class MapViewerUpdate {
 	static void stepSimulationWithoutRender(final War3MapViewer viewer) {
 		if (viewer.isGamePaused()) {
 			MapViewerSaves.runPendingSaveRequests(viewer);
+			viewer.gameTurnManager.whilePaused();
 			return;
 		}
 		if (viewer.worldHidden || viewer.gameEnded) {
@@ -91,7 +92,9 @@ final class MapViewerUpdate {
 		}
 		viewer.updateTime += Gdx.graphics.getRawDeltaTime() * viewer.timeScale;
 		while ((viewer.updateTime >= WarsmashConstants.SIMULATION_STEP_TIME) && !viewer.gameEnded
-				&& (viewer.gameTurnManager.getLatestCompletedTurn() >= viewer.simulation.getGameTurnTick())) {
+				&& !viewer.isGamePaused()
+				&& (viewer.gameTurnManager.getLatestCompletedTurn() >= viewer.simulation.getGameTurnTick())
+				&& !viewer.isGamePaused()) {
 			viewer.updateTime -= WarsmashConstants.SIMULATION_STEP_TIME;
 			viewer.simulation.update();
 			viewer.gameTurnManager.turnCompleted(viewer.simulation.getGameTurnTick());

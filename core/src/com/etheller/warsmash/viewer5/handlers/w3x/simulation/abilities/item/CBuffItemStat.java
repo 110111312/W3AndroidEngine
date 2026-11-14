@@ -10,22 +10,26 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.NonStackingSta
  * A timed positive buff from an item that changes one stat while it lasts (Scroll of Protection, Scroll of Speed).
  */
 public class CBuffItemStat extends CBuffTimed {
-	private final NonStackingStatBuff statBuff;
+	private final NonStackingStatBuff[] statBuffs;
 
 	public CBuffItemStat(final int handleId, final War3ID alias, final float duration,
-			final NonStackingStatBuff statBuff) {
+			final NonStackingStatBuff... statBuffs) {
 		super(handleId, alias, alias, duration);
-		this.statBuff = statBuff;
+		this.statBuffs = statBuffs;
 	}
 
 	@Override
 	protected void onBuffAdd(final CSimulation game, final CUnit unit) {
-		unit.addNonStackingStatBuff(game, this.statBuff);
+		for (final NonStackingStatBuff statBuff : this.statBuffs) {
+			unit.addNonStackingStatBuff(game, statBuff);
+		}
 	}
 
 	@Override
 	protected void onBuffRemove(final CSimulation game, final CUnit unit) {
-		unit.removeNonStackingStatBuff(game, this.statBuff);
+		for (final NonStackingStatBuff statBuff : this.statBuffs) {
+			unit.removeNonStackingStatBuff(game, statBuff);
+		}
 	}
 
 	@Override

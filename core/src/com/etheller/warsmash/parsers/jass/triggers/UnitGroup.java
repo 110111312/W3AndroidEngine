@@ -86,7 +86,7 @@ public class UnitGroup extends ArrayList<CUnit> implements CAllocatedHandle {
 		return true;
 	}
 
-	private static boolean precedes(final CUnit unit, final CUnit other) {
+	public static boolean precedes(final CUnit unit, final CUnit other) {
 		final boolean unitFromStart = unit.isMadeBeforeStart();
 		final boolean otherFromStart = other.isMadeBeforeStart();
 		if (unitFromStart != otherFromStart) {

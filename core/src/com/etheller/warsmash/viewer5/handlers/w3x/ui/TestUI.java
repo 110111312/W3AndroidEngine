@@ -40,7 +40,6 @@ public class TestUI {
 	private final Viewport uiViewport;
 	private final MdxViewer viewer;
 	private final RootFrameListener rootFrameListener;
-	private final float widthRatioCorrection;
 	private final float heightRatioCorrection;
 	private GameUI rootFrame;
 	private SpriteFrame cursorFrame;
@@ -76,7 +75,6 @@ public class TestUI {
 		this.rootFrameListener = rootFrameListener;
 		this.customTOC = customTOC;
 
-		this.widthRatioCorrection = this.getMinWorldWidth() / 1600f;
 		this.heightRatioCorrection = this.getMinWorldHeight() / 1200f;
 	}
 

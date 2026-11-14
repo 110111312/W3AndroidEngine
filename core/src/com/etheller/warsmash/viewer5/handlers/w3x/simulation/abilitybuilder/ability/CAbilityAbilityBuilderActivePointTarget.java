@@ -70,12 +70,12 @@ public class CAbilityAbilityBuilderActivePointTarget extends CAbilityAbilityBuil
 	
 	/**
 	 * Measured: a ground spell also takes an order aimed at a unit (a script, the computer player) and is cast on the
-	 * ground where the unit stands.
+	 * ground where the unit stands. Measured (1.29): an item's ground ability refuses such an order.
 	 */
 	@Override
 	protected void innerCheckCanTarget(CSimulation game, CUnit unit, int orderId, CWidget target,
 			AbilityTargetCheckReceiver<CWidget> receiver) {
-		if (target.visit(AbilityTargetVisitor.UNIT) == null) {
+		if ((target.visit(AbilityTargetVisitor.UNIT) == null) || (getItem() != null)) {
 			receiver.orderIdNotAccepted();
 			return;
 		}

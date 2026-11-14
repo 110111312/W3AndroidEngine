@@ -14,11 +14,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.etheller.warsmash.util.Log;
 
 public class CompoundDataSource implements DataSource {
-	private final List<DataSource> mpqList = new ArrayList<>();
+	private final List<DataSource> mpqList = new CopyOnWriteArrayList<>();
 
 	public CompoundDataSource(final List<DataSource> dataSources) {
 		if (dataSources != null) {
@@ -27,6 +28,29 @@ public class CompoundDataSource implements DataSource {
 			}
 		}
 		loadFileAliases();
+	}
+
+	/**
+	 * Adds a source with the highest priority and forgets which source had which file, for a source added while the
+	 * data is in use.
+	 */
+	public void addSource(final DataSource dataSource) {
+		this.mpqList.add(dataSource);
+		sourcesChanged();
+	}
+
+	/**
+	 * Forgets which source had which file. A source whose files changed while the data is in use (a folder that was
+	 * pointed elsewhere) calls for this on the sources that hold it.
+	 */
+	public void sourcesChanged() {
+		this.cache.clear();
+		this.sourceIndexCache.clear();
+	}
+
+	/** The sources in their order of priority. */
+	public List<DataSource> getSources() {
+		return Collections.unmodifiableList(this.mpqList);
 	}
 
 	Map<String, File> cache = new HashMap<>();

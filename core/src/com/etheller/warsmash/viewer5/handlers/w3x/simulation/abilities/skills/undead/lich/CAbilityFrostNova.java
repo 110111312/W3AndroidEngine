@@ -14,6 +14,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.types.def
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.types.definitions.impl.AbstractCAbilityTypeDefinition;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CAttackType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CDamageType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CEffectType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CWeaponSoundTypeJass;
@@ -57,9 +58,13 @@ public class CAbilityFrostNova extends CAbilityTargetSpellBase {
 		simulation.createTemporarySpellEffectOnUnit(targetUnit, getAlias(), CEffectType.TARGET);
 		targetUnit.damage(simulation, caster, DAMAGE_FLAGS, CAttackType.SPELLS, CDamageType.UNIVERSAL,
 				CWeaponSoundTypeJass.WHOKNOWS.name(), this.targetDamage);
+		final CPlayer casterPlayer = simulation.getPlayer(caster.getPlayerIndex());
+		// A target that is a passive ally of the caster (allowed through "neutral") takes the nova with everything around
+		// it; around an enemy target the passive allies are spared.
+		final boolean alliesHit = targetUnit.isUnitAlly(casterPlayer);
 		simulation.getWorldCollision().enumUnitsInRange(targetUnit.getX(), targetUnit.getY(), this.areaOfEffect,
 				(enumUnit) -> {
-					if (!enumUnit.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex()))
+					if ((alliesHit || !enumUnit.isUnitAlly(casterPlayer))
 							&& enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.ANY,
 									getTargetsAllowed(),
 									BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())) {

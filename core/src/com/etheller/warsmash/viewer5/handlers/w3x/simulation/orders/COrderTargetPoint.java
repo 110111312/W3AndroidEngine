@@ -67,7 +67,7 @@ public class COrderTargetPoint implements COrder {
 		ability.checkCanUse(game, caster, this.playerIndex, this.orderId, this.autoOrder, this.abilityActivationReceiver.reset());
 		if (this.abilityActivationReceiver.isUseOk()) {
 			final ExternStringMsgTargetCheckReceiver<AbilityPointTarget> targetReceiver = (ExternStringMsgTargetCheckReceiver<AbilityPointTarget>) targetCheckReceiver;
-			ability.checkCanTarget(game, caster, this.playerIndex, this.orderId, this.autoOrder, this.target, targetReceiver);
+			ability.checkCanTarget(game, caster, this.playerIndex, this.orderId, this.autoOrder, this.target, targetReceiver.reset());
 			if (targetReceiver.getTarget() != null) {
 				caster.fireOrderEvents(game, this);
 				return ability.begin(game, caster, this.playerIndex, this.orderId, this.autoOrder, this.target);

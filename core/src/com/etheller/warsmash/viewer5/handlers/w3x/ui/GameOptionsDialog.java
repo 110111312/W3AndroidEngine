@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,6 +8,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import com.etheller.warsmash.input.touch.TouchInputRouter;
+import com.etheller.warsmash.launcher.CustomFolderChooser;
 import com.etheller.warsmash.parsers.fdf.GameUI;
 import com.etheller.warsmash.parsers.fdf.datamodel.FrameClass;
 import com.etheller.warsmash.parsers.fdf.datamodel.FrameDefinition;
@@ -20,6 +22,7 @@ import com.etheller.warsmash.parsers.fdf.frames.GlueTextButtonFrame;
 import com.etheller.warsmash.parsers.fdf.frames.MenuFrame;
 import com.etheller.warsmash.parsers.fdf.frames.PopupMenuFrame;
 import com.etheller.warsmash.parsers.fdf.frames.ScrollBarFrame;
+import com.etheller.warsmash.parsers.fdf.frames.SetPoint;
 import com.etheller.warsmash.parsers.fdf.frames.SimpleFrame;
 import com.etheller.warsmash.parsers.fdf.frames.StringFrame;
 import com.etheller.warsmash.parsers.fdf.frames.UIFrame;
@@ -33,6 +36,15 @@ final class GameOptionsDialog {
 		void closed();
 
 		void applied();
+
+		/** Whether this menu can use another content folder at once; only the main menu can. */
+		default boolean offersCustomFolder() {
+			return false;
+		}
+
+		/** The player chose the folder to keep their own maps in (null: none); the game uses it from now on. */
+		default void customFolderChosen(final File folder) {
+		}
 	}
 
 	// The data gives the panel no size of its own; it shares the backdrop of the main panel of the game menu.
@@ -216,6 +228,57 @@ final class GameOptionsDialog {
 		// Reforged has this choice in its own options screen; the panel gets it in the place of the hidden lines.
 		this.cinematicPortraits = addCheckBox("CinematicPortraitsCheckBox", "HealthBarsCheckBox",
 				"OPTIONS_SHOW_CINE_PORTRAITS", "Show Portraits in Cinematics");
+		addCustomFolderRow();
+	}
+
+	/**
+	 * Where the player's own maps and campaigns are kept: a button and the folder under it, in the place the hidden
+	 * lines leave free, when the platform can ask for a folder here.
+	 */
+	private void addCustomFolderRow() {
+		final CustomFolderChooser chooser = CustomFolderChooser.Holder.get();
+		final UIFrame above = frame("CinematicPortraitsCheckBox");
+		final FrameDefinition buttonTemplate = this.rootFrame.getTemplates().getFrame("EscMenuButtonTemplate");
+		final FrameDefinition labelTemplate = this.rootFrame.getTemplates().getFrame("EscMenuLabelTextTemplate");
+		if ((chooser == null) || !this.host.offersCustomFolder() || (above == null) || !(above.getParent() instanceof AbstractUIFrame)
+				|| (buttonTemplate == null) || (labelTemplate == null)) {
+			return;
+		}
+		final AbstractUIFrame panel = (AbstractUIFrame) above.getParent();
+		final UIFrame made = this.rootFrame.createFrame("EscMenuButtonTemplate", panel, 0, 0);
+		if (!(made instanceof GlueTextButtonFrame)) {
+			return;
+		}
+		final GlueTextButtonFrame button = (GlueTextButtonFrame) made;
+		button.setWidth(GameUI.convertX(this.uiViewport, 0.2f));
+		button.setHeight(GameUI.convertY(this.uiViewport, 0.028f));
+		button.addSetPoint(new SetPoint(FramePoint.TOPLEFT, above, FramePoint.BOTTOMLEFT, 0,
+				GameUI.convertY(this.uiViewport, -0.004f)));
+		if (button.getButtonText() instanceof StringFrame) {
+			this.rootFrame.setText((StringFrame) button.getButtonText(), "Custom Content Folder...");
+		}
+		panel.add(button);
+
+		final FrameDefinition label = new FrameDefinition(FrameClass.Frame, "TEXT", "CustomFolderValue");
+		label.inheritFrom(labelTemplate, false);
+		label.set("Width", new FloatFrameDefinitionField(0.26f));
+		label.set("Height", new FloatFrameDefinitionField(0.02f));
+		label.set("Text", new StringFrameDefinitionField(customFolderText(chooser.current())));
+		label.add(new SetPointDefinition(FramePoint.TOPLEFT, button.getName(), FramePoint.BOTTOMLEFT, 0, 0));
+		final UIFrame value = this.rootFrame.inflate(label, panel, null, label.has("DecorateFileNames"));
+		panel.add(value);
+		button.setOnClick(() -> chooser.choose(kept -> {
+			if (kept != null) {
+				this.host.customFolderChosen(kept);
+				if (value instanceof StringFrame) {
+					this.rootFrame.setText((StringFrame) value, customFolderText(kept));
+				}
+			}
+		}));
+	}
+
+	private static String customFolderText(final File folder) {
+		return folder == null ? "None chosen" : folder.getPath();
 	}
 
 	/**

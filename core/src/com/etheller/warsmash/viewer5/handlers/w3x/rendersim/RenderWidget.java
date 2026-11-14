@@ -72,6 +72,7 @@ public interface RenderWidget {
 		private LockTarget turretFacingLock;
 		private final MdxNode headBone;
 		private LockTarget headFacingLock;
+		private Runnable activityObserver;
 
 		public UnitAnimationListenerImpl(final MdxComplexInstance instance, final float animationWalkSpeed,
 				final float animationRunSpeed) {
@@ -155,9 +156,24 @@ public interface RenderWidget {
 			return this.secondaryAnimationTags;
 		}
 
+		/**
+		 * Sets who is told when the animation state changes from outside the instance (a new animation or a queued
+		 * one), so an owner with nothing to do need not be updated every frame.
+		 */
+		public void setActivityObserver(final Runnable activityObserver) {
+			this.activityObserver = activityObserver;
+		}
+
+		public void wake() {
+			if (this.activityObserver != null) {
+				this.activityObserver.run();
+			}
+		}
+
 		@Override
 		public void playAnimation(final boolean force, final int sequenceIndex, final float speedRatio,
 				final boolean allowRarityVariations) {
+			wake();
 			this.animationQueue.clear();
 			if (force || this.instance.sequenceEnded) {
 				this.currentSpeedRatio = speedRatio;
@@ -185,6 +201,7 @@ public interface RenderWidget {
 		public void playAnimation(final boolean force, final PrimaryTag animationName,
 				final EnumSet<SecondaryTag> secondaryAnimationTags, final float speedRatio,
 				final boolean allowRarityVariations) {
+			wake();
 			this.animationQueue.clear();
 			if (force || (animationName != this.currentAnimation)
 					|| !secondaryAnimationTags.equals(this.currentAnimationSecondaryTags)
@@ -245,6 +262,7 @@ public interface RenderWidget {
 		@Override
 		public void queueAnimation(final PrimaryTag animationName, final EnumSet<SecondaryTag> secondaryAnimationTags,
 				final boolean allowRarityVariations) {
+			wake();
 			this.animationQueue.add(new QueuedAnimation(animationName, secondaryAnimationTags, allowRarityVariations));
 		}
 		

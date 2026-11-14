@@ -8,10 +8,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import com.etheller.warsmash.launcher.ButtonFlash;
 import com.etheller.warsmash.viewer5.handlers.w3x.replay.ReplayPlayback;
 import com.etheller.warsmash.viewer5.handlers.w3x.replay.ReplayRecording;
 import com.etheller.warsmash.viewer5.handlers.w3x.replay.ReplaySession;
@@ -37,6 +40,7 @@ import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.command.FocusableFrame;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CSaveStorage;
 import com.etheller.interpreter.ast.scope.GlobalScope;
+import com.etheller.warsmash.input.touch.PointKind;
 import com.etheller.warsmash.input.touch.VirtualCursor;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.parsers.fdf.GameUI;
@@ -53,6 +57,10 @@ import com.etheller.warsmash.parsers.fdf.frames.UIFrame;
 import com.etheller.warsmash.parsers.jass.Jass2.RootFrameListener;
 import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.util.ImageUtils;
+import com.etheller.warsmash.lan.LanPlay;
+import com.etheller.warsmash.lan.LockstepTurnManager;
+import com.etheller.warsmash.lan.ui.LanOverlay;
+import net.warsmash.lan.protocol.LanProtocol;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.util.StringBundle;
 import com.etheller.warsmash.util.War3ID;
@@ -87,6 +95,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerComm
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CRace;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CRaceManagerEntry;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CPlayerSlotState;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.JassGameEventsWar3;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.MeleeUIAbilityActivationReceiver;
@@ -103,7 +112,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.ui.dialog.CTimerDialog;
 public class MeleeUI implements CUnitStateListener, CommandButtonListener, CommandCardCommandListener,
 		QueueIconListener, CommandErrorListener, CPlayerStateListener, WarsmashUI, WarsmashToggleableUI,
 		War3MapViewer.InterfaceStateKeeper {
-	private static final float QUEST_BUTTON_FLASH_PERIOD = 0.5f;
 	private static final float PANEL_TIP_REFRESH_PERIOD = 0.25f;
 	/**
 	 * Floating text: the font size and the line spacing for a text tag height of 1, and the width lines wrap at. The
@@ -219,7 +227,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 	MeleeQuestDialog questDialog;
 	MeleeChat chat;
 	MeleeMessageLog messageLog;
-	float questButtonFlashTime = -1;
+	float questButtonFlashTime = ButtonFlash.OFF;
 	MeleeScoreScreen scoreScreen;
 	final CPlayerUnitOrderListener unitOrderListener;
 	CAbilityView activeCommand;
@@ -300,12 +308,48 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		}
 
 		@Override
+		public void chatMessage(final int playerIndex, final int recipient, final int recipientPlayerIndex,
+				final String message) {
+			receivedChat(playerIndex, recipient, recipientPlayerIndex, message);
+		}
+
+		@Override
 		public void setGamePaused(final int playerIndex, final boolean paused) {
-			MeleeUI.this.war3MapViewer.setGamePaused(War3MapViewer.PauseSource.PLAYER, paused);
+			final War3MapViewer viewer = MeleeUI.this.war3MapViewer;
+			final boolean lan = viewer.isLanGame();
+			int remaining = -1;
+			// A referee pauses from the seat nobody plays, and as often as it likes.
+			final boolean referee = lan && viewer.simulation.getPlayer(playerIndex)
+					.getSlotState() != CPlayerSlotState.PLAYING;
+			final String who = referee ? "A referee" : viewer.simulation.getPlayer(playerIndex).getName();
+			if (lan && paused && !referee) {
+				// Counted from the commands every machine gets, so every machine refuses the same pauses.
+				if (viewer.isGamePaused(War3MapViewer.PauseSource.PLAYER)) {
+					return;
+				}
+				final int used = MeleeUI.this.pausesUsed.merge(playerIndex, 1, Integer::sum);
+				if (used > LanPlay.PAUSES_PER_PLAYER) {
+					MeleeUI.this.pausesUsed.put(playerIndex, LanPlay.PAUSES_PER_PLAYER);
+					Log.warn("LAN: " + viewer.simulation.getPlayer(playerIndex).getName() + " has no pauses left");
+					if (playerIndex == viewer.getLocalPlayerIndex()) {
+						MeleeUI.this.messages.displayTimedText(0, 0, 5, "You have no pauses left.");
+					}
+					return;
+				}
+				remaining = LanPlay.PAUSES_PER_PLAYER - used;
+			}
+			viewer.setGamePaused(War3MapViewer.PauseSource.PLAYER, paused);
 			if (paused) {
-				MeleeUI.this.messages.displayTimedText(0, 0, 10,
-						MeleeUI.this.rootFrame.getTemplates().getDecoratedString("PAUSE_GAME_NOTIFY_NO_TIMEOUT")
-								.replace("%s", MeleeUI.this.war3MapViewer.simulation.getPlayer(playerIndex).getName()));
+				String text = MeleeUI.this.rootFrame.getTemplates().getDecoratedString("PAUSE_GAME_NOTIFY_NO_TIMEOUT")
+						.replace("%s", who);
+				if (remaining >= 0) {
+					text += " (" + remaining + (remaining == 1 ? " pause" : " pauses") + " remaining)";
+					Log.warn("LAN: " + who + " paused the game, " + remaining + " pauses remaining");
+				}
+				MeleeUI.this.messages.displayTimedText(0, 0, 10, text);
+			}
+			else if (lan) {
+				Log.warn("LAN: " + who + " resumed the game");
 			}
 		}
 
@@ -319,6 +363,9 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 			}
 		}
 	};
+	/** Pauses each player of a LAN game has used. */
+	private final Map<Integer, Integer> pausesUsed = new HashMap<>();
+	private LanOverlay lanOverlay;
 	int leaderboardSlot = -1;
 	private final DataTable musicSLK;
 
@@ -489,6 +536,13 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		// Console UI is the background with the racial theme
 		this.consoleUI = this.rootFrame.createSimpleFrame("ConsoleUI", this.rootFrame, 0);
 		this.consoleUI.setSetAllPoints(true);
+		// The console tiles leave their openings transparent for this black backdrop; the world is drawn a little
+		// lower than the openings begin, so without it thin bands of the world show in the command card and info panel.
+		if ((this.rootFrame.getTemplates().getFrame("ConsoleUIBackdrop") != null)
+				&& (this.consoleUI instanceof SimpleFrame)) {
+			((SimpleFrame) this.consoleUI).add(0,
+					this.rootFrame.createFrame("ConsoleUIBackdrop", this.consoleUI, 0, 0));
+		}
 
 		this.menus.createTopBar();
 		this.groups.createHeroBar();
@@ -537,6 +591,32 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 			Gdx.input.setCursorCatched(true);
 		}
 		this.includeFrames = new String[] { "EscMenuBackdrop", "ScriptDialog", "SmashHoverTip", "SmashHpBar" };
+		if (this.war3MapViewer.getGameTurnManager() instanceof LockstepTurnManager) {
+			final LanPlay play = ((LockstepTurnManager) this.war3MapViewer.getGameTurnManager()).play();
+			if (play != null) {
+				this.lanOverlay = new LanOverlay(this.rootFrame, this.uiViewport, play, new LanOverlay.Host() {
+					@Override
+					public void showLine(final String line) {
+						MeleeUI.this.messages.showGameMessage(line, CHAT_MESSAGE_SECONDS);
+					}
+
+					@Override
+					public void showChat(final LanPlay.WatcherChat chat) {
+						if (MeleeUI.this.chat != null) {
+							MeleeUI.this.chat.showWatcherLine(chat.name,
+									chat.channel == LanProtocol.CHAT_ALL ? MeleeChat.Recipient.ALL
+											: MeleeChat.Recipient.OBSERVERS,
+									chat.text);
+						}
+					}
+
+					@Override
+					public void leave() {
+						quitMission();
+					}
+				});
+			}
+		}
 		this.ignoreFrames = new String[] { "SmashHoverTip", "SmashHpBar", "SmashGameMessageFrame" };
 
 		this.meleeUIMinimap = this.minimapPanel.createMinimap(this.war3MapViewer);
@@ -649,7 +729,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.messages.liftGameMessages();
 		if (this.questButtonFlashTime >= 0) {
 			this.questButtonFlashTime += deltaTime;
-			this.questsButton.setLit(((int) (this.questButtonFlashTime / QUEST_BUTTON_FLASH_PERIOD) % 2) == 0);
+			this.questsButton.setLit(ButtonFlash.isLit(this.questButtonFlashTime));
 		}
 		if (this.portrait.isResetNeeded()) {
 			this.portrait.resetCinematicSequence();
@@ -884,6 +964,9 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.messages.advanceGameClock(this.war3MapViewer.isGamePaused() ? 0
 				: deltaTime * this.war3MapViewer.getTimeScale() * this.war3MapViewer.getReplaySpeed());
 		this.messages.updateMessages(currentMillis);
+		if (this.lanOverlay != null) {
+			this.lanOverlay.update(deltaTime);
+		}
 		this.musicPlayer.update();
 		this.minimapPanel.updateMinimapPings(currentMillis);
 		this.minimapPanel.updateCreepCamps(currentMillis);
@@ -1347,6 +1430,16 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 	}
 
 	@Override
+	public PointKind pointKindAt(final int screenX, final int screenY) {
+		return this.input.pointKindAt(screenX, screenY);
+	}
+
+	@Override
+	public boolean hasOrderableSelection() {
+		return this.input.hasOrderableSelection();
+	}
+
+	@Override
 	public boolean isOverInventorySlot(final int screenX, final int screenY) {
 		return this.commands.isOverInventorySlot(screenX, screenY);
 	}
@@ -1780,6 +1873,52 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		if (shown) {
 			this.chat.showReceived(sender, kind, message);
 		}
+	}
+
+	/**
+	 * A line another player of a LAN game sent, shown to this player when it was meant for them: to everyone, to
+	 * their allies, or to them alone.
+	 */
+	private void receivedChat(final int senderIndex, final int recipient, final int recipientPlayerIndex,
+			final String message) {
+		final War3MapViewer viewer = this.war3MapViewer;
+		final int local = viewer.getLocalPlayerIndex();
+		if (!viewer.isLanGame() || (senderIndex == local) || viewer.isFastForwarding()
+				|| (recipient < 0) || (recipient >= MeleeChat.Recipient.values().length)) {
+			return;
+		}
+		Log.warn("LAN: chat line from " + viewer.simulation.getPlayer(senderIndex).getName() + ", shown "
+				+ (this.chat != null));
+		if (this.chat == null) {
+			return;
+		}
+		final MeleeChat.Recipient kind = MeleeChat.Recipient.values()[recipient];
+		final CPlayer sender = viewer.simulation.getPlayer(senderIndex);
+		final boolean shown;
+		switch (kind) {
+		case ALL:
+			shown = true;
+			break;
+		case ALLIES:
+			shown = sender.hasAlliance(local, CAllianceType.PASSIVE);
+			break;
+		case PLAYER:
+			shown = recipientPlayerIndex == local;
+			break;
+		default:
+			shown = false;
+			break;
+		}
+		if (shown) {
+			this.chat.showReceived(sender, kind, message);
+		}
+	}
+
+	/** What the LAN game of this machine knows of the others, or null when this is not a LAN game. */
+	LanPlay lanPlay() {
+		return this.war3MapViewer.getGameTurnManager() instanceof LockstepTurnManager
+				? ((LockstepTurnManager) this.war3MapViewer.getGameTurnManager()).play()
+				: null;
 	}
 
 	public void setResultShownOutside(final boolean resultShownOutside) {

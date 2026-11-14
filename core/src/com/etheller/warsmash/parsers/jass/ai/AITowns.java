@@ -277,7 +277,7 @@ final class AITowns {
 		if (ai.pendingExpansion == null) {
 			return null;
 		}
-		return AIConstruction.findBuilder(ai, null, ai.pendingExpansion.getX(), ai.pendingExpansion.getY(), -1);
+		return AIConstruction.findBuilder(ai, null, ai.pendingExpansion.getX(), ai.pendingExpansion.getY(), -1, true);
 	}
 
 	static boolean setExpansion(final AIController ai, final CUnit peon, final int typeId) {

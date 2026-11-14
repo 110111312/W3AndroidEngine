@@ -138,11 +138,10 @@ final class HomePage extends LauncherViews {
 
 		for (int i = 0; i < LauncherActivity.RAIL.length; i++) {
 			final int entry = i;
-			// The local network (v0.6) does not exist yet; its entry stays in place, disabled.
-			final boolean open = entry != LauncherActivity.RAIL_LAN;
+			final boolean open = true;
 			addHolder(view, glue(LauncherActivity.RAIL[i][0], LauncherActivity.RAIL[i][1]),
 					b.holderY + (i * b.holderPitch), i == selected,
-					open ? v -> this.activity.openEntry(entry) : null);
+					open ? v -> this.activity.openEntry(entry) : null, entry == LauncherActivity.RAIL_LAN);
 		}
 		if (b.quitY >= 0) {
 			addHolder(view, glue("KEY_QUIT", "Quit"), b.quitY, false, v -> this.activity.dialogs.showExit());
@@ -186,6 +185,11 @@ final class HomePage extends LauncherViews {
 	 */
 	private void addHolder(final FrameLayout parent, final String label, final float y, final boolean selected,
 			final View.OnClickListener listener) {
+		addHolder(parent, label, y, selected, listener, false);
+	}
+
+	private void addHolder(final FrameLayout parent, final String label, final float y, final boolean selected,
+			final View.OnClickListener listener, final boolean lan) {
 		final LauncherBoard b = this.activity.board;
 		final FrameLayout holder = new FrameLayout(this.activity);
 		final Bitmap frame = this.activity.art.bitmap(SkinArt.HOLDER);
@@ -219,6 +223,86 @@ final class HomePage extends LauncherViews {
 		}
 		holder.setContentDescription(LauncherKit.glueText(label).toString());
 		place(parent, holder, b.holderX, y, b.holderW, b.holderH);
+		if (lan) {
+			// The lobby changed while another page was shown: the entry lights as the in-game Quests button does.
+			// ... and with the star its flash is made of (glowstar, from the game data when it is prepared).
+			final FrameLayout glow = new FrameLayout(this.activity);
+			final View tint = new View(this.activity);
+			tint.setBackgroundColor(Color.argb(0x3C, 0xFF, 0xE0, 0x80));
+			glow.addView(tint, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT));
+			final Bitmap starArt = glowStar();
+			final float gw = held ? b.holderW * 0.909f : b.holderW * 0.92f;
+			for (int i = 0; i < 2; i++) {
+				final ImageView star = new ImageView(this.activity);
+				star.setScaleType(ImageView.ScaleType.FIT_XY);
+				star.setImageBitmap(starArt);
+				star.setAlpha(i == 0 ? 0.9f : 0.7f);
+				final float size = buttonH * (i == 0 ? 1.3f : 0.9f);
+				place(glow, star, (gw * (i == 0 ? 0.08f : 0.88f)) - (size / 2), (buttonH - size) / 2, size, size);
+			}
+			glow.setVisibility(View.INVISIBLE);
+			glow.setClickable(false);
+			if (held) {
+				place(holder, glow, b.holderW * 0.0455f, b.holderH * 0.188f, b.holderW * 0.909f, buttonH);
+			}
+			else {
+				place(holder, glow, b.holderW * 0.04f, b.holderH * 0.14f, b.holderW * 0.92f, buttonH);
+			}
+			final View dot = new View(this.activity);
+			final android.graphics.drawable.GradientDrawable round = new android.graphics.drawable.GradientDrawable();
+			round.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+			round.setColor(Color.rgb(0xFC, 0xD3, 0x12));
+			dot.setBackground(round);
+			dot.setVisibility(View.INVISIBLE);
+			dot.setClickable(false);
+			place(holder, dot, b.holderW * 0.93f, b.holderH * 0.1f, 18, 18);
+			this.lanGlow = glow;
+			this.lanDot = dot;
+		}
+	}
+
+	/** The Quests button's star from the prepared art, else one drawn alike: a soft light with four points. */
+	private Bitmap glowStar() {
+		final Bitmap art = this.activity.art.bitmap(SkinArt.GLOWSTAR);
+		if (art != null) {
+			return art;
+		}
+		final int size = 64;
+		final Bitmap star = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+		final android.graphics.Canvas canvas = new android.graphics.Canvas(star);
+		final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+		paint.setShader(new android.graphics.RadialGradient(size / 2f, size / 2f, size / 2f,
+				new int[] { Color.argb(0xE0, 0xFF, 0xF0, 0xC0), Color.argb(0x50, 0xFF, 0xE0, 0x80),
+					Color.argb(0, 0xFF, 0xE0, 0x80) }, new float[] { 0, 0.35f, 1 }, android.graphics.Shader.TileMode.CLAMP));
+		canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+		paint.setShader(null);
+		paint.setColor(Color.argb(0xC0, 0xFF, 0xF8, 0xE0));
+		final android.graphics.Path points = new android.graphics.Path();
+		points.moveTo(size / 2f, 0);
+		points.lineTo((size / 2f) + 4, (size / 2f) - 4);
+		points.lineTo(size, size / 2f);
+		points.lineTo((size / 2f) + 4, (size / 2f) + 4);
+		points.lineTo(size / 2f, size);
+		points.lineTo((size / 2f) - 4, (size / 2f) + 4);
+		points.lineTo(0, size / 2f);
+		points.lineTo((size / 2f) - 4, (size / 2f) - 4);
+		points.close();
+		canvas.drawPath(points, paint);
+		return star;
+	}
+
+	private View lanGlow;
+	private View lanDot;
+
+	/** The LAN entry of the shown rail: lit while it flashes, with a still dot for chat. */
+	void setLanAttention(final boolean lit, final boolean chat) {
+		if (this.lanGlow != null) {
+			this.lanGlow.setVisibility(lit ? View.VISIBLE : View.INVISIBLE);
+		}
+		if (this.lanDot != null) {
+			this.lanDot.setVisibility(chat ? View.VISIBLE : View.INVISIBLE);
+		}
 	}
 
 	void showHome() {

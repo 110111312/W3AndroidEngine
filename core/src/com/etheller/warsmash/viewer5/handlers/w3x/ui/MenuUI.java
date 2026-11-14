@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -22,6 +23,8 @@ import com.etheller.warsmash.SingleModelScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.WarsmashGdxMultiScreenGame;
 import com.etheller.warsmash.datasources.DataSource;
+import com.etheller.warsmash.lan.LanGameStart;
+import com.etheller.warsmash.launcher.CustomContent;
 import com.etheller.warsmash.input.touch.VirtualCursor;
 import com.etheller.warsmash.parsers.fdf.GameUI;
 import com.etheller.warsmash.parsers.fdf.datamodel.AnchorDefinition;
@@ -613,6 +616,31 @@ public class MenuUI {
 		return this.mapStart.startReplay(file, startTick, forced);
 	}
 
+	/** Starts a LAN game the lobby agreed on; see {@link LanGameStart}. */
+	public boolean startLan(final LanGameStart lan) {
+		return this.mapStart.startLan(lan);
+	}
+
+	/**
+	 * Drops the running LAN game, which keeps going for the others, and runs {@code startAgain} to play it again from
+	 * its first turn.
+	 *
+	 * @return false when no game is running
+	 */
+	public boolean restartRunningGame(final Runnable startAgain) {
+		final com.etheller.warsmash.WarsmashGdxMapScreen running = this.screenManager.getRunningMapScreen();
+		if (running == null) {
+			return false;
+		}
+		running.restartLan(startAgain);
+		return true;
+	}
+
+	/** The game data a LAN game's players compare before they play together. */
+	public DataSource lanDataSource() {
+		return this.gameData != null ? this.gameData : this.dataSource;
+	}
+
 	/** The profile a launcher chose for the game it starts: saves and campaign progress go to its folder. */
 	public void useProfile(final String profileName) {
 		this.profiles.useProfile(profileName);
@@ -923,6 +951,18 @@ public class MenuUI {
 						public void closed() {
 							holder.setVisible(false);
 							setMainMenuVisible(true);
+						}
+
+						@Override
+						public boolean offersCustomFolder() {
+							return true;
+						}
+
+						@Override
+						public void customFolderChosen(final File folder) {
+							if (CustomContent.use(MenuUI.this.warsmashIni, MenuUI.this.dataSource, folder)) {
+								MenuUI.this.skirmish.reloadMapList();
+							}
 						}
 
 						@Override

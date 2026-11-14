@@ -25,7 +25,7 @@ public abstract class CAbilityTargetSpellBase extends CAbilitySpellBase {
 	@Override
 	public CBehavior begin(final CSimulation game, final CUnit caster, final int playerIndex, final int orderId,
 			final boolean autoOrder, final CWidget target) {
-		return this.behavior.reset(game, target);
+		return this.behavior.reset(game, target, autoOrder);
 	}
 
 	@Override

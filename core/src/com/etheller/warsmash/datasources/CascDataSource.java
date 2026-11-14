@@ -48,6 +48,8 @@ import com.hiveworkshop.json.JSONTokener;
 
 public class CascDataSource implements DataSource {
 	private final String[] prefixes;
+	private static final String NOT_READABLE = new String("<not readable>");
+	private final Map<String, String> readablePaths = new ConcurrentHashMap<>();
 	private final Mount mount;
 	private Map<String, String> fileAliases = Collections.emptyMap();
 	private boolean closed;
@@ -169,20 +171,65 @@ public class CascDataSource implements DataSource {
 	}
 
 	@Override
-	public InputStream getResourceAsStream(String filepath) {
-		filepath = filepath.toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\');
-		final String resolvedAlias = this.fileAliases.get(filepath);
-		if (resolvedAlias != null) {
-			filepath = resolvedAlias;
+	public InputStream getResourceAsStream(final String filepath) {
+		final String readable = findReadable(filepath);
+		return readable == null ? null : internalGetResourceAsStream(readable);
+	}
+
+	/**
+	 * The path in the file system that a request is answered from: the first prefix (or no prefix) under which the
+	 * file can be read, or null. What is readable does not change while the storage is mounted, and the same paths
+	 * are asked for again by every source above this one.
+	 */
+	private String findReadable(final String filepath) {
+		final String cached = this.readablePaths.get(filepath);
+		if (cached != null) {
+			return cached == NOT_READABLE ? null : cached;
 		}
+		String path = normalizePath(filepath);
+		final String resolvedAlias = this.fileAliases.get(path);
+		if (resolvedAlias != null) {
+			path = resolvedAlias;
+		}
+		String found = null;
 		for (final String prefix : this.prefixes) {
-			final String tempFilepath = prefix + "\\" + filepath;
-			final InputStream stream = internalGetResourceAsStream(tempFilepath);
-			if (stream != null) {
-				return stream;
+			final String tempFilepath = prefix + "\\" + path;
+			if (isReadable(tempFilepath)) {
+				found = tempFilepath;
+				break;
 			}
 		}
-		return internalGetResourceAsStream(filepath);
+		if ((found == null) && isReadable(path)) {
+			found = path;
+		}
+		this.readablePaths.put(filepath, found == null ? NOT_READABLE : found);
+		return found;
+	}
+
+	/** The path as the storage names files: lower case, with backslashes. */
+	static String normalizePath(final String path) {
+		final int length = path.length();
+		char[] changed = null;
+		for (int i = 0; i < length; i++) {
+			final char c = path.charAt(i);
+			if (c >= 128) {
+				return path.toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\');
+			}
+			char normal = c;
+			if ((c == '/') || (c == ':')) {
+				normal = '\\';
+			}
+			else if ((c >= 'A') && (c <= 'Z')) {
+				normal = (char) (c + ('a' - 'A'));
+			}
+			if (normal != c) {
+				if (changed == null) {
+					changed = path.toCharArray();
+				}
+				changed[i] = normal;
+			}
+		}
+		return changed == null ? path : new String(changed);
 	}
 
 	private InputStream internalGetResourceAsStream(final String tempFilepath) {
@@ -205,20 +252,9 @@ public class CascDataSource implements DataSource {
 	}
 
 	@Override
-	public ByteBuffer read(String path) {
-		path = path.toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\');
-		final String resolvedAlias = this.fileAliases.get(path);
-		if (resolvedAlias != null) {
-			path = resolvedAlias;
-		}
-		for (final String prefix : this.prefixes) {
-			final String tempFilepath = prefix + "\\" + path;
-			final ByteBuffer stream = internalRead(tempFilepath);
-			if (stream != null) {
-				return stream;
-			}
-		}
-		return internalRead(path);
+	public ByteBuffer read(final String path) {
+		final String readable = findReadable(path);
+		return readable == null ? null : internalRead(readable);
 	}
 
 	private ByteBuffer internalRead(final String tempFilepath) {
@@ -235,20 +271,9 @@ public class CascDataSource implements DataSource {
 	}
 
 	@Override
-	public File getFile(String filepath) {
-		filepath = filepath.toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\');
-		final String resolvedAlias = this.fileAliases.get(filepath);
-		if (resolvedAlias != null) {
-			filepath = resolvedAlias;
-		}
-		for (final String prefix : this.prefixes) {
-			final String tempFilepath = prefix + "\\" + filepath;
-			final File file = internalGetFile(tempFilepath);
-			if (file != null) {
-				return file;
-			}
-		}
-		return internalGetFile(filepath);
+	public File getFile(final String filepath) {
+		final String readable = findReadable(filepath);
+		return readable == null ? null : internalGetFile(readable);
 	}
 
 	@Override
@@ -313,25 +338,15 @@ public class CascDataSource implements DataSource {
 	}
 
 	@Override
-	public boolean has(String filepath) {
-		filepath = filepath.toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\');
-		final String resolvedAlias = this.fileAliases.get(filepath);
-		if (resolvedAlias != null) {
-			filepath = resolvedAlias;
-		}
-		for (final String prefix : this.prefixes) {
-			if (isReadable(prefix + "\\" + filepath)) {
-				return true;
-			}
-		}
-		return isReadable(filepath);
+	public boolean has(final String filepath) {
+		return findReadable(filepath) != null;
 	}
 
 	@Override
 	public String findFirst(final String... filepaths) {
 		final String[] resolvedPaths = new String[filepaths.length];
 		for (int i = 0; i < filepaths.length; i++) {
-			final String filepath = filepaths[i].toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\');
+			final String filepath = normalizePath(filepaths[i]);
 			final String resolvedAlias = this.fileAliases.get(filepath);
 			resolvedPaths[i] = resolvedAlias != null ? resolvedAlias : filepath;
 		}

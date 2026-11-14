@@ -86,6 +86,20 @@ class UpdateCheckTest {
 	}
 
 	@Test
+	void olderReleaseIsNeverOfferedWhateverTheSigningKey() {
+		final UpdateCheck.Release older = UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.13"));
+		assertEquals("v0.3.13", older.tag);
+		for (final boolean official : new boolean[] { true, false }) {
+			assertFalse(UpdateCheck.offers("0.3.26", older, null, official));
+			assertFalse(UpdateCheck.offers("0.3.48", older, null, official));
+			assertFalse(UpdateCheck.offers(UpdateCheck.versionCode("0.3.48"), older, null, official));
+		}
+		assertTrue(UpdateCheck.compare("0.3.48", "0.3.13") > 0);
+		assertTrue(UpdateCheck.compare("0.3.13", "0.3.9") > 0);
+		assertTrue(UpdateCheck.offers("0.3.9", older, null, true));
+	}
+
+	@Test
 	void unofficialBuildIsOfferedTheReleaseOfItsOwnVersionOrHigher() {
 		final UpdateCheck.Release release = UpdateCheck.parseRelease(RELEASE);
 		assertTrue(UpdateCheck.offers("0.3.6", release, null, false));

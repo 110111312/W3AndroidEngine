@@ -1085,6 +1085,22 @@
 					"type": "getTargetedLocation"
 				}
 			},{
+				"type": "registerHarmfulArea",
+				"location": {
+					"type": "getTargetedLocation"
+				},
+				"radius": {
+					"type": "getAbilityArea"
+				},
+				"delay": {
+					"type": "getAbilityDataAsFloat",
+					"dataField": "C"
+				},
+				"duration": {
+					"type": "rawFloat",
+					"value": 2.0
+				}
+			},{
 				"type": "createTimer",
 				"timeout": {
 					"type": "getAbilityDataAsFloat",

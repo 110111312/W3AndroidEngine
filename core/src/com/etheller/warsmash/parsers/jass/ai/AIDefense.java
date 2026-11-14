@@ -71,7 +71,8 @@ final class AIDefense {
 	static void placeNewUnits(final AIController ai) {
 		ai.guardPositions.keySet().removeIf((unit) -> unit.isDead());
 		updateReplacements(ai);
-		for (final CUnit unit : ai.simulation.getUnits()) {
+		// Units made in the step the AI starts are not in getUnits yet but still count as existing before it.
+		for (final CUnit unit : ai.unitsSeen ? ai.simulation.getUnits() : ai.simulation.getUnitsIncludingNew()) {
 			if (!ai.isGuardCandidate(unit) || ai.guardPositions.containsKey(unit)) {
 				continue;
 			}
@@ -200,7 +201,7 @@ final class AIDefense {
 				got++;
 			}
 		}
-		for (final CUnit unit : ai.simulation.getUnits()) {
+		for (final CUnit unit : AIUnits.inClaimOrder(ai.simulation)) {
 			if (got >= qty) {
 				break;
 			}

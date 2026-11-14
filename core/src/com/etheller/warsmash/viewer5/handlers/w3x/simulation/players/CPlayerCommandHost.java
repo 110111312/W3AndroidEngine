@@ -19,6 +19,11 @@ public interface CPlayerCommandHost {
 		}
 	};
 
+	/** A player's chat line, as the commands bring it to every machine. */
+	default void chatMessage(final int playerIndex, final int recipient, final int recipientPlayerIndex,
+			final String message) {
+	}
+
 	void clickDialogButton(int playerIndex, int dialogHandleId, int buttonHandleId);
 
 	void setGamePaused(int playerIndex, boolean paused);

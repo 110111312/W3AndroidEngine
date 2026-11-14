@@ -41,6 +41,14 @@ public interface CAbilityView extends CHandle {
 
 	boolean isIconShowing();
 
+	/**
+	 * The order id of the menu button this ability's own button is inside (a spell book), 0 when it is on the main
+	 * command card.
+	 */
+	default int getContainerMenuOrderId() {
+		return 0;
+	}
+
 	boolean isPermanent();
 
 	boolean isPhysical();

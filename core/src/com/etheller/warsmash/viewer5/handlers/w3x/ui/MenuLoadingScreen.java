@@ -43,6 +43,8 @@ import com.etheller.warsmash.units.StandardObjectData;
 import com.etheller.warsmash.units.custom.WTS;
 import com.etheller.warsmash.util.ImageUtils;
 import com.etheller.warsmash.util.Log;
+import com.etheller.warsmash.lan.LanGameStart;
+import com.etheller.warsmash.launcher.lan.LanText;
 import com.etheller.warsmash.util.WarsmashConstants;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.ai.AIDifficulty;
@@ -75,6 +77,14 @@ final class MenuLoadingScreen {
 	/** The map preview the loading screen shows. */
 	private Texture loadingPreviewTexture;
 	private final List<UIFrame> loadingPlayerSlots = new ArrayList<>();
+	/** The map slot of each of {@link #loadingPlayerSlots}. */
+	private final List<Integer> loadingPlayerSlotNumbers = new ArrayList<>();
+	/** The level text of each of {@link #loadingPlayerSlots}, which a LAN game fills with the load state. */
+	private final List<StringFrame> loadingPlayerLevels = new ArrayList<>();
+	/** The LAN game being loaded, whose players' load states the screen shows; null for any other game. */
+	private LanGameStart lan;
+	private final int[] shownLanLoad = new int[WarsmashConstants.MAX_PLAYERS];
+	private boolean waitingTextShown;
 	private StringFrame loadingTitleText;
 	private StringFrame loadingSubtitleText;
 	private StringFrame loadingText;
@@ -147,6 +157,56 @@ final class MenuLoadingScreen {
 
 	void setStartupProfile(final String profile) {
 		this.startupProfile = (profile == null) || profile.isEmpty() ? null : profile;
+	}
+
+	/** The LAN layer of the screen: each player's load state beside the race, "Waiting for players" under the bar. */
+	void setLanGame(final LanGameStart lan) {
+		this.lan = lan;
+		this.waitingTextShown = false;
+		java.util.Arrays.fill(this.shownLanLoad, -2);
+	}
+
+	/** Brings the players' load states up to date; once per frame while a LAN game loads. */
+	void updateLanLoad() {
+		if (this.lan == null) {
+			return;
+		}
+		for (int n = 0; n < this.loadingPlayerSlotNumbers.size(); n++) {
+			final int slot = this.loadingPlayerSlotNumbers.get(n);
+			final int percent = this.lan.loadPercentOfSlot(slot);
+			if (this.shownLanLoad[slot] == percent) {
+				continue;
+			}
+			this.shownLanLoad[slot] = percent;
+			final GameUI rootFrame = this.menu.rootFrame;
+			rootFrame.setText(this.loadingPlayerLevels.get(n), percent < 0 ? "" : LanText.loadState(percent));
+			if (this.reforgedLoading != null) {
+				this.reforgedLoading.setLoadState(slot, percent);
+			}
+		}
+		if (this.reforgedLoading != null) {
+			for (int slot = 0; slot < this.shownLanLoad.length; slot++) {
+				if (this.shownLanLoad[slot] > -2) {
+					this.reforgedLoading.setLoadState(slot, this.shownLanLoad[slot]);
+				}
+			}
+		}
+	}
+
+	/** This player has loaded and the others have not: the bar says so, pulsing as the tap prompt does. */
+	void showWaitingForPlayers(final float deltaTime) {
+		if (!this.waitingTextShown) {
+			this.waitingTextShown = true;
+			setLoadingRatio(1.0f);
+			this.menu.rootFrame.setText(this.loadingBarText, LanText.waitingForPlayers());
+			this.loadingBarText.setColor(new Color(0.99f, 0.827f, 0.0705f, 1.0f));
+		}
+		this.tapPulse = (this.tapPulse + deltaTime) % TAP_PULSE_SECONDS;
+		final float alpha = 0.6f + (0.4f * (float) Math.cos((this.tapPulse / TAP_PULSE_SECONDS) * 2 * Math.PI));
+		this.loadingBarText.setAlpha(alpha);
+		if (this.reforgedLoading != null) {
+			this.reforgedLoading.setBarText(LanText.waitingForPlayers(), alpha);
+		}
 	}
 
 	void setWaitForTap(final boolean waitForTap) {
@@ -356,6 +416,7 @@ final class MenuLoadingScreen {
 
 	/** The map could not be loaded: the screen goes. */
 	void abandon() {
+		this.lan = null;
 		this.loadingMapDone = false;
 		this.continueTapped = false;
 		this.previewingLoading = false;
@@ -370,6 +431,7 @@ final class MenuLoadingScreen {
 
 	/** Back in the menu after a game. */
 	void hide() {
+		this.lan = null;
 		this.loadingBar.setVisible(false);
 		this.loadingFrame.setVisible(false);
 		this.loadingBackground.setVisible(false);
@@ -563,7 +625,7 @@ final class MenuLoadingScreen {
 			players.computeIfAbsent(player.getTeam(), team -> new ArrayList<>())
 					.add(new ReforgedLoadingScreen.Player(name, player.getColor(),
 							rootFrame.getTemplates().getDecoratedString(raceKey), reforgedRaceIcon(raceKey),
-							i == localPlayerIndex));
+							i == localPlayerIndex, i));
 		}
 		return reforgedTeams(players);
 	}
@@ -631,7 +693,7 @@ final class MenuLoadingScreen {
 			localListed |= local;
 			players.computeIfAbsent(team, key -> new ArrayList<>())
 					.add(new ReforgedLoadingScreen.Player(name, color,
-							rootFrame.getTemplates().getDecoratedString(raceKey), reforgedRaceIcon(raceKey), local));
+							rootFrame.getTemplates().getDecoratedString(raceKey), reforgedRaceIcon(raceKey), local, i));
 		}
 		return reforgedTeams(players);
 	}
@@ -817,6 +879,9 @@ final class MenuLoadingScreen {
 			slot.setVisible(false);
 		}
 		this.loadingPlayerSlots.clear();
+		this.loadingPlayerSlotNumbers.clear();
+		this.loadingPlayerLevels.clear();
+		java.util.Arrays.fill(this.shownLanLoad, -2);
 		final UIFrame container = rootFrame.getFrameByName("LoadingMeleePlayerContainer", 0);
 		UIFrame previous = null;
 		for (int i = 0; i < WarsmashConstants.MAX_PLAYERS; i++) {
@@ -836,7 +901,16 @@ final class MenuLoadingScreen {
 			// Frames created from a template register their children by name, so the latest slot's are found here.
 			final StringFrame name = (StringFrame) rootFrame.getFrameByName("LoadingPlayerSlotName", i);
 			final StringFrame race = (StringFrame) rootFrame.getFrameByName("LoadingPlayerSlotRace", i);
-			rootFrame.setText((StringFrame) rootFrame.getFrameByName("LoadingPlayerSlotLevel", i), "");
+			final StringFrame level = (StringFrame) rootFrame.getFrameByName("LoadingPlayerSlotLevel", i);
+			rootFrame.setText(level, "");
+			if (this.lan != null) {
+				// The level column is empty for a melee map; a LAN game shows the player's load state in it, between
+				// the name and the race.
+				level.clearFramePointAssignments();
+				level.addSetPoint(new SetPoint(FramePoint.LEFT, slot, FramePoint.LEFT,
+						GameUI.convertX(this.menu.uiViewport, 0.105f), 0));
+				level.setWidth(GameUI.convertX(this.menu.uiViewport, 0.05f));
+			}
 			if (player.getController() == CMapControl.COMPUTER) {
 				rootFrame.setDecoratedText(name, getComputerSlotKey(player.getAIDifficulty()));
 			}
@@ -845,6 +919,8 @@ final class MenuLoadingScreen {
 			}
 			rootFrame.setDecoratedText(race, getRaceStringKey(player));
 			this.loadingPlayerSlots.add(slot);
+			this.loadingPlayerSlotNumbers.add(i);
+			this.loadingPlayerLevels.add(level);
 			previous = slot;
 		}
 		container.setHeight(GameUI.convertY(this.menu.uiViewport, 0.0217f) * this.loadingPlayerSlots.size());

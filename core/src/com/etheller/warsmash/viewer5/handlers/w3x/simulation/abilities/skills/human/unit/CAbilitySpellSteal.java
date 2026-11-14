@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.human.unit;
 
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
 import java.util.List;
 
 import com.etheller.warsmash.units.GameObject;
@@ -59,14 +60,21 @@ public class CAbilitySpellSteal extends CAbilityTargetSpellBase implements CAuto
 		return unit.isUnitAlly(game.getPlayer(caster.getPlayerIndex()));
 	}
 
+	// A passive-only ally is neither enemy nor friend: buffs of either kind can be taken from it, and nobody gets them.
+	private static boolean isNeutralAlly(final CSimulation game, final CUnit caster, final CUnit unit) {
+		return isFriendly(game, caster, unit) && !game.getPlayer(caster.getPlayerIndex())
+				.hasAlliance(unit.getPlayerIndex(), CAllianceType.SHARED_SPELLS);
+	}
+
 	private static CBuff stealableBuff(final CSimulation game, final CUnit caster, final CUnit target) {
+		final boolean neutral = isNeutralAlly(game, caster, target);
 		final boolean wantPositive = !isFriendly(game, caster, target);
 		final List<CAbility> abilities = target.getAbilities();
 		for (int i = abilities.size() - 1; i >= 0; i--) {
 			final CAbility ability = abilities.get(i);
 			if (ability instanceof CBuff) {
 				final CBuff buff = (CBuff) ability;
-				if ((buff.isPositive() == wantPositive) && buff.isDispellable() && !buff.isAura()
+				if ((neutral || (buff.isPositive() == wantPositive)) && buff.isDispellable() && !buff.isAura()
 						&& !buff.isTimedLifeBar() && (buff.getDurationMax() > 0)
 						&& (buff.getDurationRemaining(game, target) > 0)) {
 					return buff;
@@ -77,6 +85,9 @@ public class CAbilitySpellSteal extends CAbilityTargetSpellBase implements CAuto
 	}
 
 	private CUnit recipient(final CSimulation game, final CUnit caster, final CUnit target) {
+		if (isNeutralAlly(game, caster, target)) {
+			return null;
+		}
 		final boolean wantFriendly = !isFriendly(game, caster, target);
 		final CUnit[] best = { null };
 		final double[] bestDistance = { Double.MAX_VALUE };

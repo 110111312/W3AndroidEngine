@@ -1,6 +1,7 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
 import java.util.ArrayList;
+import java.util.Random;
 import java.util.Set;
 import com.etheller.warsmash.util.ArgbImage;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
@@ -15,6 +16,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.region.CRegionManag
  * Placing a unit on the map: free-cell search, unstuck, region events and reach checks.
  */
 final class CUnitPlacement {
+	private static final int STRUCTURE_PLACE_ATTEMPTS = 24;
+
 	private CUnitPlacement() {
 	}
 
@@ -129,9 +132,27 @@ final class CUnitPlacement {
 
 	static boolean fitsAt(final CUnit self, final float x, final float y, final CWorldCollision collision,
 			final PathingGrid pathingGrid, final float collisionSize, final MovementType movementType) {
-		CWidget.tempRect.setCenter(x, y);
-		return !collision.intersectsAnythingOtherThan(CWidget.tempRect, self, movementType, false)
+		return !blockedByUnit(self, x, y, collision, pathingGrid, collisionSize, movementType)
 				&& pathingGrid.isPathable(x, y, movementType, collisionSize);
+	}
+
+	/**
+	 * Whether another unit stands where this one would at the point. Ground units are compared by the pathing cells
+	 * they stand on, flyers not at all, others by their collision squares.
+	 */
+	static boolean blockedByUnit(final CUnit self, final float x, final float y, final CWorldCollision collision,
+			final PathingGrid pathingGrid, final float collisionSize, final MovementType movementType) {
+		if (movementType == MovementType.FLY) {
+			// Measured: flyers made at one point all stay on it.
+			return false;
+		}
+		if ((movementType == MovementType.FOOT) || (movementType == MovementType.HORSE)
+				|| (movementType == MovementType.HOVER) || (movementType == MovementType.AMPHIBIOUS)) {
+			return collision.intersectsFootprintOtherThan(pathingGrid, x, y,
+					PathingGrid.getFootprintCells(collisionSize), self, movementType);
+		}
+		CWidget.tempRect.setCenter(x, y);
+		return collision.intersectsAnythingOtherThan(CWidget.tempRect, self, movementType, false);
 	}
 
 	/**
@@ -160,8 +181,7 @@ final class CUnitPlacement {
 					visited++;
 					final float cx = baseX + (cellX * 32f);
 					final float cy = baseY + (cellY * 32f);
-					CWidget.tempRect.setCenter(cx + 16f, cy + 16f);
-					if (!collision.intersectsAnythingOtherThan(CWidget.tempRect, self, movementType, false)
+					if (!blockedByUnit(self, cx + 16f, cy + 16f, collision, pathingGrid, collisionSize, movementType)
 							&& pathingGrid.isPathable(cx, cy, movementType, collisionSize)) {
 						return new float[] { cx + 16f, cy + 16f };
 					}
@@ -172,6 +192,45 @@ final class CUnitPlacement {
 			}
 		}
 		return new float[] { x, y };
+	}
+
+	/**
+	 * Teleports a unit to a structure (a town hall). Measured: the original game tries random 32 cells of the square
+	 * the structure's pathing map covers and takes the first one the unit fits on, so the units land evenly over the
+	 * free cells round the building; a unit that finds no fit in a score of tries (only large ones) is placed by the
+	 * free-cell search from the structure's centre.
+	 */
+	static void placeAroundStructure(final CUnit self, final CSimulation game, final CUnit structure) {
+		final CWorldCollision collision = game.getWorldCollision();
+		final PathingGrid pathingGrid = game.getPathingGrid();
+		final float collisionSize = self.unitType.getCollisionSize();
+		final MovementType movementType = self.getMovementType();
+		if (self.placement.collisionRectangle != null) {
+			CWidget.tempRect.set(self.placement.collisionRectangle);
+		}
+		else {
+			CWidget.tempRect.setSize(16, 16);
+		}
+		final ArgbImage pathing = structure.getUnitType().getBuildingPathingPixelMap();
+		final int cellsX = pathing == null ? 4 : Math.max(1, pathing.getWidth());
+		final int cellsY = pathing == null ? 4 : Math.max(1, pathing.getHeight());
+		final float firstX = (float) Math.floor((structure.getX() - (cellsX * 16f)) / 32f) * 32f;
+		final float firstY = (float) Math.floor((structure.getY() - (cellsY * 16f)) / 32f) * 32f;
+		final Random random = game.getSeededRandom();
+		for (int attempt = 0; attempt < STRUCTURE_PLACE_ATTEMPTS; attempt++) {
+			final float cx = firstX + (random.nextInt(cellsX) * 32f);
+			final float cy = firstY + (random.nextInt(cellsY) * 32f);
+			if (!blockedByUnit(self, cx + 16f, cy + 16f, collision, pathingGrid, collisionSize, movementType)
+					&& pathingGrid.isPathable(cx, cy, movementType, collisionSize)) {
+				setPoint(self, cx + 16f, cy + 16f, collision, game.getRegionManager());
+				game.unitRepositioned(self);
+				return;
+			}
+		}
+		final float[] free = findNearestFreeCell(self, structure.getX(), structure.getY(), collision, pathingGrid,
+				collisionSize, movementType);
+		setPoint(self, free[0], free[1], collision, game.getRegionManager());
+		game.unitRepositioned(self);
 	}
 
 	static void setPoint(final CUnit self, final float newX, final float newY, final CWorldCollision collision,
@@ -414,5 +473,6 @@ final class CUnitPlacement {
 			return false;
 		}
 
-	}
+	}
+
 }

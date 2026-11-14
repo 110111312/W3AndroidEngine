@@ -11,6 +11,39 @@ import com.google.common.io.LittleEndianDataInputStream;
 import com.google.common.io.LittleEndianDataOutputStream;
 
 public class Unit {
+	/**
+	 * Which optional fields a units file holds. The files of one version differ in them (a Reforged save of a classic
+	 * map has the skin id but not the item table and hero attributes of its version), so the layout is told apart from
+	 * the file itself where its header does not say.
+	 */
+	public static final class Layout {
+		final boolean skinId;
+		final boolean itemTableAndHeroAttributes;
+		final boolean v12Fields;
+
+		public Layout(final boolean skinId, final boolean itemTableAndHeroAttributes, final boolean v12Fields) {
+			this.skinId = skinId;
+			this.itemTableAndHeroAttributes = itemTableAndHeroAttributes;
+			this.v12Fields = v12Fields;
+		}
+
+		boolean sameAs(final Layout other) {
+			return (this.skinId == other.skinId)
+					&& (this.itemTableAndHeroAttributes == other.itemTableAndHeroAttributes)
+					&& (this.v12Fields == other.v12Fields);
+		}
+
+		/** The layout the version and the editor version of the map tell. */
+		public static Layout of(final int version, final War3MapW3i mapInformation) {
+			return of(version,
+					((mapInformation.getGameVersionMajor() * 100) + mapInformation.getGameVersionMinor()) >= 132);
+		}
+
+		public static Layout of(final int version, final boolean skinId) {
+			return new Layout(skinId, (version > 7) && (version != 12), version >= 12);
+		}
+	}
+
 	private War3ID id;
 	private War3ID skinId;
 	private int variation;
@@ -59,21 +92,20 @@ public class Unit {
 	private final int[] v12AfterCreationNumber = new int[2];
 	private final List<short[]> v12Entries = new ArrayList<>();
 
-	public void load(final LittleEndianDataInputStream stream, final int version, final War3MapW3i mapInformation)
-			throws IOException {
+	public void load(final LittleEndianDataInputStream stream, final Layout layout) throws IOException {
 		this.id = ParseUtils.readWar3ID(stream);
 		this.variation = stream.readInt();
 		ParseUtils.readFloatArray(stream, this.location);
 		this.angle = stream.readFloat();
 		ParseUtils.readFloatArray(stream, this.scale);
 
-		if (((mapInformation.getGameVersionMajor() * 100) + mapInformation.getGameVersionMinor()) >= 132) {
+		if (layout.skinId) {
 			this.skinId = ParseUtils.readWar3ID(stream);
 		}
 		else {
 			this.skinId = this.id;
 		}
-		if (version >= 12) {
+		if (layout.v12Fields) {
 			this.v12AfterSkin = stream.readInt();
 		}
 
@@ -83,7 +115,7 @@ public class Unit {
 		this.hitpoints = stream.readInt();
 		this.mana = stream.readInt();
 
-		if ((version > 7) && (version != 12)) {
+		if (layout.itemTableAndHeroAttributes) {
 			this.droppedItemTable = stream.readInt();
 		}
 
@@ -99,7 +131,7 @@ public class Unit {
 		this.targetAcquisition = stream.readFloat();
 		this.heroLevel = stream.readInt();
 
-		if ((version > 7) && (version != 12)) {
+		if (layout.itemTableAndHeroAttributes) {
 			this.heroStrength = stream.readInt();
 			this.heroAgility = stream.readInt();
 			this.heroIntelligence = stream.readInt();
@@ -144,7 +176,7 @@ public class Unit {
 		this.customTeamColor = stream.readInt();
 		this.waygate = stream.readInt();
 		this.creationNumber = stream.readInt();
-		if (version >= 12) {
+		if (layout.v12Fields) {
 			this.v12AfterCreationNumber[0] = stream.readInt();
 			this.v12AfterCreationNumber[1] = stream.readInt();
 			for (int i = 0, l = stream.readInt(); i < l; i++) {
@@ -155,22 +187,21 @@ public class Unit {
 		}
 	}
 
-	public void save(final LittleEndianDataOutputStream stream, final int version, final War3MapW3i mapInformation)
-			throws IOException {
+	public void save(final LittleEndianDataOutputStream stream, final Layout layout) throws IOException {
 		ParseUtils.writeWar3ID(stream, this.id);
 		stream.writeInt(this.variation);
 		ParseUtils.writeFloatArray(stream, this.location);
 		stream.writeFloat(this.angle);
 		ParseUtils.writeFloatArray(stream, this.scale);
 
-		if (((mapInformation.getGameVersionMajor() * 100) + mapInformation.getGameVersionMinor()) >= 132) {
+		if (layout.skinId) {
 			War3ID skinToWrite = this.skinId;
 			if (skinToWrite == null) {
 				skinToWrite = this.id;
 			}
 			ParseUtils.writeWar3ID(stream, skinToWrite);
 		}
-		if (version >= 12) {
+		if (layout.v12Fields) {
 			stream.writeInt(this.v12AfterSkin);
 		}
 
@@ -180,7 +211,7 @@ public class Unit {
 		stream.writeInt(this.hitpoints);
 		stream.writeInt(this.mana);
 
-		if ((version > 7) && (version != 12)) {
+		if (layout.itemTableAndHeroAttributes) {
 			stream.writeInt(this.droppedItemTable);
 		}
 
@@ -194,7 +225,7 @@ public class Unit {
 		stream.writeFloat(this.targetAcquisition);
 		stream.writeInt(this.heroLevel);
 
-		if ((version > 7) && (version != 12)) {
+		if (layout.itemTableAndHeroAttributes) {
 			stream.writeInt(this.heroStrength);
 			stream.writeInt(this.heroAgility);
 			stream.writeInt(this.heroIntelligence);
@@ -233,7 +264,7 @@ public class Unit {
 		stream.writeInt(this.customTeamColor);
 		stream.writeInt(this.waygate);
 		stream.writeInt(this.creationNumber);
-		if (version >= 12) {
+		if (layout.v12Fields) {
 			stream.writeInt(this.v12AfterCreationNumber[0]);
 			stream.writeInt(this.v12AfterCreationNumber[1]);
 			stream.writeInt(this.v12Entries.size());
@@ -243,13 +274,16 @@ public class Unit {
 		}
 	}
 
-	public int getByteLength(final int version) {
+	public int getByteLength(final Layout layout) {
 		int size = 91;
 
-		if ((version > 7) && (version != 12)) {
+		if (layout.skinId) {
+			size += 4;
+		}
+		if (layout.itemTableAndHeroAttributes) {
 			size += 16;
 		}
-		if (version >= 12) {
+		if (layout.v12Fields) {
 			size += 16 + (36 * this.v12Entries.size());
 		}
 

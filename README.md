@@ -97,7 +97,7 @@ Legend: **Working** — used in the regular test runs or played on real devices 
 | Rules | Unit behaviour, combat, spells, abilities and timings | In progress | Measured against the original and calibrated step by step |
 | Simulation | Determinism and replays | In progress | |
 | Performance | Frame rate on phones and tablets | In progress | |
-| Multiplayer | LAN | Planned | |
+| Multiplayer | LAN | Working | Up to 12 players, observers and referees, map transfer, rejoin and host migration |
 | Multiplayer | Online multiplayer | Not planned | Will never be implemented |
 
 ## Requirements
@@ -183,8 +183,7 @@ flowchart LR
   mission. A campaign's game cache is carried from mission to mission.
 - The engine reads the game data directly through layered data sources. Nothing derived from the retail files is
   packaged; the launcher builds its skins, fonts and buttons on the device from the player's files.
-- The simulation is kept separate from rendering and input, which is the basis for save games, replays and, later,
-  LAN games.
+- The simulation is kept separate from rendering and input, which is the basis for save games, replays and LAN games.
 
 ## Building
 
@@ -246,7 +245,7 @@ docs/images/            images used in this file
 
 ## Status and roadmap
 
-Current version: **v0.3.13**
+Current version: **v0.3.54**
 
 - **Custom games:** work end-to-end.
 - **Campaigns:** Reign of Chaos and The Frozen Throne can be completed to the end. Tweaking required.
@@ -255,9 +254,11 @@ Current version: **v0.3.13**
   launcher on Android and Windows.
 - **Cinematics:** campaign intro, opening and ending movies play from the game data (Windows x64 and Android).
 - **Save and load**, also from the main menu.
+- **LAN games:** hosting and joining over the local network between phones, tablets and PCs; players that drop out
+  rejoin the running game, and the game moves to another host if the host leaves.
 
-Next: determinism and replays, then full melee AI for all four races, performance on phones, LAN games and
-calibration of the remaining rules.
+Next: determinism and replays, then full melee AI for all four races, performance on phones and calibration of
+the remaining rules.
 
 Known issues: Forsaken Kingdom campaigns cannot be played yet; movies on Windows need the x64 build of Java.
 

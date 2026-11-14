@@ -270,13 +270,22 @@ final class CUnitDamage {
 		} else {
 			// 1.29: a hit for 0 (Life Drain's first) draws no answer or run.
 			if (((damage + bonusDamage) > 0) && (self.isIdleForAttack() || CUnitAggro.isReturningFromLostTarget(self)
-					|| (self.isFleeing() && self.isCritter()))) {
+					|| CUnitAggro.isStunnedAwake(self) || (self.isFleeing() && self.isCritter()))) {
 				self.queueAttackBack(simulation, source, true, false);
+				// Measured: the shards of a Blizzard and the flames of a Flame Strike are answered by an attack on
+				// the caster, but a unit that cannot answer does not run from the hit.
+				// Other units run from the hit as from any other.
+				if ((source != null) && (self.aggro.pendingAttackBackSource == source)
+						&& simulation.castsSpellsByItself(self.getPlayerIndex())
+						&& !simulation.isNeutralAggressive(self.getPlayerIndex())
+						&& simulation.getHarmfulAreas().hurtsUnit(simulation, self, source)) {
+					self.aggro.pendingAttackBackFromArea = true;
+				}
 			}
 			self.aggro.lastCombatTick = simulation.getGameTurnTick();
 			self.aggro.lastHurtTick = self.aggro.lastCombatTick;
 			if ((source != null) && (source != self)) {
-				CUnitAggro.noteHit(self, simulation.getGameTurnTick(), source, trueDamage);
+				CUnitAggro.noteHit(self, simulation, source);
 			}
 			CUnitUpdate.wakeByHit(self, simulation);
 			if (source != null) {
@@ -285,5 +294,6 @@ final class CUnitDamage {
 			CUnitAggro.callForHelp(self, simulation, source);
 		}
 		return trueDamage;
-	}
+	}
+
 }

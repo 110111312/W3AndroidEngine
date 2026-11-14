@@ -17,7 +17,6 @@ public final class LauncherKeys {
 	public static final String KEY_MISSION = "mission";
 	public static final String KEY_DIFFICULTY = "difficulty";
 	public static final String KEY_MAP = "customMap";
-	public static final String KEY_MAP_FOLDER = "customFolder";
 	public static final String KEY_OPTIONS = "customOptions";
 	public static final String KEY_SAVE = "save";
 	public static final String KEY_REPLAY = "replay";

@@ -23,6 +23,10 @@ import android.widget.TextView;
 
 import com.etheller.warsmash.datasources.GraphicsSet;
 import com.etheller.warsmash.datasources.GraphicsSettings;
+import com.etheller.warsmash.input.touch.ControlScheme;
+import com.etheller.warsmash.input.touch.PenButton;
+import com.etheller.warsmash.input.touch.TouchInputRouter;
+import com.etheller.warsmash.input.touch.TouchStyle;
 import com.etheller.warsmash.launcher.DataFolderCheck;
 import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.LauncherOptions;
@@ -38,9 +42,11 @@ final class OptionsPage extends LauncherViews {
 	private static final int TAB_ABOUT = 5;
 
 	int optionsTab = TAB_GRAPHICS;
+	final HotkeyEditorPage hotkeys;
 
 	OptionsPage(final LauncherActivity activity) {
 		super(activity);
+		this.hotkeys = new HotkeyEditorPage(activity, this);
 	}
 
 	void showOptions(final int tab) {
@@ -167,7 +173,7 @@ final class OptionsPage extends LauncherViews {
 		}
 	}
 
-	private int stringId(final String name) {
+	int stringId(final String name) {
 		return this.activity.getResources().getIdentifier(name, "string", this.activity.getPackageName());
 	}
 
@@ -190,6 +196,44 @@ final class OptionsPage extends LauncherViews {
 
 	/** The [Touch] keys of warsmash.ini with the engine's defaults and a sensible range around them. */
 	private void touchRows(final LinearLayout rows, final EngineSettings engine) {
+		final boolean mouseScheme = engine.controlScheme(ControlScheme.TOUCH) == ControlScheme.MOUSE_KEYBOARD;
+		radioRow(rows, R.string.options_control_scheme,
+				new String[] { getString(R.string.options_scheme_mouse), getString(R.string.options_scheme_touch) },
+				null, engine.controlScheme(ControlScheme.TOUCH).ordinal(),
+				choice -> {
+					engine.setControlScheme(ControlScheme.values()[choice]);
+					final TouchInputRouter router = TouchInputRouter.installedRouter();
+					if (router != null) {
+						router.setScheme(ControlScheme.values()[choice]);
+					}
+					com.etheller.warsmash.lan.LanSessions.onControlSchemeChanged(ControlScheme.values()[choice]);
+					// The hotkey editor below the rows belongs to the keyboard and mouse scheme only.
+					showOptions(TAB_TOUCH);
+				});
+		if (mouseScheme) {
+			noteRow(rows, R.string.options_mouse_note);
+		}
+		radioRow(rows, mouseScheme ? R.string.options_touch_style_pen : R.string.options_touch_style,
+				new String[] { getString(R.string.options_style_hold), getString(R.string.options_style_double) },
+				null, engine.touchStyle().ordinal(), choice -> {
+					final TouchStyle style = TouchStyle.values()[choice];
+					engine.setTouchStyle(style);
+					final TouchInputRouter router = TouchInputRouter.installedRouter();
+					if (router != null) {
+						router.setStyle(style);
+					}
+				});
+		radioRow(rows, R.string.options_pen_button,
+				new String[] { getString(R.string.options_pen_shift), getString(R.string.options_pen_ctrl),
+					getString(R.string.options_pen_drag), getString(R.string.options_pen_right) },
+				null, engine.penButton().ordinal(), choice -> {
+					final PenButton button = PenButton.values()[choice];
+					engine.setPenButton(button);
+					final TouchInputRouter router = TouchInputRouter.installedRouter();
+					if (router != null) {
+						router.setPenButton(button);
+					}
+				});
 		touchRow(rows, R.string.options_tap_slop, engine, "TapSlopDp", 10, 4, 24, R.string.options_dp);
 		touchRow(rows, R.string.options_long_press, engine, "LongPressMs", 300, 200, 800, R.string.options_ms);
 		checkRow(rows, R.string.options_palm_on, !"Off".equalsIgnoreCase(engine.touch("PalmRejection", "")),
@@ -198,6 +242,22 @@ final class OptionsPage extends LauncherViews {
 		touchRow(rows, R.string.options_tap_reach, engine, "GhostTapRadiusDp", 48, 16, 96, R.string.options_dp);
 		checkRow(rows, R.string.options_pen_fingers, "Allow".equalsIgnoreCase(engine.touch("PenFingerPolicy", "")),
 				on -> engine.setTouch("PenFingerPolicy", on ? "Allow" : "Ignore"));
+		if (mouseScheme) {
+			this.hotkeys.addTo(rows);
+		}
+	}
+
+	/** A line of explanation across the whole row, for settings that mean something else under the other scheme. */
+	private void noteRow(final LinearLayout rows, final int note) {
+		final LauncherBoard b = this.activity.board;
+		final FrameLayout row = row(rows);
+		row.getLayoutParams().height = px(b.rowH * 1.6f);
+		final TextView shown = text(getString(note), b.small, this.activity.art.text());
+		shown.setGravity(Gravity.CENTER_VERTICAL);
+		shown.setSingleLine(false);
+		shown.setMaxLines(3);
+		shown.setEllipsize(null);
+		place(row, shown, b.labelX, 0, b.contentW - (2 * b.pageFrame) - (2 * b.labelX), b.rowH * 1.6f);
 	}
 
 	private void touchRow(final LinearLayout rows, final int label, final EngineSettings engine, final String key,
@@ -268,6 +328,26 @@ final class OptionsPage extends LauncherViews {
 				b.labelX, (b.rowH - buttonH) / 2, buttonW, buttonH);
 		place(row, button(getString(R.string.options_recheck), buttonH, b.tablet ? 36 : 26, v -> recheck()),
 				b.labelX + buttonW + (b.tablet ? 32 : 24), (b.rowH - buttonH) / 2, buttonW, buttonH);
+		customContentRows(rows, buttonW, buttonH);
+	}
+
+	/** The player's content folder: where it is and the buttons that choose or leave it. */
+	private void customContentRows(final LinearLayout rows, final float buttonW, final float buttonH) {
+		final LauncherBoard b = this.activity.board;
+		final File custom = this.activity.customContent.folder();
+		infoRow(rows, R.string.options_custom_folder,
+				custom == null ? getString(R.string.options_custom_none) : custom.getAbsolutePath(), custom != null);
+		final FrameLayout row = row(rows);
+		// The name of the first button is long.
+		final float chooseW = buttonW * 1.6f;
+		place(row, button(getString(R.string.options_custom_choose), buttonH, b.tablet ? 32 : 22,
+				v -> this.activity.customContent.chooseFolder()),
+				b.labelX, (b.rowH - buttonH) / 2, chooseW, buttonH);
+		if (custom != null) {
+			place(row, button(getString(R.string.options_custom_clear), buttonH, b.tablet ? 36 : 26,
+					v -> this.activity.customContent.clear()),
+					b.labelX + chooseW + (b.tablet ? 32 : 24), (b.rowH - buttonH) / 2, buttonW, buttonH);
+		}
 	}
 
 	private void aboutRows(final LinearLayout rows) {
@@ -291,7 +371,7 @@ final class OptionsPage extends LauncherViews {
 	}
 
 	/** An option row: the gold label on the left, a line above every row but the first. */
-	private FrameLayout row(final LinearLayout rows) {
+	FrameLayout row(final LinearLayout rows) {
 		final LauncherBoard b = this.activity.board;
 		final FrameLayout row = new FrameLayout(this.activity);
 		if (rows.getChildCount() > 0) {
@@ -336,7 +416,7 @@ final class OptionsPage extends LauncherViews {
 		row.setContentDescription(getString(label));
 	}
 
-	private void radioRow(final LinearLayout rows, final int label, final String[] choices, final boolean[] enabled,
+	void radioRow(final LinearLayout rows, final int label, final String[] choices, final boolean[] enabled,
 			final int selected, final IntConsumer changed) {
 		final LauncherBoard b = this.activity.board;
 		final TextView[] names = new TextView[choices.length];

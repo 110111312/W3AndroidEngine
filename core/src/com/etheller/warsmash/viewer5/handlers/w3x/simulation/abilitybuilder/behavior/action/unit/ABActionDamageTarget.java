@@ -13,7 +13,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.beha
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABSingleAction;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CAttackType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CDamageFlags;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CGenericDamageFlags;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CDamageType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CWeaponSoundTypeJass;
 
@@ -37,28 +36,11 @@ public class ABActionDamageTarget implements ABSingleAction {
 	public void runAction(CSimulation game, CUnit caster, Map<String, Object> localStore, final int castId) {
 		CAttackType theAttackType = CAttackType.SPELLS;
 		CDamageType theDamageType = CDamageType.MAGIC;
-		CDamageFlags flags = new CGenericDamageFlags(false, true);
 
 		float theDamage = damage.callback(game, caster, localStore, castId);
+		final CDamageFlags flags = ABDamageFlagsBuilder.build(game, caster, localStore, castId, isAttack, isRanged,
+				damageInvulnerable, explodeOnDeath, onlyDamageSummons, nonlethal);
 
-		if (isAttack != null) {
-			flags.setAttack(isAttack.callback(game, caster, localStore, castId));
-		}
-		if (isRanged != null) {
-			flags.setRanged(isRanged.callback(game, caster, localStore, castId));
-		}
-		if (damageInvulnerable != null) {
-			flags.setIgnoreInvulnerable(damageInvulnerable.callback(game, caster, localStore, castId));
-		}
-		if (explodeOnDeath != null) {
-			flags.setExplode(explodeOnDeath.callback(game, caster, localStore, castId));
-		}
-		if (onlyDamageSummons != null) {
-			flags.setOnlyDamageSummons(onlyDamageSummons.callback(game, caster, localStore, castId));
-		}
-		if (nonlethal != null) {
-			flags.setNonlethal(nonlethal.callback(game, caster, localStore, castId));
-		}
 		if (this.attackType != null) {
 			theAttackType = this.attackType.callback(game, caster, localStore, castId);
 		}

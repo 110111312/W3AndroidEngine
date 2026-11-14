@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.function.ToIntFunction;
 import java.util.zip.CRC32;
 
 import com.badlogic.gdx.Gdx;
@@ -15,6 +16,8 @@ import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.viewer5.handlers.w3x.CampaignMaps;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.SimulationChecksum;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CGameCache;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.config.War3MapConfig;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.replay.CReplay;
@@ -98,6 +101,9 @@ public final class GameReplays {
 		return (file == null) || file.isEmpty() ? null : file;
 	}
 
+	/**
+	 * @param networkGame the old UDP network game, which has no replay; a LAN game is recorded like any other
+	 */
 	public static boolean isRecorded(final String mapFile, final boolean networkGame) {
 		if (networkGame) {
 			return false;
@@ -111,20 +117,32 @@ public final class GameReplays {
 	/** The header of a game about to be loaded: the viewer has its seed, the config the game setup's slots. */
 	public static CReplayHeader header(final DataSource dataSource, final String mapFile, final War3MapViewer viewer,
 			final War3MapConfig config, final int localPlayerIndex) throws IOException {
+		return header(dataSource, mapFile, viewer, config, localPlayerIndex, System.currentTimeMillis());
+	}
+
+	/** @param recordedAt the time the game started, which every player of a shared game records the same */
+	public static CReplayHeader header(final DataSource dataSource, final String mapFile, final War3MapViewer viewer,
+			final War3MapConfig config, final int localPlayerIndex, final long recordedAt) throws IOException {
 		final long[] map = mapChecksum(dataSource, mapFile);
 		return CReplayHeader.of(engineVersion(), BuildInfo.current().getCommit(),
 				BuildInfo.current().isOfficial(), mapFile, (int) map[0], map[1], dataChecksum(dataSource),
-				System.currentTimeMillis(), viewer.getGameSeed(), localPlayerIndex, viewer.getTimeScale(), config,
+				recordedAt, viewer.getGameSeed(), localPlayerIndex, viewer.getTimeScale(), config,
 				CHECKSUM_INTERVAL, CGameCache.snapshot());
 	}
 
 	public static ReplayRecording startRecording(final War3MapViewer viewer, final CReplayHeader header)
 			throws IOException {
+		return startRecording(viewer, header, SimulationChecksum::compute);
+	}
+
+	/** @param checksum how the game's checksum is made, for a caller that needs the same value for itself */
+	public static ReplayRecording startRecording(final War3MapViewer viewer, final CReplayHeader header,
+			final ToIntFunction<CSimulation> checksum) throws IOException {
 		final String forced = forcedRecordFile();
 		final FileHandle target = forced != null ? Gdx.files.absolute(new File(forced).getAbsolutePath())
 				: lastReplay();
 		final FileHandle written = forced != null ? target : folder().child(TEMP_REPLAY + EXTENSION);
-		final ReplayRecording recording = new ReplayRecording(viewer.simulation, header, written, target);
+		final ReplayRecording recording = new ReplayRecording(viewer.simulation, header, written, target, checksum);
 		viewer.setReplaySession(recording);
 		return recording;
 	}
@@ -252,7 +270,7 @@ public final class GameReplays {
 	}
 
 	/** The CRC-32 and the size of the map file. */
-	static long[] mapChecksum(final DataSource dataSource, final String mapFile) throws IOException {
+	public static long[] mapChecksum(final DataSource dataSource, final String mapFile) throws IOException {
 		final CRC32 crc = new CRC32();
 		long size = 0;
 		try (InputStream in = mapFile.startsWith("/") || !dataSource.has(mapFile)

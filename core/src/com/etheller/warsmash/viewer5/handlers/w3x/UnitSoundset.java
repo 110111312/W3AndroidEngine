@@ -28,4 +28,12 @@ public class UnitSoundset {
 		this.pissed.preload();
 	}
 
+	/** Starts the decoding preload asks for, off this thread where a backend can. */
+	public void prefetch() {
+		this.what.prefetch();
+		this.yes.prefetch();
+		this.yesAttack.prefetch();
+		this.pissed.prefetch();
+	}
+
 }

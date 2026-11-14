@@ -106,6 +106,9 @@ public class CAbilityAttack extends AbstractCAbility {
 					// accepted; the unit follows it.
 					receiver.targetOk(target);
 				}
+				else if ((orderId == OrderIds.attack) && game.isScriptOrder() && isUnseenOnly(game, unit, target)) {
+					receiver.targetOk(target);
+				}
 				else if (lastUnavailableAttack != null) {
 					// a check known to fail, so it will populate our receiver
 					target.canBeTargetedBy(game, unit, lastUnavailableAttack.getTargetsAllowed(), receiver);
@@ -138,6 +141,23 @@ public class CAbilityAttack extends AbstractCAbility {
 		}
 		target.canBeTargetedBy(game, unit, lastAttack.getTargetsAllowed(), receiver);
 		return true;
+	}
+
+	/**
+	 * True when a weapon could hit the unit but for its invisibility. Measured on 1.29: a script attack order on such a
+	 * unit is accepted; the unit walks to where the target stood at the order and then drops the order.
+	 */
+	private static boolean isUnseenOnly(final CSimulation game, final CUnit unit, final CWidget target) {
+		if (!(target instanceof CUnit) || (((CUnit) target).getInvisLevels() == 0)) {
+			return false;
+		}
+		for (final CUnitAttack attack : unit.getCurrentAttacks()) {
+			if (((CUnit) target).canBeTargetedUnseenBy(game, unit, attack.getTargetsAllowed(),
+					SCRIPT_TARGET_CHECK.reset())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean scriptFollowableMismatch(final CSimulation game, final CUnit unit, final CWidget target,
@@ -217,7 +237,13 @@ public class CAbilityAttack extends AbstractCAbility {
 			}
 		}
 		if (behavior == null) {
-			behavior = caster.getMoveBehavior().reset(OrderIds.attack, target);
+			if (isUnseenOnly(game, caster, target)) {
+				behavior = caster.getMoveBehavior().reset(OrderIds.attack,
+						new AbilityPointTarget(target.getX(), target.getY()));
+			}
+			else {
+				behavior = caster.getMoveBehavior().reset(OrderIds.attack, target);
+			}
 		}
 		return behavior;
 	}

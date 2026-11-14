@@ -5,12 +5,16 @@ package com.etheller.warsmash.input.touch;
  * current screen. Coordinates are screen pixels, top left origin.
  */
 public interface GestureListener {
+	/** The first pointer of a gesture went down; what the gesture becomes is not known yet. */
+	default void pressed(final float x, final float y, final long timeMillis) {
+	}
+
 	/** The finger or pen moved while still undecided, so hover effects can follow it. */
 	void pointerAt(float x, float y);
 
 	void tap(float x, float y, boolean pen);
 
-	/** A pen tap with the pen button held, which acts like a right mouse click. */
+	/** An order at the point, as a right mouse click gives it: what a double tap or a pen hold turns into. */
 	void secondaryTap(float x, float y);
 
 	/** Fires as soon as the press has been held long enough, not on release. */

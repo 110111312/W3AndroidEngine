@@ -11,6 +11,9 @@ final class CUnitAcquisitionState {
 	int firstIdleAcquireScanTick;
 	int nextCreepCastTick;
 	boolean creepCastFighting;
+	int creepCastOpeningTick = Integer.MIN_VALUE;
+	boolean creepCastOpened;
+	int creepCastBeatOrigin = Integer.MIN_VALUE;
 	boolean creepCastAfterWhirl;
 	int creepCastThinks;
 	Set<Integer> creepCastOnce;

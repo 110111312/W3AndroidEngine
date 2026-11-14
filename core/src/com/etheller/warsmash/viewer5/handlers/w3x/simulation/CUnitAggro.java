@@ -3,6 +3,7 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 import java.util.ArrayList;
 import java.util.List;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit.CreepCamp;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.neutral.creeps.CCreepCastAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
@@ -11,6 +12,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitRace;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.StateModBuff;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.StateModBuffType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CMapControl;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
@@ -68,7 +71,7 @@ final class CUnitAggro {
 					self.aggro.guardAwayTick = tick;
 				}
 			}
-			else if (((tick - self.aggro.guardAwayTick) >= CUnit.secondsToTicks(
+			else if (!self.aggro.postFightFromArea && ((tick - self.aggro.guardAwayTick) >= CUnit.secondsToTicks(
 					constants.getGuardReturnTime() + CUnit.GUARD_GIVE_UP_EXTRA_SECONDS))
 					&& ((fromHome > constants.getMaxGuardDistance())
 							|| ((tick - self.aggro.lastHurtTick) >= CUnit.secondsToTicks(constants.getGuardReturnTime())))) {
@@ -96,6 +99,7 @@ final class CUnitAggro {
 			return;
 		}
 		if (!self.aggro.postFight && (self.aggro.guardReturn == CUnit.GUARD_RETURN_NONE)) {
+			self.aggro.postFightFromArea = false;
 			if ((self.orders.currentBehavior == self.orders.defaultBehavior) && (self.orders.defaultBehavior != null)
 					&& (self.orders.defaultBehavior != self.holdPositionBehavior)) {
 				self.aggro.postSet = true;
@@ -127,6 +131,7 @@ final class CUnitAggro {
 		self.aggro.guardEngaged = false;
 		self.aggro.guardAwayTick = -1;
 		self.aggro.postFight = false;
+		self.aggro.postFightFromArea = false;
 		self.beginBehavior(game, self.moveBehavior.reset(OrderIds.move, new AbilityPointTarget(x, y)), true);
 		self.aggro.guardReturn = kind;
 	}
@@ -150,13 +155,17 @@ final class CUnitAggro {
 
 	static final float CRITTER_FLEE_DISTANCE = 500f;
 
-	static final int HEAVIEST_HIT_MEMORY_TICKS = CTimer.wholeSteps(2.0f);
+	/**
+	 * Measured on 1.29: a computer hero without an AI script answers about one hit in ten with Flame Strike or Shadow
+	 * Strike on the unit that struck him, in the very tick of the hit; the hits before it change nothing.
+	 */
+	static final float HIT_CAST_CHANCE = 0.1f;
 
-	static void noteHit(final CUnit self, final int tick, final CUnit source, final float damage) {
-		if (((tick - self.aggro.heaviestHitTick) > HEAVIEST_HIT_MEMORY_TICKS) || (damage >= self.aggro.heaviestHitDamage)) {
-			self.aggro.heaviestHitBy = source;
-			self.aggro.heaviestHitDamage = damage;
-			self.aggro.heaviestHitTick = tick;
+	static void noteHit(final CUnit self, final CSimulation simulation, final CUnit source) {
+		if ((self.getHeroData() != null) && simulation.castsSpellsByItself(self.getPlayerIndex())
+				&& CCreepCastAbility.hasHitCastSpell(self) && (simulation.getSeededRandom().nextFloat() < HIT_CAST_CHANCE)) {
+			self.aggro.hitCastSource = source;
+			self.aggro.hitCastTick = simulation.getGameTurnTick();
 		}
 	}
 
@@ -170,6 +179,7 @@ final class CUnitAggro {
 			self.aggro.pendingAttackBackSource = source;
 			self.aggro.pendingAttackBackWasHit = wasHit;
 			self.aggro.pendingAttackBackHelp = help;
+			self.aggro.pendingAttackBackFromArea = false;
 		}
 	}
 
@@ -186,10 +196,38 @@ final class CUnitAggro {
 		}
 	}
 
+	/**
+	 * Measured on 1.29: a stunned unit (not a sleeping one) that is hit keeps its answer until the stun ends, then
+	 * runs or strikes back.
+	 */
+	static boolean isStunnedAwake(final CUnit self) {
+		if ((self.orders.currentBehavior == null)
+				|| (self.orders.currentBehavior.getHighlightOrderId() != OrderIds.stunned)) {
+			return false;
+		}
+		boolean stunned = false;
+		for (final StateModBuff buff : self.stateModBuffs) {
+			if (buff.getValue() != 0) {
+				if (buff.getBuffType() == StateModBuffType.SLEEPING) {
+					return false;
+				}
+				if (buff.getBuffType() == StateModBuffType.STUN) {
+					stunned = true;
+				}
+			}
+		}
+		return stunned;
+	}
+
 	static void resolveAttackBack(final CUnit self, final CSimulation simulation) {
+		if (isStunnedAwake(self)) {
+			return;
+		}
 		CUnit source = self.aggro.pendingAttackBackSource;
 		final boolean wasHit = self.aggro.pendingAttackBackWasHit;
+		final boolean fromArea = self.aggro.pendingAttackBackFromArea;
 		self.aggro.pendingAttackBackSource = null;
+		self.aggro.pendingAttackBackFromArea = false;
 		final boolean critter = isCritter(self);
 		if (source.isDead() || source.isHidden() || source.isRemovedFromGame()
 				|| !(isIdleForAttack(self) || isReturningFromLostTarget(self) || (critter && isFleeing(self)))) {
@@ -201,6 +239,10 @@ final class CUnitAggro {
 			source = nearestHelpTarget(self, simulation, source);
 		}
 		final boolean foundMatchingReturnFireAttack = attackBack(self, simulation, source);
+		// Measured on 1.29: a unit that goes for the caster of an area that hurt it never gives the fight up.
+		if (fromArea && foundMatchingReturnFireAttack && self.aggro.postFight) {
+			self.aggro.postFightFromArea = true;
+		}
 		if (wasHit && foundMatchingReturnFireAttack) {
 			alertCreeps(self, simulation, source);
 		}
@@ -210,7 +252,7 @@ final class CUnitAggro {
 			self.fireAcquiredTargetEvents(simulation, source);
 		}
 		// Measured on 1.29: a critter called for help by another runs too, away from the caller's attacker.
-		if (!foundMatchingReturnFireAttack && (wasHit || critter)) {
+		if (!foundMatchingReturnFireAttack && (wasHit || critter) && !fromArea) {
 			flee(self, simulation, attacker, critter ? CRITTER_FLEE_DISTANCE : FLEE_DISTANCE);
 		}
 	}
@@ -489,6 +531,10 @@ final class CUnitAggro {
 	static void summonHelpers(final CUnit self, final CSimulation simulation, final CUnit attacker, final float radius) {
 		for (final CUnit helper : helpersInRange(self, simulation, radius)) {
 			helper.wakeUp(simulation);
+			// Measured on 1.29: a unit that cannot attack by itself (Wind Walk) does not answer a call for help.
+			if (!helper.auto.autoAttack) {
+				continue;
+			}
 			if (helper.isIdleForAttack() || (helper.isFleeing() && helper.isCritter())) {
 				helper.queueAttackBack(simulation, attacker, false, true);
 			}
@@ -515,5 +561,6 @@ final class CUnitAggro {
 			return false;
 		});
 		return helpers;
-	}
+	}
+
 }

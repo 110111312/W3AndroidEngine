@@ -248,10 +248,13 @@ public class CAbilityCargoHold extends AbstractGenericNoIconAbility {
 
 	public void addUnit(final CUnit cargoHoldUnit, final CUnit target) {
 		this.cargoUnits.add(target);
+		target.setLoadedIn(cargoHoldUnit);
 	}
 
 	public CUnit removeUnitAtIndex(final CUnit cargoHoldUnit, final int index) {
-		return this.cargoUnits.remove(index);
+		final CUnit removed = this.cargoUnits.remove(index);
+		removed.setLoadedIn(null);
+		return removed;
 	}
 
 	public boolean contains(final CUnit unit) {

@@ -17,8 +17,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderFogGhost;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityEntangledMine;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityOverlayedMine;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.vision.CPlayerFogOfWar;
@@ -191,24 +189,24 @@ public class MeleeUIMinimap {
 			final CUnit simUnit = unit.getSimulationUnit();
 			final boolean unitVisible = this.observerView || simUnit.isVisible(game, player.getId());
 			if (!(simUnit.isHidden() || simUnit.isHideMinimapIcon() || simUnit.isDead())
-					&& (unitVisible || (!unit.hasShownFogGhost() && isExploredLandmark(game, simUnit, pathingGrid,
-							fogOfWar, this.maskedAreasPartiallyVisible)))) {
-				addUnitIcon(game, simUnit, simUnit.getFakePlayerIndex(), unit.location[0], unit.location[1], player,
-						1f);
+					&& (unitVisible || (!unit.hasShownFogGhost() && isExploredLandmark(game, simUnit,
+							unit.getMinimapLandmarkKind(), pathingGrid, fogOfWar, this.maskedAreasPartiallyVisible)))) {
+				addUnitIcon(game, simUnit, unit.getMinimapLandmarkKind(), simUnit.getFakePlayerIndex(),
+						unit.location[0], unit.location[1], player, 1f);
 			}
 		}
 		for (int i = 0, n = fogGhosts.size(); i < n; i++) {
 			final RenderFogGhost ghost = fogGhosts.get(i);
 			if (!ghost.isMinimapIconHidden() && ghost.isShown()) {
-				addUnitIcon(game, ghost.getUnit(), ghost.getFakePlayerIndex(), ghost.getX(), ghost.getY(), player,
-						FOGGED_ICON_SHADE);
+				addUnitIcon(game, ghost.getUnit(), RenderUnit.minimapLandmarkKindOf(ghost.getUnit()),
+						ghost.getFakePlayerIndex(), ghost.getX(), ghost.getY(), player, FOGGED_ICON_SHADE);
 			}
 		}
 		drawIcons(batch);
 	}
 
-	private void addUnitIcon(final CSimulation game, final CUnit simUnit, final int fakePlayerIndex, final float x,
-			final float y, final CPlayer player, final float shade) {
+	private void addUnitIcon(final CSimulation game, final CUnit simUnit, final int landmarkKind,
+			final int fakePlayerIndex, final float x, final float y, final CPlayer player, final float shade) {
 		int dimensions = 4;
 		float red = 1f;
 		float green = 1f;
@@ -220,18 +218,14 @@ public class MeleeUIMinimap {
 		if (altIcon != null) {
 			minimapIcon = altIcon;
 			dimensions = 21;
-		} else if (simUnit.getGoldMineData() != null) {
+		} else if (landmarkKind == RenderUnit.LANDMARK_GOLD_MINE) {
 			minimapIcon = this.specialIcons[0];
 			dimensions = 21;
-		} else if (simUnit.getOverlayedGoldMineData() != null) {
-			final CAbilityOverlayedMine overlayedGoldMineData = simUnit.getOverlayedGoldMineData();
-			if (overlayedGoldMineData instanceof CAbilityEntangledMine) {
-				minimapIcon = this.specialIcons[3];
-			} else {
-				minimapIcon = this.specialIcons[4];
-			}
+		} else if ((landmarkKind == RenderUnit.LANDMARK_ENTANGLED_MINE)
+				|| (landmarkKind == RenderUnit.LANDMARK_OTHER_OVERLAY_MINE)) {
+			minimapIcon = this.specialIcons[landmarkKind == RenderUnit.LANDMARK_ENTANGLED_MINE ? 3 : 4];
 			dimensions = 21;
-		} else if (simUnit.getUnitType().isNeutralBuildingShowMinimapIcon()) {
+		} else if (landmarkKind == RenderUnit.LANDMARK_NEUTRAL_BUILDING) {
 			minimapIcon = this.specialIcons[1];
 			dimensions = 21;
 		} else if (simUnit.isHero()) {
@@ -284,10 +278,9 @@ public class MeleeUIMinimap {
 				dimensions, red, green, blue, alpha);
 	}
 
-	private static boolean isExploredLandmark(final CSimulation game, final CUnit unit, final PathingGrid pathingGrid,
-			final CPlayerFogOfWar fogOfWar, final boolean maskedAreasPartiallyVisible) {
-		return ((unit.getGoldMineData() != null) || (unit.getOverlayedGoldMineData() != null)
-				|| unit.getUnitType().isNeutralBuildingShowMinimapIcon())
+	private static boolean isExploredLandmark(final CSimulation game, final CUnit unit, final int landmarkKind,
+			final PathingGrid pathingGrid, final CPlayerFogOfWar fogOfWar, final boolean maskedAreasPartiallyVisible) {
+		return (landmarkKind != RenderUnit.LANDMARK_NONE)
 				&& (maskedAreasPartiallyVisible || !CFogState.MASKED.equals(fogOfWar.getFogState(game, pathingGrid.getFogOfWarIndexX(unit.getX()),
 						pathingGrid.getFogOfWarIndexY(unit.getY()))));
 	}

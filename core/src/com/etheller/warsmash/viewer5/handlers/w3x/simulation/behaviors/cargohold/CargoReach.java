@@ -57,7 +57,7 @@ public final class CargoReach {
 	/**
 	 * Where a unit boarding a transport that cannot stand on its ground heads: the point it can reach, within the
 	 * meeting search radius, that has water (or ground) the transport can reach within range and lies nearest to
-	 * the transport. The unit's own position when there is none.
+	 * the transport. The unit's own position when there is none, or when the transport can sail to it there.
 	 */
 	public static float[] nearestShore(final CSimulation game, final CUnit unit, final CUnit transport,
 			final float range) {
@@ -74,6 +74,13 @@ public final class CargoReach {
 		}
 		final int width = grid.getWidth();
 		final int height = grid.getHeight();
+		final int unitCellX = grid.getCellX(unit.getX());
+		final int unitCellY = grid.getCellY(unit.getY());
+		if ((unitCellX >= 0) && (unitCellY >= 0) && (unitCellX < width) && (unitCellY < height)
+				&& transportReach[(unitCellY * width) + unitCellX]) {
+			// Standing where the transport can sail (shallows), the unit waits for it there.
+			return new float[] { unit.getX(), unit.getY() };
+		}
 		final int rangeCells = (int) Math.ceil(range / CELL_SIZE);
 		final PointTest nearReach = (x, y) -> {
 			final int cellX = grid.getCellX(x);

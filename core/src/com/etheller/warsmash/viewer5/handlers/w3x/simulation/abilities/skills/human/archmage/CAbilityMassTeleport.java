@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.etheller.warsmash.units.GameObject;
 import com.etheller.warsmash.util.War3ID;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.CAbilityTargetSpellBase;
@@ -55,6 +56,19 @@ public class CAbilityMassTeleport extends CAbilityTargetSpellBase {
 		targetsAllowed.add(CTargetType.NEUTRAL);
 		targetsAllowed.add(CTargetType.ENEMIES);
 		setTargetsAllowed(targetsAllowed);
+	}
+
+	/**
+	 * Measured (1.29): the item version does not take enemies.
+	 */
+	@Override
+	public void setItemAbility(final CItem item, final int slot) {
+		super.setItemAbility(item, slot);
+		if (item != null) {
+			final EnumSet<CTargetType> targetsAllowed = EnumSet.copyOf(getTargetsAllowed());
+			targetsAllowed.remove(CTargetType.ENEMIES);
+			setTargetsAllowed(targetsAllowed);
+		}
 	}
 
 	@Override

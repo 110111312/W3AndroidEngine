@@ -26,7 +26,7 @@ public final class CIllusions {
 		final CAbilityHero originalHero = original.getHeroData();
 		final CAbilityHero imageHero = image.getHeroData();
 		if ((originalHero != null) && (imageHero != null)) {
-			imageHero.setHeroLevel(simulation, image, originalHero.getHeroLevel(), false);
+			imageHero.copyHeroLevel(simulation, image, originalHero);
 			imageHero.setStrengthBase(simulation, image, originalHero.getStrength().getBase());
 			imageHero.setAgilityBase(simulation, image, originalHero.getAgility().getBase());
 			imageHero.setIntelligenceBase(simulation, image, originalHero.getIntelligence().getBase());

@@ -21,11 +21,20 @@ public class ABActionChangeAttackActionToMovement implements ABAction {
 		if (unit != null) {
 			targetUnit = this.unit.callback(game, caster, localStore, castId);
 		}
-		if (targetUnit.getCurrentBehavior().getBehaviorCategory() == CBehaviorCategory.ATTACK) {
+		// Measured on 1.29: an invisible unit drops a fight it took up by itself and walks back to its spot; only an
+		// attack it was ordered to make is carried on as a walk to the target.
+		if (targetUnit.isFightingByItself() && ((targetUnit.getCurrentBehavior().getBehaviorCategory() == CBehaviorCategory.ATTACK)
+				|| (targetUnit.getCurrentBehavior().getBehaviorCategory() == CBehaviorCategory.MOVEMENT
+						&& (targetUnit.getCurrentBehavior().visit(BehaviorNextBehaviorVisitor.INSTANCE) != null)
+						&& (targetUnit.getCurrentBehavior().visit(BehaviorNextBehaviorVisitor.INSTANCE)
+								.getBehaviorCategory() == CBehaviorCategory.ATTACK)))) {
+			targetUnit.performDefaultBehavior(game);
+		}
+		else if (targetUnit.getCurrentBehavior().getBehaviorCategory() == CBehaviorCategory.ATTACK) {
 			targetUnit.beginBehavior(game,
 					targetUnit.getMoveBehavior().reset(targetUnit.getMoveBehavior().getHighlightOrderId(),
 							targetUnit.getCurrentBehavior().visit(BehaviorTargetVisitor.INSTANCE)), true);
-		} else 
+		} else
 			if (targetUnit.getCurrentBehavior().getBehaviorCategory() == CBehaviorCategory.MOVEMENT) {
 				CRangedBehavior next = targetUnit.getCurrentBehavior().visit(BehaviorNextBehaviorVisitor.INSTANCE);
 				if (next != null && next.getBehaviorCategory() == CBehaviorCategory.ATTACK) {

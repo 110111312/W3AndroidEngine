@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Intersector;
+import com.badlogic.gdx.math.collision.Ray;
 import com.badlogic.gdx.math.Vector3;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.util.RenderMathUtils;
@@ -397,7 +398,9 @@ final class MapViewerSelection {
 		for (final RenderWidget unit : viewer.widgets) {
 			final MdxComplexInstance instance = unit.getInstance();
 			if (instance.shown() && instance.isVisible(viewer.worldScene.camera)
-					&& instance.intersectRayWithCollisionSimple(War3MapViewer.gdxRayHeap, War3MapViewer.intersectionHeap)) {
+					&& (instance.intersectRayWithCollisionSimple(War3MapViewer.gdxRayHeap, War3MapViewer.intersectionHeap)
+							|| (viewer.isPackageInterface() && intersectRayWithUnitPickVolume(War3MapViewer.gdxRayHeap,
+									unit, War3MapViewer.intersectionHeap)))) {
 				if (filter.call(unit.getSimulationWidget())) {
 					final float groundHeight = viewer.terrain.getGroundHeight(War3MapViewer.intersectionHeap.x, War3MapViewer.intersectionHeap.y);
 					if (War3MapViewer.intersectionHeap.z > groundHeight) {
@@ -423,6 +426,74 @@ final class MapViewerSelection {
 			entity = pickConstructionByFootprint(viewer, x, y, filter);
 		}
 		return entity;
+	}
+
+	/**
+	 * The ground a click on a unit covers, in units of its selection circle: the Classic models' collision spheres
+	 * reach out to about this much of the circle size, and up to this much of it in height (measured over the Classic
+	 * unit models). The graphics packages' models have only small boxes on single bones, which a click misses.
+	 */
+	private static final float PICK_RADIUS_PER_SELECTION_SIZE = 0.65f;
+	private static final float PICK_HEIGHT_PER_SELECTION_SIZE = 1.4f;
+
+	/**
+	 * Intersects a ray with the volume a click on a unit picks, a cylinder on the unit sized by its selection circle,
+	 * so the models of every graphics set are as easy to click as the Classic ones. Buildings are picked on their
+	 * meshes and trees on their own models, so only units have it. The hit is the middle of the ray's way through it.
+	 */
+	static boolean intersectRayWithUnitPickVolume(final Ray ray, final RenderWidget widget, final Vector3 out) {
+		if (!(widget instanceof RenderUnit) || widget.isIntersectedOnMeshAlways() || (widget.getSelectionScale() <= 0)) {
+			return false;
+		}
+		final float radius = widget.getSelectionScale() * PICK_RADIUS_PER_SELECTION_SIZE;
+		final float height = widget.getSelectionScale() * PICK_HEIGHT_PER_SELECTION_SIZE;
+		return intersectRayWithCylinder(ray, widget.getX(), widget.getY(), widget.getZ(), radius, height, out);
+	}
+
+	/** Intersects a ray with an upright cylinder; out gets the middle of the ray's way through it. */
+	static boolean intersectRayWithCylinder(final Ray ray, final float centerX, final float centerY,
+			final float bottomZ, final float radius, final float height, final Vector3 out) {
+		final float ox = ray.origin.x - centerX;
+		final float oy = ray.origin.y - centerY;
+		final float dx = ray.direction.x;
+		final float dy = ray.direction.y;
+		float tIn = 0;
+		float tOut = Float.MAX_VALUE;
+		final float a = (dx * dx) + (dy * dy);
+		final float c = (ox * ox) + (oy * oy) - (radius * radius);
+		if (a < 1e-9f) {
+			if (c > 0) {
+				return false;
+			}
+		}
+		else {
+			final float b = (ox * dx) + (oy * dy);
+			final float discriminant = (b * b) - (a * c);
+			if (discriminant < 0) {
+				return false;
+			}
+			final float root = (float) Math.sqrt(discriminant);
+			tIn = Math.max(tIn, (-b - root) / a);
+			tOut = Math.min(tOut, (-b + root) / a);
+		}
+		final float oz = ray.origin.z - bottomZ;
+		final float dz = ray.direction.z;
+		if (Math.abs(dz) < 1e-9f) {
+			if ((oz < 0) || (oz > height)) {
+				return false;
+			}
+		}
+		else {
+			final float t0 = -oz / dz;
+			final float t1 = (height - oz) / dz;
+			tIn = Math.max(tIn, Math.min(t0, t1));
+			tOut = Math.min(tOut, Math.max(t0, t1));
+		}
+		if (tIn > tOut) {
+			return false;
+		}
+		out.set(ray.direction).scl((tIn + tOut) / 2).add(ray.origin);
+		return true;
 	}
 
 	/**
@@ -490,5 +561,6 @@ final class MapViewerSelection {
 			}
 		}
 		return best;
-	}
+	}
+
 }

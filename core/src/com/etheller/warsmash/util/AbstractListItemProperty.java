@@ -21,6 +21,11 @@ public abstract class AbstractListItemProperty {
         return this.dataType;
     }
 
+    /** Whether a click can choose the item; a heading of the list cannot be chosen. */
+    public boolean isSelectable() {
+        return true;
+    }
+
     public int compare(AbstractListItemProperty itemProperty) {
         return 0;
     }

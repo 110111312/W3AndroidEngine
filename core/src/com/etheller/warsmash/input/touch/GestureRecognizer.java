@@ -25,6 +25,8 @@ public final class GestureRecognizer {
 	private int primaryId;
 	private boolean pen;
 	private boolean secondary;
+	private boolean rightClick;
+	private volatile PenButton penButton;
 	private float downX;
 	private float downY;
 	private long downTime;
@@ -49,6 +51,20 @@ public final class GestureRecognizer {
 	public GestureRecognizer(final TouchSettings settings, final GestureListener listener) {
 		this.settings = settings;
 		this.listener = listener;
+		this.penButton = settings.penButton;
+	}
+
+	public void setPenButton(final PenButton penButton) {
+		this.penButton = penButton;
+	}
+
+	private boolean penDragButton(final PointerEvent event) {
+		return this.pen && (this.penButton == PenButton.DRAG) && ((event.buttons & PointerEvent.PEN_BUTTON_MASK) != 0);
+	}
+
+	private boolean penRightButton(final PointerEvent event) {
+		return this.pen && (this.penButton == PenButton.RIGHT_CLICK)
+				&& ((event.buttons & PointerEvent.PEN_BUTTON_MASK) != 0);
 	}
 
 	public void onEvent(final PointerEvent event) {
@@ -75,8 +91,7 @@ public final class GestureRecognizer {
 			twoFingerMoved();
 		}
 		this.twoFingerDirty = false;
-		if ((this.state == State.PENDING) && !this.pen
-				&& ((nowMillis - this.downTime) >= this.settings.longPressMs)) {
+		if ((this.state == State.PENDING) && ((nowMillis - this.downTime) >= this.settings.longPressMs)) {
 			this.state = State.LONG;
 			final float[] position = this.pointers.get(this.primaryId);
 			this.listener.longPress(position[0], position[1]);
@@ -90,11 +105,13 @@ public final class GestureRecognizer {
 			this.pointers.put(event.pointerId, new float[] { event.x, event.y });
 			this.primaryId = event.pointerId;
 			this.pen = (event.tool == PointerEvent.Tool.STYLUS) || (event.tool == PointerEvent.Tool.ERASER);
-			this.secondary = this.pen && ((event.buttons & PointerEvent.PEN_BUTTON_MASK) != 0);
+			this.secondary = penDragButton(event);
+			this.rightClick = penRightButton(event);
 			this.downX = event.x;
 			this.downY = event.y;
 			this.downTime = event.timeMillis;
 			this.state = State.PENDING;
+			this.listener.pressed(event.x, event.y, event.timeMillis);
 			this.listener.pointerAt(event.x, event.y);
 			break;
 		case PENDING:
@@ -144,10 +161,13 @@ public final class GestureRecognizer {
 		position[1] = event.y;
 		switch (this.state) {
 		case PENDING: {
-			if (this.pen && ((event.buttons & PointerEvent.PEN_BUTTON_MASK) != 0)) {
+			final float slop = this.pen ? this.settings.penSlopPx : this.settings.tapSlopPx;
+			if (penDragButton(event)) {
 				this.secondary = true;
 			}
-			final float slop = this.pen ? this.settings.penSlopPx : this.settings.tapSlopPx;
+			if (penRightButton(event)) {
+				this.rightClick = true;
+			}
 			if (this.secondary && (Math.hypot(event.x - this.downX, event.y - this.downY) > slop)) {
 				this.state = State.PAN_REMAINING;
 				this.remainingOffsetX = 0;
@@ -241,7 +261,7 @@ public final class GestureRecognizer {
 		switch (this.state) {
 		case PENDING:
 			if (event.pointerId == this.primaryId) {
-				if (this.secondary) {
+				if (this.rightClick || penRightButton(event)) {
 					this.listener.secondaryTap(event.x, event.y);
 				}
 				else {

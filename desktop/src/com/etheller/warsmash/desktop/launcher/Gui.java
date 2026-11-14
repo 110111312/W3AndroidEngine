@@ -735,7 +735,8 @@ final class Gui {
 		drawButton(x, y, w, h, held ? TONE_DOWN : tone);
 		if ((state & HOVER) != 0) {
 			additive(true);
-			drawButton(x, y, w, h, held ? TONE_DOWN : tone, 0.22f);
+			// The pressed look and the colored buttons are dark: their light has to be stronger to show.
+			drawButton(x, y, w, h, held ? TONE_DOWN : tone, tone == TONE_NORMAL ? 0.22f : 0.5f);
 			additive(false);
 		}
 		final int textColour = off ? SkinArt.Palette.DISABLED
@@ -936,7 +937,11 @@ final class Gui {
 			fill(x + ((w - sw) / 2) - (arrow / 2), y + ((h - sh) / 2), sw, sh, swatches[selected]);
 		}
 		else if ((selected >= 0) && (selected < items.length)) {
-			final boolean cut = text(items[selected], x + rim + 4, y, w - (2 * rim) - (arrow * 2.2f), h, size,
+			// A longer item shrinks to the button rather than being cut (Computer (Insane) in a narrow slot).
+			final float room = w - (2 * rim) - (arrow * 2.2f);
+			final float natural = width(items[selected], size);
+			final float fitted = natural > room && room > 0 ? Math.max(size * 0.65f, size * room / natural) : size;
+			final boolean cut = text(items[selected], x + rim + 4, y, room, h, fitted,
 					!enabled ? SkinArt.Palette.DISABLED : this.art.reforged ? this.palette.text : this.palette.gold,
 					Align.left);
 			if (cut && ((state & HOVER) != 0)) {

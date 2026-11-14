@@ -56,6 +56,8 @@ public class MdxComplexInstance extends ModelInstance {
 	public int sequence = -1;
 	public SequenceLoopMode sequenceLoopMode = SequenceLoopMode.NEVER_LOOP;
 	public boolean sequenceEnded = false;
+	/** Called when the sequence reaches its end, so an owner that only reacts to the end need not poll every frame. */
+	public Runnable sequenceEndObserver;
 	public float[] vertexColor = { 1, 1, 1, 1 };
 	// Particles do not spawn when the sequence is -1, or when the sequence finished
 	// and it's not repeating
@@ -276,11 +278,13 @@ public class MdxComplexInstance extends ModelInstance {
 		node.name = genericObject.name;
 		node.pivot.set(genericObject.pivot);
 
-		if (genericObject.parentId == -1) {
+		final int parentIndex = genericObject.parentId == -1 ? -1
+				: ((MdxModel) this.model).nodeIndexOf(genericObject.parentId);
+		if (parentIndex == -1) {
 			node.parent = this;
 		}
 		else {
-			node.parent = nodes[genericObject.parentId];
+			node.parent = nodes[parentIndex];
 		}
 
 		node.dontInheritTranslation = genericObject.dontInheritTranslation > 0;
@@ -692,6 +696,7 @@ public class MdxComplexInstance extends ModelInstance {
 						this.vertexColor[3] - (integerFrameTime / (float) (interval[1] - interval[0])));
 			}
 
+			final boolean wasEnded = this.sequenceEnded;
 			final long animEnd = interval[1] - 1;
 			if (this.floatingFrame >= animEnd) {
 				boolean sequenceRestarted = false;
@@ -725,6 +730,9 @@ public class MdxComplexInstance extends ModelInstance {
 				}
 
 				this.sequenceEnded = !sequenceRestarted;
+				if (this.sequenceEnded && !wasEnded && (this.sequenceEndObserver != null)) {
+					this.sequenceEndObserver.run();
+				}
 			}
 			else {
 				this.sequenceEnded = false;

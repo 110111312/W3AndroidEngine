@@ -23,6 +23,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
 import com.badlogic.gdx.utils.TimeUtils;
 import com.etheller.warsmash.datasources.DataSource;
+import com.etheller.warsmash.launcher.lan.LanText;
 import com.etheller.warsmash.parsers.fdf.FontGeneratorHolder;
 import com.etheller.warsmash.util.Log;
 
@@ -149,13 +150,23 @@ final class ReforgedLoadingScreen {
 		/** The index in {@link #RACE_ICONS}. */
 		private final int race;
 		private final boolean local;
+		/** The map slot the player has, for a LAN game's load states; -1 when unknown. */
+		private final int slot;
+		/** How far a LAN player has loaded, 0 to 100; -1 for a game that is not a LAN game. */
+		private volatile int loadState = -1;
 
 		Player(final String name, final int color, final String raceName, final int race, final boolean local) {
+			this(name, color, raceName, race, local, -1);
+		}
+
+		Player(final String name, final int color, final String raceName, final int race, final boolean local,
+				final int slot) {
 			this.name = name;
 			this.color = color;
 			this.raceName = raceName;
 			this.race = race;
 			this.local = local;
+			this.slot = slot;
 		}
 	}
 
@@ -454,6 +465,20 @@ final class ReforgedLoadingScreen {
 		this.layoutStale = true;
 	}
 
+	/** The LAN layer: how far the player of a slot has loaded; its band stays grey until the player is done. */
+	void setLoadState(final int slot, final int percent) {
+		if (this.teams == null) {
+			return;
+		}
+		for (final Team team : this.teams) {
+			for (final Player player : team.players) {
+				if (player.slot == slot) {
+					player.loadState = percent;
+				}
+			}
+		}
+	}
+
 	/** A new preview image of the map, after the caller replaced the one it gave. */
 	void setPreview(final Texture preview) {
 		this.preview = preview;
@@ -557,7 +582,69 @@ final class ReforgedLoadingScreen {
 		for (final BitmapFontCache cache : this.teamCaches) {
 			cache.draw(batch);
 		}
+		drawLoadStates(batch, height);
 		batch.setColor(Color.WHITE);
+	}
+
+	/** A LAN game's load state of each player, in the empty left half of the race line. */
+	private void drawLoadStates(final SpriteBatch batch, final int height) {
+		BitmapFont font = null;
+		for (int i = 0; i < this.playerRows.size(); i++) {
+			final Player player = this.rowPlayers.get(i);
+			if (player.loadState < 0) {
+				continue;
+			}
+			final float[] row = this.playerRows.get(i);
+			final float z = row[2];
+			if (font == null) {
+				font = font(16 * z);
+			}
+			final Color color = player.loadState >= 100 ? playerColor(player.color) : TEAM_LIGHT;
+			if (player.loadState >= 100) {
+				// The game's fonts have no check mark, so it is drawn.
+				drawTick(batch, row[0] + (106 * z), (row[1] - (45.4f * z)) - (15 * z), 15 * z, color);
+				continue;
+			}
+			final String text = LanText.loadState(player.loadState);
+			font.setColor(0, 0, 0, TEAM_ALPHA);
+			font.draw(batch, text, row[0] + (106 * z) + z, (row[1] - (45.4f * z)) - z);
+			font.setColor(color.r, color.g, color.b, TEAM_ALPHA);
+			font.draw(batch, text, row[0] + (106 * z), row[1] - (45.4f * z));
+		}
+		if (font != null) {
+			font.setColor(Color.WHITE);
+		}
+	}
+
+	/** A check mark of two strokes in a box of this size, its lower left corner at x, y; with a shadow below. */
+	private void drawTick(final SpriteBatch batch, final float x, final float y, final float size, final Color color) {
+		final float width = Math.max(2, size * 0.2f);
+		for (int pass = 0; pass < 2; pass++) {
+			final float ox = pass == 0 ? size * 0.06f : 0;
+			final float oy = pass == 0 ? -size * 0.06f : 0;
+			if (pass == 0) {
+				batch.setColor(0, 0, 0, TEAM_ALPHA);
+			}
+			else {
+				batch.setColor(color.r, color.g, color.b, TEAM_ALPHA);
+			}
+			final float kneeX = x + (size * 0.38f) + ox;
+			final float kneeY = y + (size * 0.1f) + oy;
+			stroke(batch, x + (size * 0.05f) + ox, y + (size * 0.5f) + oy, kneeX, kneeY, width);
+			stroke(batch, kneeX, kneeY, x + (size * 0.98f) + ox, y + (size * 0.95f) + oy, width);
+		}
+		batch.setColor(Color.WHITE);
+	}
+
+	/** A line of a width between two points, as a turned rectangle of the white pixel. */
+	private void stroke(final SpriteBatch batch, final float x1, final float y1, final float x2, final float y2,
+			final float width) {
+		final float dx = x2 - x1;
+		final float dy = y2 - y1;
+		final float length = (float) Math.sqrt((dx * dx) + (dy * dy));
+		final float degrees = (float) Math.toDegrees(Math.atan2(dy, dx));
+		batch.draw(this.white, x1, y1 - (width / 2), 0, width / 2, length + (width * 0.3f), width, 1, 1, degrees, 0, 0,
+				1, 1, false, false);
 	}
 
 	/**
@@ -586,8 +673,9 @@ final class ReforgedLoadingScreen {
 		final float grey = 30 / 255f;
 		gradient(batch, bandLeft, bandBottom, bandMiddle, bandTop, new Color(0, 0, 0, TEAM_ALPHA),
 				new Color(grey, grey, grey, 1));
+		final boolean loading = (player.loadState >= 0) && (player.loadState < 100);
 		gradient(batch, bandMiddle, bandBottom, bandRight, bandTop, new Color(grey, grey, grey, TEAM_ALPHA),
-				new Color(color.r, color.g, color.b, 0.8f));
+				loading ? new Color(grey * 2, grey * 2, grey * 2, 0.8f) : new Color(color.r, color.g, color.b, 0.8f));
 		batch.setColor(1, 1, 1, TEAM_ALPHA);
 
 		final Texture portrait = (player.local && (this.localPortrait != null)) ? this.localPortrait

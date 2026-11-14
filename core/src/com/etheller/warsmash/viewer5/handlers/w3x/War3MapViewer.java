@@ -235,7 +235,7 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 	public boolean unitsAndItemsLoaded;
 	public MappedData unitsData = new MappedData();
 	public MappedData unitMetaData = new MappedData();
-	public List<RenderWidget> widgets = new ArrayList<>();
+	public final WidgetList widgets = new WidgetList();
 	public List<RenderUnit> units = new ArrayList<>();
 	final List<RenderFogGhost> fogGhosts = new ArrayList<>();
 	/** Creeps the map placed as the game began, removed ones included: x, y, level; null once taken. */
@@ -1025,6 +1025,90 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 		REPLAY;
 	}
 
+	/**
+	 * Every widget; destructables are listed apart for the animation update, which only visits the ones that can
+	 * change (see {@link RenderDestructable#wake()}).
+	 */
+	public static final class WidgetList extends ArrayList<RenderWidget> {
+		private static final int DESTRUCTABLE_RECHECK_FRAMES = 64;
+
+		final List<RenderWidget> animated = new ArrayList<>();
+		final List<RenderDestructable> destructables = new ArrayList<>();
+		public final List<RenderDestructable> active = new ArrayList<>();
+		private int recheckCursor;
+
+		@Override
+		public boolean add(final RenderWidget widget) {
+			if (!super.add(widget)) {
+				return false;
+			}
+			if (widget instanceof RenderDestructable) {
+				this.destructables.add((RenderDestructable) widget);
+				((RenderDestructable) widget).wake();
+			}
+			else {
+				this.animated.add(widget);
+			}
+			return true;
+		}
+
+		@Override
+		public boolean remove(final Object widget) {
+			if (!super.remove(widget)) {
+				return false;
+			}
+			if (widget instanceof RenderDestructable) {
+				this.destructables.remove(widget);
+				this.active.remove(widget);
+				((RenderDestructable) widget).sleep();
+			}
+			else {
+				this.animated.remove(widget);
+			}
+			return true;
+		}
+
+		public void wakeAllDestructables() {
+			for (int i = 0, n = this.destructables.size(); i < n; i++) {
+				this.destructables.get(i).wake();
+			}
+		}
+
+		void recheckSome() {
+			final int n = this.destructables.size();
+			if (n == 0) {
+				return;
+			}
+			final int slice = (n + DESTRUCTABLE_RECHECK_FRAMES - 1) / DESTRUCTABLE_RECHECK_FRAMES;
+			for (int i = 0; i < slice; i++) {
+				if (this.recheckCursor >= n) {
+					this.recheckCursor = 0;
+				}
+				final RenderDestructable destructable = this.destructables.get(this.recheckCursor++);
+				if (destructable.hasPendingChange()) {
+					destructable.wake();
+				}
+			}
+		}
+	}
+
+	private void updateDestructableAnimations() {
+		// Changes the game reports wake a destructable at once; this only catches a state written without a report
+		// (a loaded game).
+		this.widgets.recheckSome();
+		final List<RenderDestructable> active = this.widgets.active;
+		for (int i = active.size() - 1; i >= 0; i--) {
+			final RenderDestructable destructable = active.get(i);
+			destructable.updateAnimations(this);
+			if (destructable.canSleep()) {
+				destructable.sleep();
+				final int last = active.size() - 1;
+				active.set(i, active.get(last));
+				active.remove(last);
+			}
+		}
+	}
+
 	@Override
 	public void update() {
 		PerfStats.frameStart();
@@ -1049,9 +1133,10 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 					textTagIterator.remove();
 				}
 			}
-			for (final RenderWidget unit : this.widgets) {
+			for (final RenderWidget unit : this.widgets.animated) {
 				unit.updateAnimations(this);
 			}
+			updateDestructableAnimations();
 			for (int i = this.fogGhosts.size() - 1; i >= 0; i--) {
 				if (this.fogGhosts.get(i).update(this)) {
 					this.fogGhosts.remove(i);
@@ -1094,7 +1179,9 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 				this.updateTime = 0;
 			}
 			int stepsThisFrame = 0;
-			while ((this.updateTime >= WarsmashConstants.SIMULATION_STEP_TIME) && !this.gameEnded) {
+			// A pause, from a command or the map's script, stops the very step it comes at, whatever the frame time.
+			while ((this.updateTime >= WarsmashConstants.SIMULATION_STEP_TIME) && !this.gameEnded
+					&& !isGamePaused()) {
 				if (stepsThisFrame >= (MAX_STEPS_PER_FRAME * this.timeScale * this.replaySpeed)) {
 					// A slow device would otherwise spend the next frame catching up and fall further behind each
 					// time; like the original, the game runs slower instead.
@@ -1102,7 +1189,11 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 					break;
 				}
 				stepsThisFrame++;
-				if (this.gameTurnManager.getLatestCompletedTurn() >= this.simulation.getGameTurnTick()) {
+				final int latestTurn = this.gameTurnManager.getLatestCompletedTurn();
+				if (isGamePaused()) {
+					break;
+				}
+				if (latestTurn >= this.simulation.getGameTurnTick()) {
 					this.updateTime -= WarsmashConstants.SIMULATION_STEP_TIME;
 					this.simulation.update();
 					PerfStats.simulationStep();
@@ -1119,6 +1210,9 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 			PerfStats.end(PerfStats.Section.SIMULATION);
 			if (paused) {
 				MapViewerSaves.runPendingSaveRequests(this);
+			}
+			if (isGamePaused()) {
+				this.gameTurnManager.whilePaused();
 			}
 			if (this.dncTerrain != null) {
 				this.dncTerrain.setFrameByRatio(
@@ -1438,6 +1532,8 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 	int blightSourceCount;
 
 	RenderUnitTypeData renderUnitTypeData;
+	/** The object data the render unit types above were made for. */
+	Warcraft3MapRuntimeObjectData renderUnitTypeDataObjects;
 	RenderItemTypeData renderItemTypeData;
 
 	public void standOnRepeat(final MdxComplexInstance instance) {
@@ -1794,7 +1890,17 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 	}
 
 	public boolean isNetworkGame() {
-		return this.gameTurnManager instanceof com.etheller.warsmash.networking.WarsmashClient;
+		return (this.gameTurnManager instanceof com.etheller.warsmash.networking.WarsmashClient)
+				|| (this.gameTurnManager instanceof com.etheller.warsmash.lan.LockstepTurnManager);
+	}
+
+	/** Whether the game is a LAN game, whose turns come from a host. */
+	public boolean isLanGame() {
+		return this.gameTurnManager instanceof com.etheller.warsmash.lan.LockstepTurnManager;
+	}
+
+	public GameTurnManager getGameTurnManager() {
+		return this.gameTurnManager;
 	}
 
 	public void setGameTurnManager(final GameTurnManager gameTurnManager) {
@@ -2174,6 +2280,10 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 				applyTilesetDayNightModels(this.tileset);
 			});
 
+			this.loadMapTasks.add(() -> {
+				MapViewerPrewarm.queue(War3MapViewer.this, w3iFile, this);
+			});
+
 			this.startingTaskCount = this.loadMapTasks.size();
 		}
 
@@ -2185,6 +2295,7 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 
 		public void addLoadTask(final LoadMapTask task) {
 			this.loadMapTasks.add(task);
+			this.startingTaskCount++;
 		}
 
 		public float getCompletionRatio() {

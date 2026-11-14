@@ -30,12 +30,13 @@ final class AIConstruction {
 
 	/**
 	 * @param type null for any worker that can build
+	 * @param byDistance whether the nearest worker wins, or the first in the order units are claimed in
 	 */
 	static CUnit findBuilder(final AIController ai, final CUnitType type, final float x, final float y,
-			final int preferredTown) {
+			final int preferredTown, final boolean byDistance) {
 		CUnit best = null;
 		float bestScore = Float.MAX_VALUE;
-		for (final CUnit unit : ai.simulation.getUnits()) {
+		for (final CUnit unit : AIUnits.inClaimOrder(ai.simulation)) {
 			if (!ai.isOurs(unit) || unit.isHidden() || ai.isBuildJobWorker(unit) || AIUnits.isBuilding(unit)
 					|| ai.attackCaptain.getMembers().contains(unit)) {
 				continue;
@@ -44,7 +45,7 @@ final class AIConstruction {
 			if ((build == null) || ((type != null) && !build.getStructuresBuilt().contains(type.getTypeId()))) {
 				continue;
 			}
-			float score = distance(x, y, unit.getX(), unit.getY());
+			float score = byDistance ? distance(x, y, unit.getX(), unit.getY()) : 0;
 			final int[] job = ai.harvestJobs.get(unit);
 			if (job == null) {
 				score -= 4000;
@@ -84,7 +85,7 @@ final class AIConstruction {
 			if (town == null) {
 				break;
 			}
-			final CUnit builder = findBuilder(ai, type, town.getCenterX(), town.getCenterY(), town.getId());
+			final CUnit builder = findBuilder(ai, type, town.getCenterX(), town.getCenterY(), town.getId(), false);
 			if (builder == null) {
 				break;
 			}

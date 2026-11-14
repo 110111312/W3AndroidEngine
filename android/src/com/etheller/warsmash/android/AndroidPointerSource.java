@@ -3,12 +3,14 @@ package com.etheller.warsmash.android;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 
+import com.etheller.warsmash.input.touch.ControlScheme;
 import com.etheller.warsmash.input.touch.PointerEvent;
 import com.etheller.warsmash.input.touch.TouchInputRouter;
 
 /**
  * Turns finger and pen motion events into pointer events for the touch router. Mouse events are left to libGDX, so
- * a mouse or touchpad keeps its desktop behavior.
+ * a mouse or touchpad keeps its desktop behavior, and under the mouse and keyboard scheme so do fingers: only the pen
+ * is taken then.
  */
 final class AndroidPointerSource {
 	private final TouchInputRouter router;
@@ -59,7 +61,12 @@ final class AndroidPointerSource {
 	 * @return whether the event was taken; events that are not taken go on to libGDX.
 	 */
 	boolean onTouchEvent(final MotionEvent event) {
-		if (event.getToolType(event.getActionIndex()) == MotionEvent.TOOL_TYPE_MOUSE) {
+		final int tool = event.getToolType(event.getActionIndex());
+		if (tool == MotionEvent.TOOL_TYPE_MOUSE) {
+			TouchInputRouter.mouseUsed();
+			return false;
+		}
+		if ((tool == MotionEvent.TOOL_TYPE_FINGER) && (this.router.scheme() != ControlScheme.TOUCH)) {
 			return false;
 		}
 		final int masked = event.getActionMasked();
@@ -82,6 +89,10 @@ final class AndroidPointerSource {
 		case MotionEvent.ACTION_CANCEL:
 			post(event, event.getActionIndex(), PointerEvent.Action.CANCEL);
 			break;
+		case MotionEvent.ACTION_BUTTON_PRESS:
+		case MotionEvent.ACTION_BUTTON_RELEASE:
+			post(event, event.getActionIndex(), PointerEvent.Action.BUTTONS);
+			break;
 		default:
 			return false;
 		}
@@ -89,8 +100,11 @@ final class AndroidPointerSource {
 	}
 
 	boolean onGenericMotionEvent(final MotionEvent event) {
-		if (((event.getSource() & InputDevice.SOURCE_CLASS_POINTER) == 0)
-				|| (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE)) {
+		if ((event.getSource() & InputDevice.SOURCE_CLASS_POINTER) == 0) {
+			return false;
+		}
+		if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) {
+			TouchInputRouter.mouseUsed();
 			return false;
 		}
 		switch (event.getActionMasked()) {
@@ -100,6 +114,10 @@ final class AndroidPointerSource {
 			return true;
 		case MotionEvent.ACTION_HOVER_EXIT:
 			post(event, 0, PointerEvent.Action.HOVER_EXIT);
+			return true;
+		case MotionEvent.ACTION_BUTTON_PRESS:
+		case MotionEvent.ACTION_BUTTON_RELEASE:
+			post(event, 0, PointerEvent.Action.BUTTONS);
 			return true;
 		default:
 			return false;

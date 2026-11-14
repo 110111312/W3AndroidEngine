@@ -7,6 +7,7 @@ final class CUnitAggroState {
 	CUnit spellMissileSource;
 	boolean pendingAttackBackWasHit;
 	boolean pendingAttackBackHelp;
+	boolean pendingAttackBackFromArea;
 	int fleeMoveResetCount = -1;
 	CUnit.CreepCamp creepCamp;
 	boolean guarding;
@@ -14,13 +15,13 @@ final class CUnitAggroState {
 	float guardY;
 	int lastCombatTick;
 	int lastHurtTick = Integer.MIN_VALUE / 2;
-	CUnit heaviestHitBy;
-	float heaviestHitDamage;
-	int heaviestHitTick = Integer.MIN_VALUE / 2;
+	CUnit hitCastSource;
+	int hitCastTick = Integer.MIN_VALUE / 2;
 	int guardReturn = CUnit.GUARD_RETURN_NONE;
 	boolean guardEngaged;
 	int guardAwayTick = -1;
 	boolean wanderer;
 	boolean postSet;
 	boolean postFight;
+	boolean postFightFromArea;
 }

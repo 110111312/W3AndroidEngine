@@ -136,7 +136,7 @@ public class CAbilityClusterRockets extends CAbilityPointTargetSpellBase {
 								public boolean call(final CUnit possibleTarget) {
 									if (possibleTarget.canReach(target, CAbilityClusterRockets.this.areaOfEffect)
 											&& possibleTarget.canBeAreaTargetedBy(simulation, unit,
-													CAreaTargetVisibility.NOT_INVISIBLE, getTargetsAllowed(),
+													CAreaTargetVisibility.ANY, getTargetsAllowed(),
 													BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())) {
 										damageTargets.add(possibleTarget);
 									}

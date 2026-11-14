@@ -9,7 +9,6 @@ import static com.etheller.warsmash.launcher.CustomGame.SLOT_TYPES;
 import static com.etheller.warsmash.launcher.CustomGame.SLOT_YOU;
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_LAUNCH_RACE;
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_MAP;
-import static com.etheller.warsmash.launcher.LauncherKeys.KEY_MAP_FOLDER;
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_OPTIONS;
 
 import java.util.ArrayList;
@@ -26,6 +25,8 @@ import android.widget.TextView;
 import com.etheller.warsmash.launcher.CampaignChoice;
 import com.etheller.warsmash.launcher.CustomGame;
 import com.etheller.warsmash.launcher.LauncherBoard;
+import com.etheller.warsmash.launcher.MapListCache;
+import com.etheller.warsmash.launcher.MapSections;
 import com.etheller.warsmash.launcher.SkinArt;
 
 /** Custom Game: the maps of the game data, the chosen map's slots and its advanced options. */
@@ -79,43 +80,40 @@ final class CustomGamePage extends LauncherViews {
 		final float rowW = listW - (2 * frame);
 		final LinearLayout rows = scrollList(listPanel, frame, frame, rowW, b.contentH - (2 * frame));
 		final String chosen = chosenMap();
-		final String folder = shownMapFolder(chosen);
-		final String prefix = folder.isEmpty() ? "" : folder + "/";
-		// As in the original list: the way up, the folders, then the maps of the folder shown.
-		if (!folder.isEmpty()) {
-			final int up = folder.lastIndexOf('/');
-			rows.addView(folderRow("..", rowW, rowH, up < 0 ? "" : folder.substring(0, up)),
-					new LinearLayout.LayoutParams(MATCH, px(rowH)));
-		}
-		for (final String child : CampaignChoice.childFolders(this.maps, folder)) {
-			rows.addView(folderRow(child.substring(prefix.length()), rowW, rowH, child),
-					new LinearLayout.LayoutParams(MATCH, px(rowH)));
-		}
+		rows.addView(importRow(rowW, rowH), new LinearLayout.LayoutParams(MATCH, px(rowH)));
+		final List<MapListCache.Skipped> skipped = this.activity.catalog.skippedMaps();
 		final List<View> mapRows = new ArrayList<>();
 		View chosenRow = null;
-		for (final GameCatalog.MapEntry entry : this.maps) {
-			if (!CampaignChoice.mapFolder(entry.path).equalsIgnoreCase(folder)) {
-				continue;
+		// As in the engine menu: a heading for every folder, its maps, then the files of it that are not maps.
+		for (final MapSections.Line line : MapSections.lines(this.maps, skipped)) {
+			if (line.heading != null) {
+				rows.addView(headingRow(line.heading, rowH), new LinearLayout.LayoutParams(MATCH, px(rowH * 0.6f)));
 			}
-			final View row = mapRow(entry, rowW, rowH);
-			onTap(row, false, v -> {
-				for (final View other : mapRows) {
-					markRow(other, other == v);
+			else if (line.skipped != null) {
+				rows.addView(skippedRow(line.skipped, rowW, rowH), new LinearLayout.LayoutParams(MATCH, px(rowH)));
+			}
+			else {
+				final GameCatalog.MapEntry entry = line.map;
+				final View row = mapRow(entry, rowW, rowH);
+				onTap(row, false, v -> {
+					for (final View other : mapRows) {
+						markRow(other, other == v);
+					}
+					this.activity.preferences.edit().putString(KEY_MAP, entry.path).apply();
+					loadMapDetails(entry.path);
+				});
+				markRow(row, entry.path.equals(chosen));
+				if (entry.path.equals(chosen)) {
+					chosenRow = row;
 				}
-				this.activity.preferences.edit().putString(KEY_MAP, entry.path).apply();
-				loadMapDetails(entry.path);
-			});
-			markRow(row, entry.path.equals(chosen));
-			if (entry.path.equals(chosen)) {
-				chosenRow = row;
+				mapRows.add(row);
+				rows.addView(row, new LinearLayout.LayoutParams(MATCH, px(rowH)));
 			}
-			mapRows.add(row);
-			rows.addView(row, new LinearLayout.LayoutParams(MATCH, px(rowH)));
 		}
 		if (chosenRow != null) {
 			reveal(chosenRow);
 		}
-		else if (this.maps.isEmpty()) {
+		else if (this.maps.isEmpty() && skipped.isEmpty()) {
 			place(listPanel, text(getString(R.string.game_no_maps), b.body, this.activity.art.text2()), frame, frame,
 					rowW, -1);
 		}
@@ -136,33 +134,51 @@ final class CustomGamePage extends LauncherViews {
 		}
 	}
 
-	/** The folder the list shows: the one opened last while it still has maps, else the chosen map's. */
-	private String shownMapFolder(final String chosen) {
-		return CampaignChoice.shownMapFolder(this.activity.preferences.getString(KEY_MAP_FOLDER, null), chosen,
-				this.maps);
+	/** The list is read again the next time the page is shown, as after a map was added. */
+	void forget() {
+		this.maps = null;
 	}
 
-	/** A folder of the list (icon-folder and its name); tapping it shows its maps. */
-	private View folderRow(final String name, final float w, final float rowH, final String opens) {
-		final boolean t = this.activity.board.tablet;
+	/** The first row of the list: tapping it picks a map file to copy into the custom maps. */
+	private View importRow(final float w, final float rowH) {
 		final LinearLayout row = new LinearLayout(this.activity);
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setPadding(px(6), 0, px(8), 0);
 		final float line = Math.min(rowH * 0.86f, 84);
-		final float icon = line * 0.82f;
-		row.addView(image(SkinArt.ICON_FOLDER, ImageView.ScaleType.FIT_CENTER),
-				new LinearLayout.LayoutParams(px(icon), px(icon)));
-		final String shown = CampaignChoice.folderName(name);
-		final TextView title = text(shown, line * 0.56f, this.activity.art.text());
+		final String label = getString(R.string.game_import_map);
+		final TextView title = text(label, line * 0.56f, this.activity.art.gold());
 		final LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0,
 				ViewGroup.LayoutParams.WRAP_CONTENT, 1);
 		titleParams.leftMargin = px(18);
 		row.addView(title, titleParams);
-		row.setContentDescription(shown);
-		onTap(row, false, v -> {
-			this.activity.preferences.edit().putString(KEY_MAP_FOLDER, opens).apply();
-			showCustom();
-		});
+		row.setContentDescription(label);
+		onTap(row, false, v -> this.activity.customContent.chooseMap());
+		return row;
+	}
+
+	/** A file of the player's own map folders that is not listed: its name and why. */
+	private View skippedRow(final MapListCache.Skipped left, final float w, final float rowH) {
+		final LinearLayout row = new LinearLayout(this.activity);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setPadding(px(6), 0, px(8), 0);
+		final float line = Math.min(rowH * 0.86f, 84);
+		final String file = MapSections.fileName(left.path);
+		final String reason = getString(left.problem == MapListCache.Problem.UNREADABLE
+				? R.string.game_map_problem_unreadable
+				: R.string.game_map_problem_information);
+		final float icon = line * 0.82f;
+		// The "!" stands where a map's number of players is, as in the engine menu.
+		final TextView mark = text("!", icon * 0.5f, this.activity.art.gold());
+		mark.setGravity(Gravity.CENTER);
+		row.addView(mark, new LinearLayout.LayoutParams(px(icon), px(icon)));
+		final TextView title = text(file + " · " + reason, line * 0.46f, this.activity.art.text2());
+		title.setSingleLine(true);
+		title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		final LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0,
+				ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+		titleParams.leftMargin = px(18);
+		row.addView(title, titleParams);
+		row.setContentDescription(file + ", " + reason);
 		return row;
 	}
 

@@ -28,6 +28,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
  */
 final class AIAttack {
 	private static final float HOME_RADIUS = 900f;
+	private static final float ATTACK_HOME_MINE_DISTANCE = 1075f;
 	private static final float GOAL_REACHED_RADIUS = 500f;
 	private static final float STAGE_REACHED_RADIUS = 250f;
 	private static final int STAGE_WAIT_TICKS = 70;
@@ -55,11 +56,19 @@ final class AIAttack {
 			ai.defenseCaptain.setHome(hallX, hallY);
 			return;
 		}
-		// Measured on a melee map: the defense home halfway to the mine, the attack home as far on the other side.
+		// Measured: the defense home halfway to the mine; the attack home on the line from the mine through the
+		// town hall, a fixed way from the mine (about 1075 whatever the hall's own distance to it).
 		final float offsetX = (mine.getX() - hallX) / 2;
 		final float offsetY = (mine.getY() - hallY) / 2;
-		ai.attackCaptain.setHome(hallX - offsetX, hallY - offsetY);
 		ai.defenseCaptain.setHome(hallX + offsetX, hallY + offsetY);
+		final float mineDistance = distance(hallX, hallY, mine.getX(), mine.getY());
+		if ((mineDistance < 1) || (mineDistance > ATTACK_HOME_MINE_DISTANCE)) {
+			ai.attackCaptain.setHome(hallX - offsetX, hallY - offsetY);
+			return;
+		}
+		final float scale = ATTACK_HOME_MINE_DISTANCE / mineDistance;
+		ai.attackCaptain.setHome(mine.getX() + ((hallX - mine.getX()) * scale),
+				mine.getY() + ((hallY - mine.getY()) * scale));
 	}
 
 	private static boolean isInjured(final AIController ai, final CUnit unit) {
@@ -86,7 +95,7 @@ final class AIAttack {
 			}
 		}
 		if (got < qty) {
-			for (final CUnit unit : ai.simulation.getUnits()) {
+			for (final CUnit unit : AIUnits.inClaimOrder(ai.simulation)) {
 				if (got >= qty) {
 					break;
 				}
@@ -277,6 +286,38 @@ final class AIAttack {
 		return attacked[0];
 	}
 
+	private static boolean regularEnemyNear(final AIController ai, final float x, final float y, final float radius) {
+		final boolean[] found = new boolean[1];
+		ai.simulation.getWorldCollision().enumUnitsInRange(x, y, radius, (unit) -> {
+			if (ai.isEnemy(unit) && !ai.simulation.isNeutralAggressive(unit.getPlayerIndex())
+					&& unit.isVisible(ai.simulation, ai.playerIndex)) {
+				found[0] = true;
+				return true;
+			}
+			return false;
+		});
+		return found[0];
+	}
+
+	private static CUnit nearestCreepToCentre(final AIController ai) {
+		final float x = ai.attackCaptain.getCenterX();
+		final float y = ai.attackCaptain.getCenterY();
+		final CUnit[] found = new CUnit[1];
+		final float[] best = { Float.MAX_VALUE };
+		ai.simulation.getWorldCollision().enumUnitsInRange(x, y, CREEP_ENGAGE_RADIUS, (other) -> {
+			if (ai.isEnemy(other) && ai.simulation.isNeutralAggressive(other.getPlayerIndex()) && !other.isDead()
+					&& other.isVisible(ai.simulation, ai.playerIndex)) {
+				final float d = distance(x, y, other.getX(), other.getY());
+				if (d < best[0]) {
+					best[0] = d;
+					found[0] = other;
+				}
+			}
+			return false;
+		});
+		return found[0];
+	}
+
 	private static CUnit enemyNear(final AIController ai, final float x, final float y, final float radius) {
 		final CUnit[] found = new CUnit[1];
 		ai.simulation.getWorldCollision().enumUnitsInRange(x, y, radius, (unit) -> {
@@ -392,7 +433,7 @@ final class AIAttack {
 	static void suicideUnit(final AIController ai, final int count, final int typeIdValue, final int targetPlayer) {
 		final War3ID typeId = new War3ID(typeIdValue);
 		int sent = 0;
-		for (final CUnit unit : ai.simulation.getUnits()) {
+		for (final CUnit unit : AIUnits.inClaimOrder(ai.simulation)) {
 			if (sent >= count) {
 				break;
 			}
@@ -595,6 +636,22 @@ final class AIAttack {
 		}
 		for (final CUnit unit : orderGroup(ai, toHome, OrderIds.AImove, home.x, home.y)) {
 			attack.markOrdered(unit);
+		}
+		if (engaged && !toGoal.isEmpty()) {
+			// Measured: a group that meets a creep camp on its way picks one creep, the nearest to its centre, and
+			// every member attacks it; an attack-move would pass a sleeping camp by.
+			final CUnit target = nearestCreepToCentre(ai);
+			// Other enemies beside the camp are left to the attack-move.
+			if ((target != null) && !regularEnemyNear(ai, attack.getCenterX(), attack.getCenterY(), ENGAGE_RADIUS)) {
+				for (final Iterator<CUnit> iterator = toGoal.iterator(); iterator.hasNext();) {
+					final CUnit unit = iterator.next();
+					if (unit.order(ai.simulation, OrderIds.attack, target)) {
+						ai.orderedTargets.put(unit, target);
+						attack.markOrdered(unit);
+						iterator.remove();
+					}
+				}
+			}
 		}
 		final int goalOrder = engaged ? OrderIds.attack : OrderIds.AImove;
 		final List<CUnit> taken = orderGroup(ai, toGoal, goalOrder, goal.x, goal.y);

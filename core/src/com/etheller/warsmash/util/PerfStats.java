@@ -39,6 +39,18 @@ public final class PerfStats {
 	private static long pathIterations;
 	private static long interfaceDraws;
 
+	/** The game screen's setup runs as a single frame that frameStart never sees, so it is reported on its own. */
+	public static void showDone(final long start, final long uiMainStart, final long uiMainEnd, final long commonStart,
+			final long commonEnd) {
+		if (ENABLED) {
+			final long end = System.nanoTime();
+			System.err.println("Screen setup: total " + ((end - start) / 1_000_000) + " ms, interface build "
+					+ ((uiMainStart - start) / 1_000_000) + " ms, interface main " + ((uiMainEnd - uiMainStart) / 1_000_000)
+					+ " ms, script load and start " + ((commonEnd - commonStart) / 1_000_000) + " ms, sound preload "
+					+ ((end - commonEnd) / 1_000_000) + " ms");
+		}
+	}
+
 	public static void frameStart() {
 		if (!checkedLocalFile) {
 			checkedLocalFile = true;

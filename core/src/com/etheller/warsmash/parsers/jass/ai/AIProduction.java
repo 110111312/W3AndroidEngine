@@ -142,7 +142,7 @@ final class AIProduction {
 		final List<CUnit> bases = new ArrayList<>();
 		final List<CUnit> producers = new ArrayList<>();
 		boolean anyBase = false;
-		for (final CUnit unit : ai.simulation.getUnits()) {
+		for (final CUnit unit : AIUnits.inClaimOrder(ai.simulation)) {
 			if (!ai.isOurs(unit) || ((town != -1) && (AITowns.townOf(ai, unit.getX(), unit.getY()) != town))) {
 				continue;
 			}

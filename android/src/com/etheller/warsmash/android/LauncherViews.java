@@ -235,6 +235,19 @@ abstract class LauncherViews {
 				: new ColorDrawable(Color.argb(0x40, 0xFC, 0xD3, 0x12)));
 	}
 
+	/** The heading of a section of a map list: the folder's name in gold, not tappable. */
+	View headingRow(final String title, final float rowH) {
+		final LinearLayout row = new LinearLayout(this.activity);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setPadding(px(6), 0, px(8), 0);
+		final TextView view = text(title, Math.min(rowH * 0.86f, 84) * 0.46f, this.activity.art.gold());
+		final LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+		params.leftMargin = px(18);
+		row.addView(view, params);
+		row.setContentDescription(title);
+		return row;
+	}
+
 	ImageView image(final String name, final ImageView.ScaleType scaleType) {
 		final ImageView view = new ImageView(this.activity);
 		view.setScaleType(scaleType);
@@ -289,6 +302,10 @@ abstract class LauncherViews {
 		final TextView label = text(LauncherKit.glueText(items[selected]), textSize,
 				enabled ? LauncherKit.GlueButton.restText(this.activity.art) : LauncherKit.DISABLED);
 		label.setGravity(Gravity.CENTER_VERTICAL);
+		// A longer item shrinks to the button rather than being cut.
+		final int fullSize = Math.round(textSize * this.activity.scale);
+		label.setAutoSizeTextTypeUniformWithConfiguration(Math.max(1, Math.round(fullSize * 0.65f)), fullSize, 1,
+				TypedValue.COMPLEX_UNIT_PX);
 		final FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(MATCH, MATCH);
 		labelParams.leftMargin = px(rim + 4);
 		labelParams.rightMargin = px(Math.max(rim + 4, arrowBox * 0.8f));

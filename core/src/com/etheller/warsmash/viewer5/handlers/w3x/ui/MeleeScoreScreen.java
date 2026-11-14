@@ -81,6 +81,8 @@ public class MeleeScoreScreen {
 	private final Runnable onOk;
 	private BooleanSupplier replaySaver;
 	private final int localPlayerIndex;
+	private java.util.function.IntPredicate keyboardAndMouse = slot -> false;
+	private com.badlogic.gdx.graphics.Texture keyboardAndMouseMark;
 	private AbstractUIFrame frame;
 	private final List<CPlayer> players = new ArrayList<>();
 	private final List<Row> rows = new ArrayList<>();
@@ -97,6 +99,33 @@ public class MeleeScoreScreen {
 		this.simulation = simulation;
 		this.objectData = objectData;
 		this.onOk = onOk;
+	}
+
+	/** In a LAN game the players who play with a keyboard and mouse get its mark after their name. */
+	public void setKeyboardAndMouse(final java.util.function.IntPredicate keyboardAndMouse) {
+		this.keyboardAndMouse = keyboardAndMouse;
+	}
+
+	/** A small keyboard and a mouse, white on clear, as the lobby draws them. */
+	private com.badlogic.gdx.graphics.Texture keyboardAndMouseMark() {
+		if (this.keyboardAndMouseMark == null) {
+			final com.badlogic.gdx.graphics.Pixmap pixmap = new com.badlogic.gdx.graphics.Pixmap(48, 32,
+					com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888);
+			pixmap.setColor(0.91f, 0.85f, 0.66f, 1);
+			pixmap.drawRectangle(0, 8, 31, 18);
+			pixmap.drawRectangle(1, 9, 29, 16);
+			for (int i = 0; i < 4; i++) {
+				pixmap.fillRectangle(4 + (i * 6), 12, 3, 3);
+				pixmap.fillRectangle(4 + (i * 6), 17, 3, 3);
+			}
+			pixmap.fillRectangle(8, 21, 15, 3);
+			pixmap.drawRectangle(35, 6, 12, 21);
+			pixmap.drawRectangle(36, 7, 10, 19);
+			pixmap.fillRectangle(40, 7, 2, 8);
+			this.keyboardAndMouseMark = new com.badlogic.gdx.graphics.Texture(pixmap);
+			pixmap.dispose();
+		}
+		return this.keyboardAndMouseMark;
 	}
 
 	public boolean isVisible() {
@@ -417,7 +446,7 @@ public class MeleeScoreScreen {
 		final List<CUnit> units = new ArrayList<>(this.simulation.getUnits());
 		units.sort(Comparator.comparingInt(CUnit::getHandleId));
 		for (final CUnit unit : units) {
-			if (!unit.isHero() || (unit.getHeroData() == null) || cached.contains(unit)) {
+			if (!unit.isHero() || unit.isIllusion() || (unit.getHeroData() == null) || cached.contains(unit)) {
 				continue;
 			}
 			final CPlayer owner = this.simulation.getPlayer(unit.getPlayerIndex());
@@ -486,6 +515,7 @@ public class MeleeScoreScreen {
 		private final SpriteFrame bar;
 		private final TextureFrame banner;
 		private final TextureFrame icon;
+		private final TextureFrame keyboardMark;
 		private final StringFrame team;
 		private final StringFrame name;
 		private final StringFrame[] values = new StringFrame[5];
@@ -525,6 +555,14 @@ public class MeleeScoreScreen {
 					GameUI.convertY(viewport, centerY)));
 			own(this.icon);
 
+			this.keyboardMark = root.createTextureFrame("SmashScoreScreenKeyboard" + index, parent, false, null);
+			this.keyboardMark.setWidth(GameUI.convertX(viewport, ICON_SIZE * 1.05f));
+			this.keyboardMark.setHeight(GameUI.convertY(viewport, ICON_SIZE * 0.7f));
+			this.keyboardMark.addSetPoint(new SetPoint(FramePoint.LEFT, this.bar, FramePoint.TOPLEFT,
+					GameUI.convertX(viewport, BANNER_WIDTH - (ICON_SIZE * 1.25f)), GameUI.convertY(viewport, centerY)));
+			this.keyboardMark.setVisible(false);
+			own(this.keyboardMark);
+
 			this.team = root.createStringFrame("SmashScoreScreenTeam" + index, parent, GOLD, TextJustify.LEFT,
 					TextJustify.MIDDLE, 0.010f);
 			this.team.addSetPoint(new SetPoint(FramePoint.LEFT, this.bar, FramePoint.TOPLEFT,
@@ -561,6 +599,11 @@ public class MeleeScoreScreen {
 			this.icon.setVisible(race != null);
 			if (race != null) {
 				this.icon.setTexture("UI\\Glues\\ScoreScreen\\scorescreen-player-" + race + ".blp", root);
+			}
+			final boolean keyboardAndMouse = MeleeScoreScreen.this.keyboardAndMouse.test(player.getId());
+			this.keyboardMark.setVisible(keyboardAndMouse);
+			if (keyboardAndMouse) {
+				this.keyboardMark.setTexture(MeleeScoreScreen.this.keyboardAndMouseMark());
 			}
 			root.setText(this.team, Integer.toString(player.getTeam() + 1));
 			root.setText(this.name, player.getName());

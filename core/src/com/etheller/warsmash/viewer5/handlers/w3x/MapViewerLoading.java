@@ -298,6 +298,11 @@ final class MapViewerLoading {
 		addMadeUnitTypes(viewer, made);
 		made.removeAll(own);
 		others.removeAll(own);
+		// Decoding them together lets what the loading screen has not decoded be done on all processors at once.
+		MapViewerPrewarm.prefetchSoundsOf(viewer, own, made, others);
+		for (final String key : interfaceSoundKeys) {
+			viewer.uiSounds.getSound(key).prefetch();
+		}
 		for (final War3ID typeId : own) {
 			final UnitSoundset soundset = viewer.renderUnitTypeData.getSoundset(typeId);
 			if (soundset != null) {

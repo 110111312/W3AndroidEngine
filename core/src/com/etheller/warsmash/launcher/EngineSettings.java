@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,16 +18,20 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.etheller.warsmash.datasources.GraphicsSettings;
+import com.etheller.warsmash.input.touch.ControlScheme;
+import com.etheller.warsmash.input.touch.PenButton;
+import com.etheller.warsmash.input.touch.TouchStyle;
 
 /**
  * The engine's own settings as the launcher's Options page changes them, kept where the engine reads them: the Options
  * menu values in Options.dat of the current profile (the file and format of GameOptions, below Gdx.files.local), and
- * the touch thresholds and the in-game graphics in the [Touch] and [Graphics] sections of warsmash.ini.
+ * the touch thresholds and the in-game graphics in the [Touch] and [Graphics] sections of warsmash.ini, and the
+ * player's content folder in [CustomContent].
  */
 public class EngineSettings {
 	private static final String TOUCH = "Touch";
 	/** The sections the launcher writes, which a new configuration for other game data keeps. */
-	private static final String[] OWN_SECTIONS = { TOUCH, GraphicsSettings.SECTION };
+	private static final String[] OWN_SECTIONS = { TOUCH, GraphicsSettings.SECTION, CustomContent.SECTION };
 
 	private final File options;
 	private final File ini;
@@ -92,9 +97,7 @@ public class EngineSettings {
 					out.writeInt(entry.getValue());
 				}
 			}
-			if (!partial.renameTo(this.options)) {
-				throw new IOException("Unable to store " + this.options);
-			}
+			replace(partial, this.options);
 		}
 		catch (final IOException e) {
 			LauncherLog.e("Unable to write " + this.options, e);
@@ -112,6 +115,35 @@ public class EngineSettings {
 		setIniValue(TOUCH, key, value);
 	}
 
+	/** @param platformScheme what the platform plays with when the file names no scheme */
+	public ControlScheme controlScheme(final ControlScheme platformScheme) {
+		final String named = touch("ControlScheme", "");
+		if (named.isEmpty() && "Off".equalsIgnoreCase(touch("TouchControls", ""))) {
+			return ControlScheme.MOUSE_KEYBOARD;
+		}
+		return ControlScheme.parse(named, platformScheme);
+	}
+
+	public void setControlScheme(final ControlScheme scheme) {
+		setTouch("ControlScheme", scheme.iniValue);
+	}
+
+	public PenButton penButton() {
+		return PenButton.parse(touch("PenButton", ""), PenButton.SHIFT);
+	}
+
+	public void setPenButton(final PenButton button) {
+		setTouch("PenButton", button.iniValue);
+	}
+
+	public TouchStyle touchStyle() {
+		return TouchStyle.parse(touch("TouchScheme", ""), TouchStyle.TAP_HOLD);
+	}
+
+	public void setTouchStyle(final TouchStyle style) {
+		setTouch("TouchScheme", style.iniValue);
+	}
+
 	/** A [Graphics] value of warsmash.ini, or the fallback when the file leaves it out. */
 	public String graphics(final String key, final String fallback) {
 		return iniValue(GraphicsSettings.SECTION, key, fallback);
@@ -119,6 +151,16 @@ public class EngineSettings {
 
 	public void setGraphics(final String key, final String value) {
 		setIniValue(GraphicsSettings.SECTION, key, value);
+	}
+
+	/** The player's content folder, or null when none is chosen. */
+	public File customFolder() {
+		return CustomContent.parse(iniValue(CustomContent.SECTION, CustomContent.KEY_FOLDER, ""));
+	}
+
+	/** Names the content folder in warsmash.ini; null leaves none. */
+	public void setCustomFolder(final File folder) {
+		setIniValue(CustomContent.SECTION, CustomContent.KEY_FOLDER, folder == null ? "" : folder.getAbsolutePath());
 	}
 
 	private String iniValue(final String name, final String key, final String fallback) {
@@ -173,17 +215,20 @@ public class EngineSettings {
 				lines.add(at, entry);
 			}
 		}
-		final File partial = new File(this.ini.getParentFile(), this.ini.getName() + ".part");
+		final File partial = new File(this.ini.getAbsoluteFile().getParentFile(), this.ini.getName() + ".part");
 		try {
 			Files.write(partial.toPath(), lines, StandardCharsets.UTF_8);
-			if (!partial.renameTo(this.ini)) {
-				throw new IOException("Unable to store " + this.ini);
-			}
+			replace(partial, this.ini);
 		}
 		catch (final IOException e) {
 			LauncherLog.e("Unable to write " + this.ini, e);
 			partial.delete();
 		}
+	}
+
+	/** File.renameTo does not replace an existing file on Windows, which would lose every change after the first. */
+	private static void replace(final File partial, final File target) throws IOException {
+		Files.move(partial.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 	}
 
 	private static boolean isSection(final String header, final String name) {

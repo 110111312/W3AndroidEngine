@@ -46,6 +46,9 @@ public class CAbilityMirrorImage extends CAbilityNoTargetSpellBase {
 	private final List<AbilityPointTarget> spots = new ArrayList<>();
 	// Tick each spot's missile lands, -1 once its unit appeared; empty until the missiles are launched.
 	private final List<Integer> arrivalTicks = new ArrayList<>();
+	// Images of the last cast; a recast removes the ones still alive (measured on 1.29), so a hero never has more
+	// images than the level makes.
+	private final List<CUnit> images = new ArrayList<>();
 	private boolean casterEventPending;
 	private boolean hiding;
 
@@ -75,6 +78,12 @@ public class CAbilityMirrorImage extends CAbilityNoTargetSpellBase {
 				caster.remove(simulation, ability);
 			}
 		}
+		for (final CUnit oldImage : this.images) {
+			if (!oldImage.isDead()) {
+				oldImage.kill(simulation);
+			}
+		}
+		this.images.clear();
 		this.spots.clear();
 		this.arrivalTicks.clear();
 		this.casterEventPending = false;
@@ -135,7 +144,6 @@ public class CAbilityMirrorImage extends CAbilityNoTargetSpellBase {
 			if (i == 0) {
 				caster.setPointAndCheckUnstuck(spot.getX(), spot.getY(), simulation);
 				reveal(simulation, caster);
-				simulation.createTemporarySpellEffectOnUnit(caster, getAlias(), CEffectType.TARGET);
 				this.casterEventPending = true;
 			}
 			else {
@@ -143,7 +151,7 @@ public class CAbilityMirrorImage extends CAbilityNoTargetSpellBase {
 						spot.getY(), caster.getFacing(), this.damageDealtFactor, this.damageTakenFactor,
 						getDuration(), this.buffId);
 				if (image != null) {
-					simulation.createTemporarySpellEffectOnUnit(image, getAlias(), CEffectType.TARGET);
+					this.images.add(image);
 					simulation.unitSummoned(caster, image);
 				}
 			}

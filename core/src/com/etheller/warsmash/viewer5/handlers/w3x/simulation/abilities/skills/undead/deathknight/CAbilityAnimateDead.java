@@ -15,6 +15,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.types.def
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.types.definitions.impl.AbstractCAbilityTypeDefinition;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CEffectType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.AbilityActivationReceiver;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.CommandStringErrorKeys;
 
 /**
  * Animate Dead: raises corpses of any owner around the caster as its own units for the duration, invulnerable when
@@ -67,6 +69,19 @@ public class CAbilityAnimateDead extends CAbilityNoTargetSpellBase implements CC
 					return corpses.size() >= this.numberOfCorpsesRaised;
 				});
 		return corpses;
+	}
+
+	/**
+	 * Measured (1.29): the scroll of an item is refused while no corpse it could raise is near the user.
+	 */
+	@Override
+	protected void innerCheckCanUseSpell(final CSimulation game, final CUnit unit, final int orderId,
+			final AbilityActivationReceiver receiver) {
+		if ((getItem() != null) && findCorpses(game, unit).isEmpty()) {
+			receiver.activationCheckFailed(CommandStringErrorKeys.THERE_ARE_NO_USABLE_CORPSES_NEARBY);
+			return;
+		}
+		super.innerCheckCanUseSpell(game, unit, orderId, receiver);
 	}
 
 	@Override

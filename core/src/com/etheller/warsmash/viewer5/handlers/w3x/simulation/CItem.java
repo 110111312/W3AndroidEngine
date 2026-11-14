@@ -24,6 +24,7 @@ public class CItem extends CWidget {
 	private int charges;
 	private CAbilityInventory containedInventory;
 	private CUnit containedUnit;
+	private CUnit lastHolder;
 	private Rectangle registeredEnumRectangle;
 	private boolean dropOnDeath;
 	private boolean droppable;
@@ -211,6 +212,15 @@ public class CItem extends CWidget {
 
 	public CAbilityInventory getContainedInventory() {
 		return this.containedInventory;
+	}
+
+	/** The unit that held the item when it was last dropped, for the Rune of Rebirth. */
+	public CUnit getLastHolder() {
+		return this.lastHolder;
+	}
+
+	public void setLastHolder(final CUnit lastHolder) {
+		this.lastHolder = lastHolder;
 	}
 
 	public CUnit getContainedUnit() {

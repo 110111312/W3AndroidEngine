@@ -25,6 +25,9 @@ public abstract class CProjectile extends CExtensibleHandleAbstract implements C
 	private float launchLead;
 	/** Launch time of a missile on the 1.29 missile clock; NaN for others and in games saved before it. */
 	private double missileClockLaunch = Double.NaN;
+	private double hitQuantum;
+	/** End of the flight already covered by moves, on the missile clock; NaN before the first move. */
+	private double flownUntil = Double.NaN;
 
 	public CProjectile(final float x, final float y, final float speed, final AbilityTarget target,
 			final boolean homingEnabled, final CUnit source) {
@@ -55,6 +58,19 @@ public abstract class CProjectile extends CExtensibleHandleAbstract implements C
 		final float d1y = dtsy / c;
 
 		final float flightTime = WarsmashConstants.SIMULATION_STEP_TIME + this.launchLead;
+		if ((this.hitQuantum > 0) && !Double.isNaN(this.missileClockLaunch)) {
+			if (Double.isNaN(this.flownUntil)) {
+				this.flownUntil = this.missileClockLaunch;
+			}
+			final double beat = nextBeatHit(c, this.flownUntil, this.flownUntil + flightTime);
+			this.flownUntil += flightTime;
+			if (!Double.isNaN(beat)) {
+				this.launchLead = 0;
+				this.done = true;
+				hitOn(game, beat);
+				return true;
+			}
+		}
 		float travelDistance = Math.min(c, this.speed * flightTime);
 		this.launchLead = 0;
 		final boolean done = c <= travelDistance;
@@ -87,6 +103,35 @@ public abstract class CProjectile extends CExtensibleHandleAbstract implements C
 			return;
 		}
 		hitLater(game, hitTime);
+	}
+
+	/**
+	 * The missile lands on the last beat of its clock before it arrives: the first beat of the window from which what
+	 * is left of the flight is under one beat.
+	 */
+	private double nextBeatHit(final double distance, final double from, final double until) {
+		final double beats = Math.floor(((from - this.missileClockLaunch) / this.hitQuantum) + HIT_TIME_EPSILON) + 1;
+		for (double beat = this.missileClockLaunch + (beats * this.hitQuantum); beat <= (until + HIT_TIME_EPSILON);
+				beat += this.hitQuantum) {
+			final double left = distance - (this.speed * (beat - from));
+			if (left <= (this.speed * this.hitQuantum)) {
+				return beat + (firstMissileTick() - this.missileClockLaunch);
+			}
+		}
+		return Double.NaN;
+	}
+
+	private void hitOn(final CSimulation game, final double hitTime) {
+		if (hitTime <= (CTimer.currentTime(game) + HIT_TIME_EPSILON)) {
+			onHitTarget(game);
+		}
+		else {
+			hitLater(game, hitTime);
+		}
+	}
+
+	public void setHitQuantum(final double hitQuantum) {
+		this.hitQuantum = hitQuantum;
 	}
 
 	private void hitLater(final CSimulation game, final double hitTime) {

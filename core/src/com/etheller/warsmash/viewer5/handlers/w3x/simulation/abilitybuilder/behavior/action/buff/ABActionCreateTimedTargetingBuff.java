@@ -33,16 +33,8 @@ public class ABActionCreateTimedTargetingBuff implements ABSingleAction {
 				this.buffId.callback(game, caster, localStore, castId), localStore,
 				(CAbility) localStore.get(ABLocalStoreKeys.ABILITY), caster,
 				this.duration.callback(game, caster, localStore, castId));
-		if (uniqueFlags != null) {
-			for (ABStringCallback flag : uniqueFlags) {
-				ability.addUniqueFlag(flag.callback(game, caster, localStore, castId));
-			}
-		}
-		if (uniqueValues != null) {
-			for (String key : uniqueValues.keySet()) {
-				ability.addUniqueValue(uniqueValues.get(key).callback(game, caster, localStore, castId), key);
-			}
-		}
+		ABActionCreateTimedBuffBase.addUniqueFlags(uniqueFlags, game, caster, localStore, castId, ability);
+		ABActionCreateTimedBuffBase.addUniqueValues(uniqueValues, game, caster, localStore, castId, ability);
 		boolean isStacks = false;
 		if (stacks != null) {
 			isStacks = stacks.callback(game, caster, localStore, castId);

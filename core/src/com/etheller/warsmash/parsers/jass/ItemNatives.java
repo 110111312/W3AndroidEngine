@@ -421,11 +421,18 @@ final class ItemNatives extends CommonNatives {
 					final CUnit unit = arguments.get(0).visit(ObjectJassValueVisitor.getInstance());
 					final int rawcode = arguments.get(1).visit(IntegerJassValueVisitor.getInstance());
 
+					final CAbilityInventory inventoryData = usableInventory(unit);
+					// Measured on 1.29: a unit that cannot pick items up (not a hero with a full inventory) gets no
+					// item back, but the item is left on the ground where it stands.
 					final CItem newItem = this.simulation.createItem(new War3ID(rawcode),
 							unit.getX(), unit.getY());
-					final CAbilityInventory inventoryData = usableInventory(unit);
+					if ((inventoryData == null) && !unit.isHero()) {
+						return new HandleJassValue(itemType, null);
+					}
 					if ((inventoryData != null) && (newItem != null)) {
-						inventoryData.giveItem(this.simulation, unit, newItem, false);
+						if ((inventoryData.giveItem(this.simulation, unit, newItem, false) < 0) && !unit.isHero()) {
+							return new HandleJassValue(itemType, null);
+						}
 					}
 					return new HandleJassValue(itemType, newItem);
 				});

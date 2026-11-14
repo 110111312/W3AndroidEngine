@@ -65,6 +65,8 @@ public final class SkinArt {
 	public static final String ICON_UMS = "icon-file-ums.png";
 	public static final String MINIMAP_UNKNOWN = "minimap-unknown.png";
 	public static final String ROW_HIGHLIGHT = "row-highlight.png";
+	/** The star of the game's Quests button flash, which the LAN button borrows. */
+	public static final String GLOWSTAR = "glowstar.png";
 	public static final String BUTTON_RED = "button-red.png";
 	public static final String BUTTON_RED_DOWN = "button-red-down.png";
 	public static final String BUTTON_GREEN = "button-green.png";
@@ -352,6 +354,7 @@ public final class SkinArt {
 		items.add(image(EDIT_BORDER, "UI\\Widgets\\EscMenu\\Human\\editbox-border", Kind.EDGE));
 		items.add(image(EDIT_BACKGROUND, "UI\\Widgets\\EscMenu\\Human\\editbox-background", Kind.PLAIN));
 		items.add(image(ROW_HIGHLIGHT, "UI\\Widgets\\BattleNet\\bnet-button01-highlight-mouse", Kind.PLAIN));
+		items.add(image(GLOWSTAR, "UI\\Feedback\\QuestButton\\glowstar", Kind.PLAIN));
 	}
 
 	/**

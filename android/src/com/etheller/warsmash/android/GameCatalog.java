@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 
 import com.etheller.warsmash.launcher.LauncherImages;
+import com.etheller.warsmash.launcher.MapListCache;
 import com.etheller.warsmash.launcher.Profiles;
 import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.util.ArgbImage;
@@ -20,7 +21,13 @@ final class GameCatalog extends com.etheller.warsmash.launcher.GameCatalog {
 
 	private GameCatalog(final Context context, final DataTable ini, final String dataKey, final Handler main) {
 		super(ini, dataKey, com.etheller.warsmash.android.Profiles.saves(context), () -> currentProfile(context),
-				new File(new File(context.getCacheDir(), "catalog"), "maps.txt"), main::post);
+				mapListFile(context), main::post);
+		MapListCache.setShared(mapListFile(context));
+	}
+
+	/** The custom game list kept for the same game data; the engine's own menu reads this file, too. */
+	static File mapListFile(final Context context) {
+		return new File(new File(context.getCacheDir(), "catalog"), "maps.txt");
 	}
 
 	/** The engine's current player profile, as its menu chose it (the engine's preferences). */

@@ -13,6 +13,8 @@ public class ClientBuffer {
 	private ByteBuffer arrayBuffer;
 	public ByteBuffer byteView;
 	public FloatBuffer floatView;
+	// Emitters fill this and hand it over in one bulk copy, because a direct buffer takes a float at a time slowly.
+	public float[] staging;
 
 	public ClientBuffer(final GL20 gl) {
 		this(gl, 4);
@@ -38,8 +40,14 @@ public class ClientBuffer {
 			this.gl.glBufferData(GL20.GL_ARRAY_BUFFER, this.size, this.arrayBuffer, GL20.GL_DYNAMIC_DRAW);
 			this.byteView = this.arrayBuffer;
 			this.floatView = this.arrayBuffer.asFloatBuffer();
+			this.staging = new float[this.size >> 2];
 
 		}
+	}
+
+	public void commitStaging(final int floats) {
+		this.floatView.clear();
+		this.floatView.put(this.staging, 0, floats);
 	}
 
 	public void dispose() {

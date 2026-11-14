@@ -202,7 +202,9 @@ class StaticStateTest {
 			// (cleared past a size).
 			"core.BuildInfo#current", "core.datasources.CascDataSource$Mount#MOUNTS",
 			"core.datasources.CascDataSource$Mount#extractFolderCleared", "core.datasources.CascDataSource#PARSED_ALIASES",
-			"core.datasources.FolderDataSource#INDEXES", "core.units.HashedGameObject#SHARED_KEYS",
+			"core.datasources.FolderDataSource#INDEXES",
+			// Parse trees of interface files, kept while memory allows and checked against the file's bytes.
+			"core.parsers.fdf.DataSourceFDFParserBuilder#PARSED", "core.units.HashedGameObject#SHARED_KEYS",
 			"core.units.HashedGameObject#SHARED_VALUES",
 			// State of the graphics device, the render thread and the platform, set up when a GL context or an activity
 			// starts; scratch of the render thread; the open resource scopes of the screens.
@@ -217,9 +219,20 @@ class StaticStateTest {
 			"core.input.touch.OnscreenKeyboard#coveredHeightPixels", "core.input.touch.TouchInputRouter#installed",
 			"core.input.touch.VirtualCursor#active", "core.input.touch.VirtualCursor#x", "core.input.touch.VirtualCursor#y",
 			"core.input.touch.VirtualCursor#fingerInput", "core.input.touch.VirtualCursor#touchDevice",
-			"core.input.touch.VirtualModifiers#shift",
+			"core.input.touch.VirtualModifiers#shift", "core.input.touch.VirtualModifiers#penButtonShift",
+			"core.input.touch.VirtualModifiers#penButtonCtrl",
+			// The one LAN session of the process (it belongs to the player, not to a game), and the test program's
+			// view of it.
+			"core.lan.LanSessions#current", "core.lan.LanSessions#network", "core.lan.LanSessions#rejoinStore", "core.lan.LanProperties#applied",
+			"core.lan.LanHeadless#active", "core.lan.LanHeadless#desyncDone",
+			// Where the launcher's words come from, one for the process.
+			"core.launcher.lan.LanText#source",
 			// The launcher's log sink, and what its data folder check remembers of the folder.
 			"core.launcher.LauncherLog#sink", "core.launcher.DataFolderCheck#DESCRIPTIONS",
+			// The platform's folder chooser, installed once at start.
+			"core.launcher.CustomFolderChooser$Holder#installed",
+			// Where the platform keeps the custom game list that the launcher and the engine's menu share.
+			"core.launcher.MapListCache#shared",
 			"core.launcher.DataFolderCheck#READABILITY", "core.launcher.DataFolderCheck#OPENED_FILES",
 			"core.launcher.HotkeyCatalog#BUILD_COMMANDS",
 			// Counters of the performance report; only counted when the switch is set, and not a game's state.
@@ -248,7 +261,7 @@ class StaticStateTest {
 			"core.launcher.CustomGame#SLOT_TYPES", "core.launcher.CustomGame#RACES", "core.launcher.CustomGame#OPTION_NAMES",
 			"core.launcher.CustomGame#OPTION_SHOWN", "core.launcher.CustomGame#COLOR_NAMES",
 			"core.launcher.CustomGame#PLAYER_COLORS", "core.launcher.CustomKeys#GRID",
-			"core.launcher.DataPackage#SET_FOLDERS", "core.launcher.EngineSettings#OWN_SECTIONS",
+			"core.launcher.DataPackage#SET_FOLDERS", "core.launcher.CustomContent#FOLDERS", "core.launcher.EngineSettings#OWN_SECTIONS",
 			"core.launcher.HotkeyCatalog#HALLS", "core.launcher.HotkeyCatalog#RACE_NAMES", "core.launcher.HotkeyCatalog#BASE",
 			"core.launcher.LauncherKeys#DIFFICULTIES", "core.launcher.LauncherKeys#CAMPAIGN_MAPS",
 			"core.launcher.LauncherOptions#GRAPHICS", "core.launcher.LauncherOptions#GRAPHICS_SETS",

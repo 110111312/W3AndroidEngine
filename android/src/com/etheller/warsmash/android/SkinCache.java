@@ -45,6 +45,7 @@ import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.datasources.GraphicsSet;
 import com.etheller.warsmash.launcher.CampaignChoice;
+import com.etheller.warsmash.launcher.CustomContent;
 import com.etheller.warsmash.launcher.GlueText;
 import com.etheller.warsmash.launcher.LauncherImages;
 import com.etheller.warsmash.launcher.SkinArt;
@@ -110,6 +111,10 @@ final class SkinCache {
 		final StringBuilder key = new StringBuilder().append(FORMAT).append('|').append(name);
 		for (int i = 0; i < sources.size(); i++) {
 			final String id = String.format(Locale.ROOT, "%02d", i);
+			// The player's maps are not part of the art, so the art is not made again when they change.
+			if (CustomContent.SOURCE_TYPE.equals(sources.getField("Type" + id))) {
+				continue;
+			}
 			key.append('|').append(sources.getField("Type" + id)).append(':').append(sources.getField("Path" + id));
 		}
 		return new SkinCache(new File(new File(context.getCacheDir(), "skin"), name), key.toString(), reforged);

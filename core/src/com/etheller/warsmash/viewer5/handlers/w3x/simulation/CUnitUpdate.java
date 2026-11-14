@@ -216,10 +216,11 @@ final class CUnitUpdate {
 					if (!(self.production.constructingPaused || self.blocked.constructionBlocked)) {
 						self.production.constructionProgress += WarsmashConstants.SIMULATION_STEP_TIME * game.getCheatBuildSpeed();
 					}
-					final int buildTime;
+					final float buildTime;
 					final boolean upgrading = self.isUpgrading();
 					if (!upgrading) {
-						buildTime = self.unitType.getBuildTime();
+						buildTime = self.production.buildTimeOverride > 0 ? self.production.buildTimeOverride
+								: self.unitType.getBuildTime();
 						if (!(self.production.constructingPaused || self.blocked.constructionBlocked)) {
 							final float healthGain = ((WarsmashConstants.SIMULATION_STEP_TIME * game.getCheatBuildSpeed()) / buildTime)
 									* (self.stats.maximumLife * (1.0f - WarsmashConstants.BUILDING_CONSTRUCT_START_LIFE));
@@ -265,7 +266,12 @@ final class CUnitUpdate {
 							player.addTechtreeUnlocked(game, previousTypeId);
 						}
 						if (self.unitType.getFoodMade() != 0) {
-							player.setFoodCap(player.getFoodCap() + self.unitType.getFoodMade());
+							if (upgrading) {
+								player.setFoodCap(player.getFoodCap() + self.unitType.getFoodMade());
+							} else {
+								// The structure keeps what it made, so removing it takes the food back.
+								player.setUnitFoodMade(self, self.unitType.getFoodMade());
+							}
 						}
 						player.removeTechtreeInProgress(game, self.unitType.getTypeId());
 						if (!upgrading) {

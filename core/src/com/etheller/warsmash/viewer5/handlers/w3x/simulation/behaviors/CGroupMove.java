@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.pathing.CPathPoint;
 
@@ -20,6 +21,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.pathing.CPathPoint;
  */
 public final class CGroupMove {
 	public static final int MAX_SCRIPT_GROUP_ORDER_UNITS = 12;
+	private static final float LEVEL_ACROSS = 16f;
 
 	private final List<CUnit> members;
 
@@ -58,7 +60,8 @@ public final class CGroupMove {
 	public static void linkMoving(final List<CUnit> units) {
 		final List<CUnit> moving = new ArrayList<>();
 		for (final CUnit unit : units) {
-			if ((unit.getMoveBehavior() != null) && (unit.getCurrentBehavior() == unit.getMoveBehavior())) {
+			if (((unit.getMoveBehavior() != null) && (unit.getCurrentBehavior() == unit.getMoveBehavior()))
+					|| (unit.getCurrentBehavior() instanceof CBehaviorAttackMove)) {
 				moving.add(unit);
 			}
 		}
@@ -70,7 +73,7 @@ public final class CGroupMove {
 		float pointY = 0;
 		int pointWalkers = 0;
 		for (final CUnit unit : moving) {
-			final CPathPoint goal = unit.getMoveBehavior().getPointGoal();
+			final CPathPoint goal = pointGoal(unit);
 			if (goal != null) {
 				pointX += goal.x;
 				pointY += goal.y;
@@ -78,13 +81,26 @@ public final class CGroupMove {
 			}
 		}
 		for (final CUnit unit : moving) {
+			final CPathPoint goal = pointGoal(unit);
+			final boolean lane = (goal != null) && (pointWalkers > 1);
+			final float laneX = lane ? goal.x - (pointX / pointWalkers) : 0;
+			final float laneY = lane ? goal.y - (pointY / pointWalkers) : 0;
+			if (unit.getCurrentBehavior() instanceof CBehaviorAttackMove) {
+				((CBehaviorAttackMove) unit.getCurrentBehavior()).joinGroup(group, laneX, laneY);
+				continue;
+			}
 			final CBehaviorMove move = unit.getMoveBehavior();
 			move.setGroup(group);
-			final CPathPoint goal = move.getPointGoal();
-			if ((goal != null) && (pointWalkers > 1)) {
-				move.setLane(goal.x - (pointX / pointWalkers), goal.y - (pointY / pointWalkers));
-			}
+			move.setLane(laneX, laneY);
 		}
+	}
+
+	private static CPathPoint pointGoal(final CUnit unit) {
+		if (unit.getCurrentBehavior() instanceof CBehaviorAttackMove) {
+			final AbilityTarget target = ((CBehaviorAttackMove) unit.getCurrentBehavior()).getTarget();
+			return target == null ? null : new CPathPoint(target.getX(), target.getY());
+		}
+		return unit.getMoveBehavior().getPointGoal();
 	}
 
 	/** Slot of each unit as x, y pairs in the order of the list. */
@@ -143,6 +159,7 @@ public final class CGroupMove {
 			}
 			return Float.compare(along[b], along[a]);
 		});
+		final boolean far = length >= CBehaviorMove.SHARED_ROUTE_MIN_DISTANCE;
 		final int lanes = n <= 3 ? n : (int) Math.ceil(Math.sqrt(n));
 		final int rows = (n + lanes - 1) / lanes;
 		final float laneSpacing = (4 * maxCollision) + 60;
@@ -152,6 +169,9 @@ public final class CGroupMove {
 			final int to = Math.min(n, from + lanes);
 			final int count = to - from;
 			Arrays.sort(order, from, to, (a, b) -> Float.compare(side[b], side[a]));
+			if (far) {
+				frontFirstWithinReach(order, from, to, side, along);
+			}
 			final float alongOffset = (((rows - 1) / 2f) - row) * rowSpacing;
 			for (int k = 0; k < count; k++) {
 				final float lane;
@@ -171,6 +191,23 @@ public final class CGroupMove {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * Measured: on a long way units standing within a few steps of each other across the way count as level, and the
+	 * one further ahead takes the lane to the left.
+	 */
+	private static void frontFirstWithinReach(final Integer[] order, final int from, final int to, final float[] side,
+			final float[] along) {
+		int start = from;
+		while (start < to) {
+			int end = start + 1;
+			while ((end < to) && ((side[order[end - 1]] - side[order[end]]) < LEVEL_ACROSS)) {
+				end++;
+			}
+			Arrays.sort(order, start, end, (a, b) -> Float.compare(along[b], along[a]));
+			start = end;
+		}
 	}
 
 	public interface PointOrderAction {

@@ -460,6 +460,9 @@ public class CBehaviorAbilityBuilderBase extends CAbstractRangedBehavior impleme
 			}
 
 			this.ability.runEndCastingActions(game, unit, orderId);
+			if (this.unit.getInventoryData() != null) {
+				this.unit.getInventoryData().onItemAbilityEffect(game, this.unit, this.ability);
+			}
 			this.channeling = (boolean) localStore.get(ABLocalStoreKeys.CHANNELING);
 
 			this.unit.fireSpellEvents(game, JassGameEventsWar3.EVENT_UNIT_SPELL_EFFECT, this.ability, this.target);

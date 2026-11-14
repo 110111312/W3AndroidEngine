@@ -55,6 +55,28 @@ final class GameDataFolders {
 		return null;
 	}
 
+	/** Asks for a folder, away from the window's thread; null when the player cancels. */
+	static void chooseFolder(final File current, final Consumer<File> chosen) {
+		SwingUtilities.invokeLater(() -> {
+			final JFileChooser chooser = new JFileChooser(current);
+			chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			final int answer = chooser.showOpenDialog(null);
+			chosen.accept(answer == JFileChooser.APPROVE_OPTION ? chooser.getSelectedFile() : null);
+		});
+	}
+
+	/** Asks for a map file, away from the window's thread; null when the player cancels. */
+	static void chooseMap(final Consumer<File> chosen) {
+		SwingUtilities.invokeLater(() -> {
+			final JFileChooser chooser = new JFileChooser();
+			chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+			chooser.setAcceptAllFileFilterUsed(false);
+			chooser.setFileFilter(new FileNameExtensionFilter("Warcraft III maps (.w3x, .w3m)", "w3x", "w3m"));
+			final int answer = chooser.showOpenDialog(null);
+			chosen.accept(answer == JFileChooser.APPROVE_OPTION ? chooser.getSelectedFile() : null);
+		});
+	}
+
 	/**
 	 * Asks for a folder, or a game data package zip, away from the window's thread; null when the player cancels.
 	 */

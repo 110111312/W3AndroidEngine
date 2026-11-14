@@ -71,6 +71,9 @@ public class CAbilityStarfall extends CAbilityNoTargetSpellBase {
 		// The first wave falls one interval after the channel starts, as in the original game.
 		this.nextWaveTick = tick + ticks(this.interval);
 		this.starsFalling = false;
+		// Measured: units step out once the second wave hurts them.
+		simulation.getHarmfulAreas().add(simulation, caster, caster.getX(), caster.getY(), this.areaOfEffect,
+				this.interval * 2, getDuration(), true);
 		simulation.createTemporarySpellEffectOnUnit(caster, getAlias(), CEffectType.CASTER);
 		removeSky();
 		if (isSet(this.effectId)) {
@@ -86,8 +89,7 @@ public class CAbilityStarfall extends CAbilityNoTargetSpellBase {
 		final Set<CUnit> inArea = new LinkedHashSet<>();
 		simulation.getWorldCollision().enumUnitsInRange(caster.getX(), caster.getY(), this.areaOfEffect,
 				(enumUnit) -> {
-					if (!enumUnit.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex()))
-							&& enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.VISIBLE,
+					if (enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.VISIBLE,
 									getTargetsAllowed())) {
 						inArea.add(enumUnit);
 					}

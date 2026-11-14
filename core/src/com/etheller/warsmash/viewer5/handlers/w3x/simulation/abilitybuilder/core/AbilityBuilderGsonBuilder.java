@@ -376,6 +376,7 @@ public abstract class AbilityBuilderGsonBuilder {
 				.registerSubtype(ABCallbackGetParentAlias.class, "getParentAlias")
 				.registerSubtype(ABCallbackGetFirstBuffId.class, "getFirstBuffId")
 				.registerSubtype(ABCallbackGetSecondBuffId.class, "getSecondBuffId")
+				.registerSubtype(ABCallbackGetBuffIdAtOrFirst.class, "getBuffIdAtOrFirst")
 				.registerSubtype(ABCallbackGetFirstEffectId.class, "getFirstEffectId")
 
 				.registerSubtype(ABCallbackGetBuffAlias.class, "getBuffAlias")

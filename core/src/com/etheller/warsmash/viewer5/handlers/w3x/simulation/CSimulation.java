@@ -121,7 +121,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRend
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.TextTagConfigType;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.command.CommandErrorListener;
 
-public class CSimulation implements CPlayerAPI, CFogMaskSettings {
+public class CSimulation implements CPlayerAPI, CSightWorld {
 	private boolean scriptOrder;
 	private boolean scriptTargetOrder;
 	private final War3MapConfig mapConfig;
@@ -650,6 +650,7 @@ public class CSimulation implements CPlayerAPI, CFogMaskSettings {
 		}
 		final CUnit createdUnit = this.simulationRenderController.createUnit(this, typeId, playerIndex, x, y, facing);
 		if (createdUnit != null) {
+			createdUnit.setCreationOrder(++this.unitCreationCount);
 			takeShadowPoolIds(createdUnit);
 			if (this.unitData.hasUberSplat(typeId)) {
 				createdUnit.setUbersplatPoolIds(this.handleIdAllocator.createImageId(),
@@ -810,6 +811,7 @@ public class CSimulation implements CPlayerAPI, CFogMaskSettings {
 	}
 
 	private boolean deferNewUnitFog;
+	private int unitCreationCount;
 
 	public CUnit createUnitSimple(final War3ID typeId, final int playerIndex, float x, float y,
 			final float facing) {
@@ -948,10 +950,23 @@ public class CSimulation implements CPlayerAPI, CFogMaskSettings {
 	public CAbilityProjectile createProjectile(final CUnit source, final War3ID spellAlias, final float launchX,
 			final float launchY, final float launchFacing, final Float speed, final Boolean homing,
 			final AbilityTarget target, final CAbilityProjectileListener projectileListener) {
+		return createProjectile(source, spellAlias, launchX, launchY, launchFacing, speed, homing, target,
+				projectileListener, 0);
+	}
+
+	/**
+	 * A spell missile that lands only on the beat of a clock that runs from its launch (hitQuantum seconds apart),
+	 * on the last beat before it arrives.
+	 */
+	public CAbilityProjectile createProjectile(final CUnit source, final War3ID spellAlias, final float launchX,
+			final float launchY, final float launchFacing, final Float speed, final Boolean homing,
+			final AbilityTarget target, final CAbilityProjectileListener projectileListener,
+			final double hitQuantum) {
 		final CAbilityProjectile projectile = new CAbilityProjectile(projectileLaunchX(source, launchX, launchFacing),
 				projectileLaunchY(source, launchY, launchFacing),
 				speed == null ? abilityMissileSpeed(spellAlias) : speed, target,
 				homing == null ? abilityMissileHoming(spellAlias) : homing, source, projectileListener);
+		projectile.setHitQuantum(hitQuantum);
 		this.simulationRenderController.spawnProjectileArt(projectile, source, spellAlias);
 		leadMidStepLaunch(projectile);
 		this.newProjectiles.add(projectile);
@@ -2164,6 +2179,9 @@ public class CSimulation implements CPlayerAPI, CFogMaskSettings {
 	}
 
 	public void heroKilledEvent(final CUnit hero) {
+		if (hero.isIllusion()) {
+			return;
+		}
 		if (this.commandErrorListener != null) {
 			this.commandErrorListener.heroDied(hero);
 		}
@@ -2557,14 +2575,25 @@ public class CSimulation implements CPlayerAPI, CFogMaskSettings {
 		return this.terrainData.getTerrainSpaceY(y);
 	}
 
+	/**
+	 * Changes whenever something that cuts sight changes: sight blockers (trees, buildings) appearing or going, or the
+	 * ramps of the terrain.
+	 */
+	public int getVisionBlockerVersion() {
+		return this.pathingGrid.getOverlayVersion() + this.terrainData.getVisionVersion();
+	}
+
+	@Override
 	public int getTerrainHeight(final float x, final float y) {
 		return this.terrainData.getLayerHeight(x, y);
 	}
 
+	@Override
 	public boolean isTerrainRomp(final float x, final float y) {
 		return this.terrainData.isRamp(x, y);
 	}
 
+	@Override
 	public boolean isTerrainWater(final float x, final float y) {
 		return this.terrainData.isWater(x, y);
 	}

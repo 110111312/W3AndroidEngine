@@ -58,10 +58,14 @@ public class CAbilityAbilityBuilderActiveAutoTarget extends CAbilityAbilityBuild
 	}
 
 	// The corpse conditions only apply to the no-target order: an explicitly targeted corpse may be anywhere.
+	// Measured (1.29): an item's ability is refused up front while no corpse is near the user.
 	@Override
 	protected void innerCheckExtraCastConditions(CSimulation game, CUnit unit, int orderId,
 			AbilityActivationReceiver receiver) {
-		if (innerCheckCanUseSpell(game, unit, orderId, receiver)) {
+		if (getItem() != null) {
+			super.innerCheckExtraCastConditions(game, unit, orderId, receiver);
+		}
+		else if (innerCheckCanUseSpell(game, unit, orderId, receiver)) {
 			receiver.useOk();
 		}
 	}

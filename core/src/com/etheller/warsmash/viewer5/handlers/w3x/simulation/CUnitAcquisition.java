@@ -117,22 +117,39 @@ final class CUnitAcquisition {
 		}
 	}
 
-	/** A new unit's first scan, 1 step to a whole scan period away, spread over units by their handle. */
+	/**
+	 * A new unit's first scan, from the step it is made to just under a scan period away, spread evenly over units by
+	 * their handle (measured: 0 to 0.5 s, mean a quarter second).
+	 */
 	static int firstIdleAcquireScanDelay(final CUnit self) {
 		int hash = self.getHandleId() * 0x9E3779B1;
 		hash ^= hash >>> 16;
-		return 1 + Math.floorMod(hash, IDLE_ACQUIRE_SCAN_TICKS);
+		return Math.floorMod(hash, IDLE_ACQUIRE_SCAN_TICKS);
 	}
 
 	/**
 	 * Creeps cast their spells by themselves while they fight (Devour, Animate Dead, War Stomp, Bloodlust, Slow...).
 	 */
 	static void tryCreepCast(final CUnit self, final CSimulation game) {
+		final int tick = game.getGameTurnTick();
+		if (self.acquisition.creepCastOpeningTick == Integer.MIN_VALUE) {
+			self.acquisition.creepCastOpeningTick = tick + CCreepCastAbility.OPENING_CAST_DELAY_TICKS;
+		}
+		final boolean opening = !self.acquisition.creepCastOpened && (tick >= self.acquisition.creepCastOpeningTick);
+		self.acquisition.creepCastOpened |= opening;
+		tryCreepCast(self, game, opening);
+	}
+
+	private static void tryCreepCast(final CUnit self, final CSimulation game, final boolean opening) {
 		if (self.acquisition.creepCastAfterWhirl) {
 			self.acquisition.creepCastAfterWhirl = false;
 			if (CCreepCastAbility.tryCastAfterBladestorm(game, self)) {
 				return;
 			}
+		}
+		final CUnit hitSource = self.takeHitCastSource(game.getGameTurnTick());
+		if ((hitSource != null) && CCreepCastAbility.tryCastOnHitSource(game, self, hitSource)) {
+			return;
 		}
 		CBehavior behavior = self.orders.currentBehavior;
 		// The walk towards the unit it attacks counts too: a Doom Guard rains fire before the fight starts.
@@ -179,7 +196,8 @@ final class CUnitAcquisition {
 						&& ((CCreepCastAbility) ability).tryCreepCast(game, self, target, inAttackRange)) {
 					return;
 				}
-				if (CCreepCastAbility.tryCreepCastRule(game, self, ability, target, think, self.acquisition.creepCastThinks)) {
+				if (CCreepCastAbility.tryCreepCastRule(game, self, ability, target, think, opening,
+						self.acquisition.creepCastThinks)) {
 					return;
 				}
 			}
@@ -348,7 +366,8 @@ final class CUnitAcquisition {
 											this.comparisonValue = this.source.distance(unit);
 										} else {
 											final double dist = this.source.distance(unit);
-											if (dist < this.comparisonValue) {
+											if ((dist < this.comparisonValue) || ((dist == this.comparisonValue)
+														&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 												this.currentUnitTarget = unit;
 												this.comparisonValue = dist;
 											}
@@ -377,7 +396,8 @@ final class CUnitAcquisition {
 										this.comparisonValue = this.source.distance(unit);
 									} else {
 										final double dist = this.source.distance(unit);
-										if (dist < this.comparisonValue) {
+										if ((dist < this.comparisonValue) || ((dist == this.comparisonValue)
+													&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 											this.currentUnitTarget = unit;
 											this.comparisonValue = dist;
 										}
@@ -398,7 +418,8 @@ final class CUnitAcquisition {
 							this.comparisonValue = unit.getLife() / unit.getMaximumLife();
 						} else {
 							final double ratio = unit.getLife() / unit.getMaximumLife();
-							if (ratio > this.comparisonValue) {
+							if ((ratio > this.comparisonValue) || ((ratio == this.comparisonValue)
+										&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 								this.currentUnitTarget = unit;
 								this.comparisonValue = ratio;
 							}
@@ -416,7 +437,8 @@ final class CUnitAcquisition {
 								this.comparisonValue = unit.getLife() / unit.getMaximumLife();
 							} else {
 								final double ratio = unit.getLife() / unit.getMaximumLife();
-								if (ratio < this.comparisonValue) {
+								if ((ratio < this.comparisonValue) || ((ratio == this.comparisonValue)
+											&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 									this.currentUnitTarget = unit;
 									this.comparisonValue = ratio;
 								}
@@ -434,7 +456,8 @@ final class CUnitAcquisition {
 							this.comparisonValue = this.source.distance(unit);
 						} else {
 							final double dist = this.source.distance(unit);
-							if (dist > this.comparisonValue) {
+							if ((dist > this.comparisonValue) || ((dist == this.comparisonValue)
+										&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 								this.currentUnitTarget = unit;
 								this.comparisonValue = dist;
 							}
@@ -451,7 +474,8 @@ final class CUnitAcquisition {
 							this.comparisonValue = this.source.distance(unit);
 						} else {
 							final double dist = this.source.distance(unit);
-							if (dist < this.comparisonValue) {
+							if ((dist < this.comparisonValue) || ((dist == this.comparisonValue)
+										&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 								this.currentUnitTarget = unit;
 								this.comparisonValue = dist;
 							}
@@ -469,7 +493,8 @@ final class CUnitAcquisition {
 							this.comparisonValue = this.source.distance(unit);
 						} else {
 							final double dist = this.source.distance(unit);
-							if (dist < this.comparisonValue) {
+							if ((dist < this.comparisonValue) || ((dist == this.comparisonValue)
+										&& takenFirstOnTie(unit, this.currentUnitTarget))) {
 								this.currentUnitTarget = unit;
 								this.comparisonValue = dist;
 							}
@@ -564,10 +589,13 @@ final class CUnitAcquisition {
 									&& !(this.game.getGameplayConstants().isMagicImmuneResistsDamage()
 											&& unit.isUnitType(CUnitTypeJass.MAGIC_IMMUNE)
 											&& (attack.getAttackType() == CAttackType.MAGIC))) {
-								final double distance = this.source.distance(unit);
+								final double distance = StrictMath
+										.sqrt(this.source.distanceSquaredNoCollision(unit.getX(), unit.getY()));
 								final int rank = acquireRank(this.game, this.source, unit);
 								if ((rank > this.nearestTargetRank)
-										|| ((rank == this.nearestTargetRank) && (distance < this.nearestTargetDistance))) {
+										|| ((rank == this.nearestTargetRank) && ((distance < this.nearestTargetDistance)
+												|| ((distance == this.nearestTargetDistance)
+														&& takenFirstOnTie(unit, this.nearestTarget))))) {
 									this.nearestTarget = unit;
 									this.nearestTargetAttack = attack;
 									this.nearestTargetDistance = distance;
@@ -583,14 +611,37 @@ final class CUnitAcquisition {
 		}
 	}
 
+	// Measured: of enemies at exactly the same distance between centers, the one whose cell of a square grid comes first
+	// is taken: cells of 256, grid lines 32 inside the world coordinates, walked row by row from the lowest y and the
+	// lowest x. Inside one cell the unit made last is taken.
+	static final float TIE_CELL_OFFSET = 32f;
+	static final float TIE_CELL_SIZE = 256f;
+
+	static boolean takenFirstOnTie(final CUnit candidate, final CUnit current) {
+		int order = cellOrder(candidate.getY(), current.getY());
+		if (order == 0) {
+			order = cellOrder(candidate.getX(), current.getX());
+		}
+		if (order == 0) {
+			return candidate.getCreationOrder() > current.getCreationOrder();
+		}
+		return order < 0;
+	}
+
+	private static int cellOrder(final float a, final float b) {
+		return Double.compare(StrictMath.floor((a - TIE_CELL_OFFSET) / TIE_CELL_SIZE),
+				StrictMath.floor((b - TIE_CELL_OFFSET) / TIE_CELL_SIZE));
+	}
+
 	// Measured (1.29): an idle unit takes a Neutral Hostile unit that is not paused (a creep, at its camp or alone) only within
-	// half its acquisition range, counted between the centers; any other enemy, and a paused creep, within the whole range.
+	// half its acquisition range, or the creep's own acquisition range when that is larger (an idle Trapper is taken out to
+	// 600), counted between the centers; any other enemy, and a paused creep, within the whole range.
 	static final float CREEP_ACQUIRE_FRACTION = 0.5f;
 
 	static boolean isTooFarForCreep(final CSimulation game, final CUnit source, final CUnit target) {
 		return game.isNeutralAggressive(target.getPlayerIndex()) && !target.isPaused()
-				&& (StrictMath.sqrt(source.distanceSquaredNoCollision(target.getX(), target.getY())) > (source.acquisitionRange
-						* CREEP_ACQUIRE_FRACTION));
+				&& (StrictMath.sqrt(source.distanceSquaredNoCollision(target.getX(), target.getY())) > Math
+						.max(source.acquisitionRange * CREEP_ACQUIRE_FRACTION, target.acquisitionRange));
 	}
 
 	/**

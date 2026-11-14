@@ -63,11 +63,12 @@ public class CAbilityForkedLightning extends CAbilityTargetSpellBase {
 		final double angle = caster.angleTo(primary);
 		final float dirX = (float) StrictMath.cos(angle);
 		final float dirY = (float) StrictMath.sin(angle);
+		final boolean alliesHit = primary.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex()));
 		final List<CUnit> candidates = new ArrayList<>();
 		final float searchRadius = this.distance + this.finalArea;
 		simulation.getWorldCollision().enumUnitsInRange(originX, originY, searchRadius, (enumUnit) -> {
 			if ((enumUnit != primary) && isInCone(enumUnit, originX, originY, dirX, dirY)
-					&& !enumUnit.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex()))
+					&& (alliesHit || !enumUnit.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex())))
 					&& enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.NOT_HIDDEN_GHOST, getTargetsAllowed(),
 							BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())) {
 				candidates.add(enumUnit);

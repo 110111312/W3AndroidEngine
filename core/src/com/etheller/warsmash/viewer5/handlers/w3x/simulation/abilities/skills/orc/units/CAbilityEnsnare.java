@@ -16,6 +16,10 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.CUnitTypeJass;
 
 public class CAbilityEnsnare extends CAbilityTargetSpellBase {
+	// Measured on 1.29: the net lands on a beat of 0.1 s counted from the cast (the last beat before it would arrive;
+	// a target under 150 away is netted at once), not at the moment it arrives.
+	private static final double MISSILE_BEAT = 0.1;
+
 	private float airUnitLowerDuration;
 	private float airUnitHeight;
 	private float projectileSpeed;
@@ -60,7 +64,7 @@ public class CAbilityEnsnare extends CAbilityTargetSpellBase {
 						public void onHit(final CSimulation game, final CProjectile projectile,
 								final AbilityTarget target) {
 							final CUnit unitTarget = target.visit(AbilityTargetUnitVisitor.INSTANCE);
-							if ((unitTarget != null) && !unitTarget.isDead()) {
+							if ((unitTarget != null) && !unitTarget.isDead() && !unitTarget.isRemovedFromGame()) {
 								final boolean flying = unitTarget.isUnitType(CUnitTypeJass.FLYING);
 								unitTarget.add(game,
 										new CBuffEnsnare(game.getHandleIdAllocator().createId(),
@@ -71,7 +75,7 @@ public class CAbilityEnsnare extends CAbilityTargetSpellBase {
 												CAbilityEnsnare.this.airUnitLowerDuration));
 							}
 						}
-					});
+					}, MISSILE_BEAT);
 		}
 		return false;
 	}

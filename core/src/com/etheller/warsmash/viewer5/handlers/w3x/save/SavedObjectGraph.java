@@ -103,7 +103,7 @@ public final class SavedObjectGraph {
 					.getSuperclass()) {
 				for (final Field field : current.getDeclaredFields()) {
 					final int modifiers = field.getModifiers();
-					if (!Modifier.isStatic(modifiers)) {
+					if (!Modifier.isStatic(modifiers) && (field.getAnnotation(SavedTransient.class) == null)) {
 						field.setAccessible(true);
 						fields.add(field);
 					}

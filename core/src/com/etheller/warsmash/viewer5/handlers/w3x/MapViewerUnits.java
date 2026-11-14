@@ -44,8 +44,11 @@ final class MapViewerUnits {
 			throws IOException {
 		final War3Map mpq = viewer.mapMpq;
 		viewer.unitsReady = false;
-		viewer.renderUnitTypeData = new RenderUnitTypeData(modifications.getUnits(), mpq, viewer, viewer.unitAckSoundsTable,
-				viewer.terrain.uberSplatTable);
+		if (viewer.renderUnitTypeDataObjects != modifications) {
+			viewer.renderUnitTypeData = new RenderUnitTypeData(modifications.getUnits(), mpq, viewer,
+					viewer.unitAckSoundsTable, viewer.terrain.uberSplatTable);
+			viewer.renderUnitTypeDataObjects = modifications;
+		}
 		viewer.renderItemTypeData = new RenderItemTypeData(modifications.getItems(), mpq, viewer, viewer.miscData);
 
 		if (viewer.dataSource.has("war3mapUnits.doo") && viewer.getGameData().isLoadUnitsFromWorldEditData()) {
@@ -243,6 +246,7 @@ final class MapViewerUnits {
 		}
 		viewer.terrain.setFogOfWarData(viewer.simulation, viewer.simulation.getPlayer(viewer.localPlayerIndex).getFogOfWar());
 		viewer.worldScene.fogFilter = viewer.viewerFogFilter;
+		viewer.widgets.wakeAllDestructables();
 	}
 
 	static void createRenderItemForSavedGame(final War3MapViewer viewer, final CItem item) {

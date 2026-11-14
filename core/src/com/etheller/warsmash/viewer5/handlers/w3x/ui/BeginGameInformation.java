@@ -2,6 +2,7 @@ package com.etheller.warsmash.viewer5.handlers.w3x.ui;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.IntIntMap;
+import com.etheller.warsmash.lan.LanGameStart;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.replay.CReplay;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.mapsetup.CurrentNetGameMapLookup;
 
@@ -22,4 +23,6 @@ public class BeginGameInformation {
 	public int replayStartTick;
 	/** The replay is played although this engine would refuse it. */
 	public boolean replayForced;
+	/** The LAN game this one is, or null. */
+	public LanGameStart lan;
 }

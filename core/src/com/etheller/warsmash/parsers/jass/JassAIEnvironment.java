@@ -192,6 +192,8 @@ public class JassAIEnvironment {
 		natives.createNative("SetGroupsFlee", setter((value) -> ai.setGroupsFlee(value)));
 		natives.createNative("SetIgnoreInjured", setter((value) -> ai.setIgnoreInjured(value)));
 		natives.createNative("SetHeroesTakeItems", setter((value) -> ai.setHeroesTakeItems(value)));
+		// These flags change nothing a script or a unit shows (same routes, claims, fights and purchases whichever way
+		// they are set), so there is nothing to implement behind them.
 		for (final String ignored : new String[] { "SetRandomPaths", "SetDefendPlayer", "SetHeroesBuyItems",
 				"SetCaptainChanges", "SetSmartArtillery" }) {
 			natives.createNative(ignored, setter((value) -> {

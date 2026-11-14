@@ -22,13 +22,15 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
  * at sea sails towards the point until it can. Units put down farther than that area from the point then walk to
  * it. A ship out at sea told to unload on a point that near deep water does nothing. The point the units come off
  * at must be ground by its terrain: by a cliff shore (cliff where that point falls) the ship puts no one ashore.
- * Shallow water counts as ground only away from deep water (the same distance), or when the target point is within
- * the cargo hold range of the ship: a ship in deep water next to the shallows does nothing, one out at sea sails
- * through the shallows until the point its units come off at is that far from deep water.
+ * Shallow water counts as ground only when the target point is within the cargo hold area (and a little more) of
+ * the ship and the ship can walk a straight line to the spot: a ship in deep water does nothing for a point in the
+ * shallows by it, one out at sea sails through the shallows until it can, and a rock between it and the spot is
+ * sailed round first.
  */
 public class CBehaviorDrop implements CRangedBehavior {
 	private static final float NEAR_WATER_MARGIN = 32f;
 	private static final float MEETING_POINT_SLACK = 64f;
+	private static final float WALK_CHECK_STEP = 16f;
 
 	private final CUnit unit;
 	private final CAbilityDrop ability;
@@ -81,8 +83,17 @@ public class CBehaviorDrop implements CRangedBehavior {
 		if (this.unit.getMovementType() != MovementType.FLOAT) {
 			return false;
 		}
-		return isNearDeepWater(game.getPathingGrid(), this.target.x, this.target.y,
-				cargoData.getDropRadius() + NEAR_WATER_MARGIN);
+		final PathingGrid grid = game.getPathingGrid();
+		if (grid.contains(this.target.x, this.target.y)) {
+			final short terrain = grid.getTerrainPathing(this.target.x, this.target.y);
+			if (MovementType.FLOAT.isPathable(terrain) && MovementType.FOOT.isPathable(terrain)) {
+				// A point in the shallows is sailed for from farther off than the cargo hold area, whatever deep
+				// water lies by it.
+				return StrictMath.hypot(this.target.x - this.unit.getX(),
+						this.target.y - this.unit.getY()) <= cargoData.getDropRadius();
+			}
+		}
+		return isNearDeepWater(grid, this.target.x, this.target.y, cargoData.getDropRadius() + NEAR_WATER_MARGIN);
 	}
 
 	private static boolean isNearDeepWater(final PathingGrid grid, final float x, final float y, final float radius) {
@@ -136,12 +147,28 @@ public class CBehaviorDrop implements CRangedBehavior {
 		if (!movementType.isPathable(terrain)) {
 			return null;
 		}
-		if ((movementType == MovementType.FLOAT) || !MovementType.FLOAT.isPathable(terrain)
-				|| (distance <= cargoData.getCastRange())
-				|| !isNearDeepWater(grid, spotX, spotY, radius + NEAR_WATER_MARGIN)) {
+		if ((movementType == MovementType.FLOAT) || !MovementType.FLOAT.isPathable(terrain)) {
+			return new float[] { spotX, spotY };
+		}
+		// Shallows count as ground only once the ship is by its target point and can walk a straight line to the spot.
+		if ((distance <= (radius + NEAR_WATER_MARGIN)) && isWalkable(grid, x, y, spotX, spotY)) {
 			return new float[] { spotX, spotY };
 		}
 		return null;
+	}
+
+	private static boolean isWalkable(final PathingGrid grid, final float fromX, final float fromY, final float toX,
+			final float toY) {
+		final double length = StrictMath.hypot(toX - fromX, toY - fromY);
+		final int steps = (int) (length / WALK_CHECK_STEP) + 1;
+		for (int i = 0; i <= steps; i++) {
+			final float x = (float) (fromX + (((toX - fromX) * i) / steps));
+			final float y = (float) (fromY + (((toY - fromY) * i) / steps));
+			if (!grid.contains(x, y) || !MovementType.FOOT.isPathable(grid.getTerrainPathing(x, y))) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private boolean isAtMeetingPoint() {

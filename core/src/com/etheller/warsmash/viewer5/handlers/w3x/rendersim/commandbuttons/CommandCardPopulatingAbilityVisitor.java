@@ -25,6 +25,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityD
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityGenericDoNothing;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityVisitor;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.CAbilityItemSpellBook;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.COrderButton.JassOrderButtonType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.COrderButton;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
@@ -76,6 +77,10 @@ public class CommandCardPopulatingAbilityVisitor implements CAbilityVisitor<Void
 	private GameUI gameUI;
 	private boolean hasCancel;
 	private Set<String> buffVisibleGroups;
+
+	public void setMenuBaseOrderId(final int menuBaseOrderId) {
+		this.menuBaseOrderId = menuBaseOrderId;
+	}
 
 	public void release() {
 		this.game = null;
@@ -266,6 +271,10 @@ public class CommandCardPopulatingAbilityVisitor implements CAbilityVisitor<Void
 
 	@Override
 	public Void accept(final GenericSingleIconActiveAbility ability) {
+		if (ability instanceof CAbilityItemSpellBook) {
+			// Measured: the book has no button on the command card; its menu opens from the inventory slot.
+			return null;
+		}
 		if ((this.menuBaseOrderId == 0) && ability.isIconShowing()) {
 			final AbilityUI ui = this.abilityDataUI.getUI(ability.getAlias());
 			final boolean autoCastOn = ability.isAutoCastOn();

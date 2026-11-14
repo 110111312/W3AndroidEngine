@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.etheller.warsmash.parsers.w3x.w3i.War3MapW3i;
 import com.etheller.warsmash.util.ParseUtils;
 import com.etheller.warsmash.util.War3ID;
 import com.google.common.io.LittleEndianDataInputStream;
@@ -29,7 +28,7 @@ public class Doodad {
 	private final int[] v12AfterEditorId = new int[2];
 	private final List<short[]> v12Entries = new ArrayList<>();
 
-	public void load(final LittleEndianDataInputStream stream, final int version, final War3MapW3i mapInformation)
+	public void load(final LittleEndianDataInputStream stream, final int version, final boolean hasSkinId)
 			throws IOException {
 		this.id = ParseUtils.readWar3ID(stream);
 		this.variation = stream.readInt();
@@ -37,7 +36,7 @@ public class Doodad {
 		this.angle = stream.readFloat();
 		ParseUtils.readFloatArray(stream, this.scale);
 
-		if (((mapInformation.getGameVersionMajor() * 100) + mapInformation.getGameVersionMinor()) >= 132) {
+		if (hasSkinId) {
 			this.skinId = ParseUtils.readWar3ID(stream);
 		}
 		else {
@@ -77,7 +76,7 @@ public class Doodad {
 		}
 	}
 
-	public void save(final LittleEndianDataOutputStream stream, final int version, final War3MapW3i mapInformation)
+	public void save(final LittleEndianDataOutputStream stream, final int version, final boolean hasSkinId)
 			throws IOException {
 		ParseUtils.writeWar3ID(stream, this.id);
 		;
@@ -85,7 +84,7 @@ public class Doodad {
 		ParseUtils.writeFloatArray(stream, this.location);
 		stream.writeFloat(this.angle);
 		ParseUtils.writeFloatArray(stream, this.scale);
-		if (((mapInformation.getGameVersionMajor() * 100) + mapInformation.getGameVersionMinor()) >= 132) {
+		if (hasSkinId) {
 			War3ID skinToWrite = this.skinId;
 			if (skinToWrite == null) {
 				skinToWrite = this.id;
@@ -121,8 +120,8 @@ public class Doodad {
 		}
 	}
 
-	public int getByteLength(final int version) {
-		int size = 42;
+	public int getByteLength(final int version, final boolean hasSkinId) {
+		int size = hasSkinId ? 46 : 42;
 		if (version >= 12) {
 			size += 16 + (36 * this.v12Entries.size()) + ((version >= 13) ? 4 : 0);
 		}

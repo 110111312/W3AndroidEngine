@@ -212,24 +212,30 @@
 					"type": "getAlias"
 				},
 				"effectType": "EFFECT"
-			},{
-				"type": "registerHarmfulArea",
-				"location": {
-					"type": "getTargetedLocation"
-				},
-				"radius": {
-					"type": "getAbilityArea"
-				},
-				"delay": {
-					"type": "rawFloat",
-					"value": 1.5
-				},
-				"duration": {
-					"type": "getAbilityDuration"
-		}}],
+			}
+		],
 		"onChannelTick": [{
 			"type": "periodicExecute",
 			"periodicActions": [{
+					"type": "registerHarmfulArea",
+					"location": {
+						"type": "getStoredLocationByKey",
+						"key": {
+							"type": "rawString",
+							"value": "targetLoc"
+						}
+					},
+					"radius": {
+						"type": "getAbilityArea"
+					},
+					"delay": {
+						"type": "rawFloat",
+						"value": 0
+					},
+					"duration": {
+						"type": "getAbilityDuration"
+					}
+				},{
 					"type": "createTemporarySpellEffectAtLocation",
 					"location": {
 						"type": "getStoredLocationByKey",

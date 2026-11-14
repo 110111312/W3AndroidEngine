@@ -1,9 +1,12 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui.mapsetup;
 
+import java.io.File;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import com.etheller.warsmash.datasources.DataSource;
@@ -11,37 +14,131 @@ import com.etheller.warsmash.parsers.fdf.GameUI;
 import com.etheller.warsmash.parsers.fdf.frames.ListBoxFrame;
 import com.etheller.warsmash.parsers.fdf.frames.SimpleFrame;
 import com.etheller.warsmash.parsers.fdf.frames.ListBoxFrame.ListBoxSelelectionListener;
+import com.etheller.warsmash.launcher.GameCatalog;
+import com.etheller.warsmash.launcher.MapListCache;
+import com.etheller.warsmash.launcher.MapSections;
+import com.etheller.warsmash.units.DataTable;
+import com.etheller.warsmash.util.AbstractListItemProperty;
 import com.etheller.warsmash.util.ListItemEnum;
+import com.etheller.warsmash.util.ListItemMapProperty;
+import com.etheller.warsmash.util.ListItemStringProperty;
 import com.etheller.warsmash.util.Log;
 
 public class MapListContainer {
+	/** The colour of a section's heading. */
+	private static final Color HEADING_COLOR = new Color(1f, 0.8f, 0f, 1f);
+
+	private final GameUI rootFrame;
+	private final Viewport uiViewport;
+	private final DataSource dataSource;
+	private final DataTable ini;
 	private final SimpleFrame mapListContainer;
 	private final ListBoxFrame mapListBox;
+	private final Set<String> unreadable = new HashSet<>();
 
 	public MapListContainer(final GameUI rootFrame, final Viewport uiViewport, final String containerKey,
 			final DataSource dataSource, final BitmapFont font) {
+		this(rootFrame, uiViewport, containerKey, dataSource, font, null);
+	}
+
+	/**
+	 * @param ini the engine configuration, which lets the list come from the map list the launcher keeps for the same
+	 *            game data and map files instead of opening every map again; null opens the maps
+	 */
+	public MapListContainer(final GameUI rootFrame, final Viewport uiViewport, final String containerKey,
+			final DataSource dataSource, final BitmapFont font, final DataTable ini) {
+		this.rootFrame = rootFrame;
+		this.uiViewport = uiViewport;
+		this.dataSource = dataSource;
+		this.ini = ini;
 		this.mapListContainer = (SimpleFrame) rootFrame.getFrameByName(containerKey, 0);
 		this.mapListBox = (ListBoxFrame) rootFrame.createFrameByType("LISTBOX", "MapListBox", this.mapListContainer,
 				"WITHCHILDREN", 0);
 		this.mapListBox.setSetAllPoints(true);
 		this.mapListBox.setFrameFont(font);
-		final Collection<String> listfile = dataSource.getListfile();
-		final List<String> displayItemPaths = new ArrayList<>();
-		for (final String file : listfile) {
-			if (isListedMap(file)) {
-				displayItemPaths.add(file);
-			}
+		fill();
+		this.mapListContainer.add(this.mapListBox);
+	}
+
+	/**
+	 * Makes the list again from the maps the data has now, after the player's folder was changed or maps were added
+	 * to it. The map chosen stays chosen while the list still has it.
+	 */
+	public void reload() {
+		final String chosen = this.mapListBox.getSelectedItem();
+		fill();
+		if (chosen != null) {
+			this.mapListBox.selectIndex(this.mapListBox.indexOf(chosen));
 		}
-		for (final String displayItemPath : displayItemPaths) {
+	}
+
+	private void fill() {
+		this.unreadable.clear();
+		List<AbstractListItemProperty> maps = keptMaps();
+		if (maps == null) {
+			maps = openedMaps();
+		}
+		// Within a section the maps are by players and name, those that cannot be read last.
+		maps.sort(AbstractListItemProperty::compare);
+		final List<AbstractListItemProperty> items = new ArrayList<>();
+		for (final MapSections.Section<AbstractListItemProperty> section : MapSections.group(maps,
+				AbstractListItemProperty::getRawValue)) {
+			items.add(ListItemStringProperty.heading(section.title, HEADING_COLOR));
+			items.addAll(section.items);
+		}
+		this.mapListBox.setItems(items, this.rootFrame, this.uiViewport);
+	}
+
+	private List<AbstractListItemProperty> openedMaps() {
+		final List<AbstractListItemProperty> items = new ArrayList<>();
+		for (final String file : this.dataSource.getListfile()) {
+			if (!isListedMap(file)) {
+				continue;
+			}
 			try {
-				this.mapListBox.addItem(displayItemPath, ListItemEnum.ITEM_MAP, rootFrame, uiViewport);
+				items.add(AbstractListItemProperty.createFromType(file, ListItemEnum.ITEM_MAP, this.rootFrame,
+						this.dataSource));
 			}
 			catch (final RuntimeException e) {
-				Log.error("Skipping map with unreadable info: " + displayItemPath + " (" + e + ")");
+				Log.error("Skipping map with unreadable info: " + file + " (" + e + ")");
 			}
 		}
-		this.mapListBox.sortItems();
-		this.mapListContainer.add(this.mapListBox);
+		return items;
+	}
+
+	/** The maps from the shared list, or null when there is none to use. */
+	private List<AbstractListItemProperty> keptMaps() {
+		final File kept = MapListCache.shared();
+		if ((kept == null) || (this.ini == null)) {
+			return null;
+		}
+		try {
+			final MapListCache.Listing listing = MapListCache.load(kept, this.ini, this.dataSource);
+			final List<AbstractListItemProperty> items = new ArrayList<>();
+			for (final GameCatalog.MapEntry entry : listing.maps) {
+				items.add(new ListItemMapProperty(entry.path, entry.name, entry.players, entry.melee));
+			}
+			for (final MapListCache.Skipped left : listing.skipped) {
+				final String file = MapSections.fileName(left.path);
+				items.add(new ListItemMapProperty(left.path, file + " (" + reasonText(left.problem) + ")", 0, false, true));
+				this.unreadable.add(left.path);
+			}
+			return items;
+		}
+		catch (final RuntimeException e) {
+			Log.error("The kept map list cannot be used: " + e);
+			this.unreadable.clear();
+			return null;
+		}
+	}
+
+	private static String reasonText(final MapListCache.Problem problem) {
+		return problem == MapListCache.Problem.UNREADABLE ? "not a map file or damaged" : "no map information";
+	}
+
+	/** Whether the list shows the map only to say it cannot be read, so that it cannot be started. */
+	public boolean isUnreadable(final String path) {
+		return (path != null) && this.unreadable.contains(path);
 	}
 
 	/**
@@ -104,6 +201,6 @@ public class MapListContainer {
 			return;
 		}
 		final int lastPlayedIndex = lastPlayedMap == null ? -1 : this.mapListBox.indexOf(lastPlayedMap);
-		this.mapListBox.selectIndex(Math.max(0, lastPlayedIndex));
+		this.mapListBox.selectIndex(lastPlayedIndex >= 0 ? lastPlayedIndex : this.mapListBox.firstSelectableIndex());
 	}
 }

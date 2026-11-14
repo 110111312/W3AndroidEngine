@@ -16,7 +16,6 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.GL30;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -28,8 +27,10 @@ import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.BufferUtils;
+import com.badlogic.gdx.utils.TimeUtils;
 import com.etheller.warsmash.util.SessionResources;
 import com.etheller.warsmash.input.touch.SliderHost;
+import com.etheller.warsmash.input.touch.PointKind;
 import com.etheller.warsmash.input.touch.TouchTarget;
 import com.etheller.warsmash.movie.Movie;
 import com.etheller.warsmash.movie.Movies;
@@ -39,6 +40,7 @@ import com.etheller.warsmash.datasources.CompoundDataSourceDescriptor;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.datasources.DataSourceDescriptor;
 import com.etheller.warsmash.datasources.FolderDataSourceDescriptor;
+import com.etheller.warsmash.datasources.MapsFolderDataSourceDescriptor;
 import com.etheller.warsmash.datasources.MpqDataSourceDescriptor;
 import com.etheller.warsmash.datasources.SubdirDataSource;
 import com.etheller.warsmash.parsers.fdf.GameUI;
@@ -97,13 +99,13 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 
 	private ShapeRenderer shapeRenderer;
 
-	private MdxModel timeIndicator;
 
 	private Scene uiScene;
 	private WarsmashUI meleeUI;
 	private MeleeUI baseMeleeUI;
 
-	private Music currentMusic;
+	/** Frames a dropped game's screens need to be disposed before the next game loads. */
+	private static final int RESTART_FRAMES = 3;
 	private final WarsmashGdxMultiScreenGame screenManager;
 	private final WarsmashGdxMenuScreen menuScreen;
 	private final CPlayerUnitOrderListener uiOrderListener;
@@ -113,7 +115,9 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 	/** The GL the vertex array was made with, which leaves deletes alone once its context is lost. */
 	private GL30 vaoGl;
 	private SessionResources.Scope sessionResources;
+	private static final long BACK_DEBOUNCE_MILLIS = 400;
 	private boolean disposed;
+	private long lastBackMillis = -BACK_DEBOUNCE_MILLIS;
 	private boolean scriptFailed;
 	private static final float MAX_INTERFACE_FRAME_TIME = 3 * WarsmashConstants.SIMULATION_STEP_TIME;
 
@@ -149,7 +153,7 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 	 */
 	@Override
 	public void show() {
-
+		final long showStart = System.nanoTime();
 		final ByteBuffer tempByteBuffer = ByteBuffer.allocateDirect(4);
 		tempByteBuffer.order(ByteOrder.LITTLE_ENDIAN);
 		final IntBuffer temp = tempByteBuffer.asIntBuffer();
@@ -320,7 +324,9 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 		modalContentInstance.modal = true;
 		modalContentInstance.setLocation(0f, 0f, 0.5f);
 		modalContentInstance.setScene(this.uiScene);
+		final long t1 = System.nanoTime();
 		this.meleeUI.main();
+		final long t2 = System.nanoTime();
 		toggleUI.setCurrentUI(0);
 
 		updateUIScene();
@@ -333,6 +339,7 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 		catch (final IOException e) {
 			throw new RuntimeException(e);
 		}
+		final long t3 = System.nanoTime();
 		this.commonEnv = Jass2.loadCommon(this.viewer.mapMpq, this.uiViewport, this.uiScene, this.viewer, this.meleeUI,
 				WarsmashConstants.JASS_FILE_LIST);
 		final FileHandle savedGame = this.viewer.getSavedGameToLoad();
@@ -357,8 +364,10 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 		else {
 			this.commonEnv.main();
 		}
+		final long t4 = System.nanoTime();
 		this.viewer.preloadSoundsAtStart(this.baseMeleeUI.getInterfaceSoundKeys());
 		DataErrors.logReport("map start");
+		PerfStats.showDone(showStart, t1, t2, t3, t4);
 	}
 
 	public static DataSource parseDataSources(final DataTable warsmashIni) {
@@ -386,6 +395,10 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 			switch (type) {
 			case "Folder": {
 				dataSourcesList.add(new FolderDataSourceDescriptor(path));
+				break;
+			}
+			case "Maps": {
+				dataSourcesList.add(new MapsFolderDataSourceDescriptor(path));
 				break;
 			}
 			case "MPQ": {
@@ -561,6 +574,30 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 		SessionResources.end(this.sessionResources);
 	}
 
+	/**
+	 * Drops this network game without leaving it and runs {@code startAgain} once the screens it left are disposed (a
+	 * few frames on): the LAN game goes on, only this machine's copy of it starts over from the first turn.
+	 */
+	public void restartLan(final Runnable startAgain) {
+		this.viewer.gameEnded();
+		endSession();
+		CGameCache.dropUnsaved();
+		this.screenManager.setScreen(this.menuScreen);
+		this.menuScreen.onReturnFromGame(false);
+		runAfterFrames(startAgain, RESTART_FRAMES);
+	}
+
+	private static void runAfterFrames(final Runnable action, final int frames) {
+		Gdx.app.postRunnable(() -> {
+			if (frames <= 1) {
+				action.run();
+			}
+			else {
+				runAfterFrames(action, frames - 1);
+			}
+		});
+	}
+
 	@Override
 	public void resize(final int width, final int height) {
 //		super.resize(width, height);
@@ -575,6 +612,15 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 
 	@Override
 	public boolean keyDown(final int keycode) {
+		if (keycode == Input.Keys.BACK) {
+			// One Back press can arrive twice (Android 16 with the Samsung keyboard sends it again to the game view), and the
+			// second would close the game menu the first opened.
+			final long now = TimeUtils.millis();
+			if ((now - this.lastBackMillis) < BACK_DEBOUNCE_MILLIS) {
+				return true;
+			}
+			this.lastBackMillis = now;
+		}
 		if ((keycode == Input.Keys.B) && Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)) {
 			Gdx.input.setCursorCatched(!Gdx.input.isCursorCatched());
 		}
@@ -665,6 +711,16 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 	@Override
 	public boolean isOverClickableUi(final int screenX, final int screenY) {
 		return this.meleeUI.isOverClickableUi(screenX, screenY);
+	}
+
+	@Override
+	public PointKind pointKindAt(final int screenX, final int screenY) {
+		return this.meleeUI.pointKindAt(screenX, screenY);
+	}
+
+	@Override
+	public boolean hasOrderableSelection() {
+		return this.meleeUI.hasOrderableSelection();
 	}
 
 	@Override

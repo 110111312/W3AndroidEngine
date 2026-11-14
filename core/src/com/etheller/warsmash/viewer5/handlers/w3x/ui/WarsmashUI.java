@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.badlogic.gdx.audio.Music;
 import com.etheller.interpreter.ast.scope.GlobalScope;
+import com.etheller.warsmash.input.touch.PointKind;
 import com.etheller.warsmash.viewer5.Scene;
 import com.etheller.warsmash.viewer5.handlers.w3x.camera.GameCameraManager;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
@@ -80,6 +81,11 @@ public interface WarsmashUI extends CommandErrorListener, WarsmashBaseUI {
 	void endTouchHover();
 
 	boolean skipCinematic();
+
+	/** What lies under the screen point, for orders given by double tap. */
+	PointKind pointKindAt(int screenX, int screenY);
+
+	boolean hasOrderableSelection();
 
 	int touchOverlaySlotAt(int screenX, int screenY);
 

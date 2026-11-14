@@ -197,6 +197,16 @@ public abstract class AbstractCAbilityBuild extends AbstractCAbility implements 
 
 	public static void moveControlledUnitsAside(final CSimulation simulation, final CUnit structure,
 			final CUnit worker) {
+		moveControlledUnitsAside(simulation, structure, worker, false);
+	}
+
+	/**
+	 * Puts the units of the controller (and units it shares control of) out of the footprint of a new structure.
+	 * A builder that walked up to the site is left alone; a caster that makes the structure where it stands is moved
+	 * like the rest.
+	 */
+	public static void moveControlledUnitsAside(final CSimulation simulation, final CUnit structure,
+			final CUnit worker, final boolean moveWorker) {
 		final ArgbImage pathingMap = structure.getUnitType().getBuildingPathingPixelMap();
 		if (pathingMap == null) {
 			return;
@@ -210,7 +220,7 @@ public abstract class AbstractCAbilityBuild extends AbstractCAbility implements 
 		final int controllerIndex = worker.getPlayerIndex();
 		final List<CUnit> unitsToMoveAside = new ArrayList<>();
 		simulation.getWorldCollision().enumUnitsInRect(footprintRect, (unit) -> {
-			if ((unit != structure) && (unit != worker) && !unit.isBuilding()
+			if ((unit != structure) && (moveWorker || (unit != worker)) && !unit.isBuilding()
 					&& (unit.getMovementType() != PathingGrid.MovementType.FLY)
 					&& ((unit.getPlayerIndex() == controllerIndex) || simulation.getPlayer(unit.getPlayerIndex())
 							.hasAlliance(controllerIndex, CAllianceType.SHARED_CONTROL))) {

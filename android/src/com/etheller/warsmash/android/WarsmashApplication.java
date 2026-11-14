@@ -16,6 +16,14 @@ public class WarsmashApplication extends Application {
 	public void onCreate() {
 		super.onCreate();
 		BuildInfo.setSigningCertificate(signingCertificateSha256());
+		com.etheller.warsmash.lan.LanSessions.setNetwork(new AndroidLanNetwork(this));
+		com.etheller.warsmash.launcher.lan.LanText.use((name, arguments) -> {
+			final int id = getResources().getIdentifier(name, "string", getPackageName());
+			if (id == 0) {
+				return name;
+			}
+			return arguments.length == 0 ? getString(id) : getString(id, arguments);
+		});
 	}
 
 	/** The SHA-256 of the certificate the APK is signed with (the signer, not an earlier one it rotated from). */

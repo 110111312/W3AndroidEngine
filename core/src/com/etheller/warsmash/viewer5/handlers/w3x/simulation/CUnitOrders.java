@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.neutral.creeps.CCreepCastAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.orc.blademaster.CAbilityMirrorImage;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
@@ -67,6 +68,8 @@ final class CUnitOrders {
 		if (self.isDead() || CAbilityMirrorImage.isHidingCaster(self)) {
 			return;
 		}
+		final boolean wasPostFight = self.aggro.postFight;
+		final int wasGuardReturn = self.aggro.guardReturn;
 		if (!autoOrder && !self.aggro.guarding) {
 			self.aggro.postFight = false;
 			self.aggro.guardReturn = CUnit.GUARD_RETURN_NONE;
@@ -85,6 +88,14 @@ final class CUnitOrders {
 				if (!ability.checkBeforeQueue(game, self, order.getPlayerIndex(), order.getOrderId(), autoOrder, order.getTarget(game))) {
 					// TODO is this a possible bug vector that the network request doesn't
 					// checkCanUse like the UI before checkBeforeQueue is called??
+					// Measured on 1.29: an instant spell cast in the middle of a fight the unit took up by itself does not
+					// end it, but the spot the unit goes back to afterwards is where it cast.
+					if (wasPostFight && !autoOrder && !self.aggro.guarding && self.aggro.postSet) {
+						self.aggro.postFight = true;
+						self.aggro.guardReturn = wasGuardReturn;
+						self.aggro.guardX = self.getX();
+						self.aggro.guardY = self.getY();
+					}
 					order.fireEvents(game, self);
 					self.stateNotifier.ordersChanged();
 					return;
@@ -136,6 +147,9 @@ final class CUnitOrders {
 						: null;
 				if (orderTargetUnit != null) {
 					orderTargetUnit.onAttackOrdered(game, self);
+					if (!autoOrder) {
+						armCreepCastOpening(self, game);
+					}
 				}
 			}
 			self.setDefaultBehavior(self.stopBehavior);
@@ -171,6 +185,26 @@ final class CUnitOrders {
 	}
 
 	/**
+	 * Measured on 1.29: a creep sent to attack after its first moments thinks of its opening spell (Ensnare) at the
+	 * next beat of 0.5 s of its age, at once when the order comes on one; the beats run from its creation or wake.
+	 */
+	private static void armCreepCastOpening(final CUnit self, final CSimulation game) {
+		final CUnitAcquisitionState state = self.acquisition;
+		final int tick = game.getGameTurnTick();
+		if (!game.castsSpellsByItself(self.playerIndex) || (state.creepCastOpeningTick == Integer.MIN_VALUE)
+				|| (!state.creepCastOpened && (state.creepCastOpeningTick >= tick))) {
+			return;
+		}
+		if (state.creepCastBeatOrigin == Integer.MIN_VALUE) {
+			state.creepCastBeatOrigin = state.creepCastOpeningTick + 1;
+		}
+		final int beat = CCreepCastAbility.OPENING_CAST_BEAT_TICKS;
+		state.creepCastOpeningTick = state.creepCastBeatOrigin
+				+ (Math.floorDiv((tick - state.creepCastBeatOrigin) + (beat - 1), beat) * beat);
+		state.creepCastOpened = false;
+	}
+
+	/**
 	 * Measured on 1.29: a cast that needs no turn starts inside the order call (its channel event fires before the
 	 * order returns), and one that turns counts its turn ticks from the order's own time, not from the next step.
 	 */
@@ -196,7 +230,7 @@ final class CUnitOrders {
 			order(self, simulation, new COrderNoTarget(self.playerIndex, 0, orderId, false), false, autoOrder);
 			return true;
 		}
-		if (self.removedFromGame || CAbilityMirrorImage.isHidingCaster(self)) {
+		if (self.removedFromGame || self.isLoaded() || CAbilityMirrorImage.isHidingCaster(self)) {
 			return false;
 		}
 		for (final CAbility ability : self.abilities) {

@@ -9,6 +9,13 @@ public interface GameTurnManager {
 
 	void framesSkipped(float skippedCount);
 
+	/**
+	 * Called each frame while the game is paused. A game that takes its turns from a host has to go on taking them,
+	 * because the command that ends the pause comes in one.
+	 */
+	default void whilePaused() {
+	}
+
 	GameTurnManager PAUSED = new GameTurnManager() {
 		@Override
 		public int getLatestCompletedTurn() {

@@ -22,11 +22,14 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
  * paired orders, load on the transport and board on the unit, whichever of them was ordered; the transport heads
  * for the point it can reach nearest to the unit and stays put when it is already there (a ship by the shore does
  * not move for a footman walking up); the unit goes aboard once it is within the cargo hold range (edge to edge) of
- * the transport. Ordering either of them elsewhere ends the other's order too.
+ * the transport. Ordering either of them elsewhere ends the other's order too. A footman standing in the shallows
+ * the ship can sail to does not move: the ship sails up to it, looking whether it is within range every half second.
  */
 public class CBehaviorLoad implements CRangedBehavior {
 	// The transport heads off again when the unit it waits for has walked this far.
 	private static final float FOLLOW_AGAIN_DISTANCE = 128f;
+	// A ship sailing to a unit standing in the shallows looks whether it is within range only this often.
+	private static final int RANGE_CHECK_TICKS = 10;
 	// The ship heads a little past the point where it stops, so that it does not slow down before it.
 	private static final float APPROACH_OVERSHOOT = 32f;
 
@@ -38,6 +41,8 @@ public class CBehaviorLoad implements CRangedBehavior {
 	private float shoreX;
 	private float shoreY;
 	private double targetToShore;
+	private boolean sailingToTarget;
+	private int startTick;
 
 	public CBehaviorLoad(final CUnit unit, final CAbilityLoad ability) {
 		this.unit = unit;
@@ -48,6 +53,8 @@ public class CBehaviorLoad implements CRangedBehavior {
 	public CBehavior reset(final CSimulation game, final CWidget target) {
 		this.target = (CUnit) target;
 		this.meetingPoint = null;
+		this.sailingToTarget = false;
+		this.startTick = game.getGameTurnTick();
 		if (isWithinCargoRange()) {
 			return this;
 		}
@@ -67,6 +74,14 @@ public class CBehaviorLoad implements CRangedBehavior {
 		this.shoreX = shore[0];
 		this.shoreY = shore[1];
 		this.targetToShore = StrictMath.hypot(this.target.getX() - shore[0], this.target.getY() - shore[1]);
+		final boolean sailsToTarget = (shore[0] == this.target.getX()) && (shore[1] == this.target.getY());
+		this.sailingToTarget = sailsToTarget;
+		if (sailsToTarget) {
+			// Measured on 1.29: a footman standing in the shallows does not move; the ship sails to it and takes it
+			// aboard at the first look, every half second, that finds it within range.
+			this.meetingPoint = new AbilityPointTarget(shore[0], shore[1]);
+			return this.unit.getMoveBehavior().reset(this.meetingPoint, this, false);
+		}
 		if ((this.unit.distance(shore[0], shore[1])
 				- this.target.getUnitType().getCollisionSize()) <= castRange) {
 			// Measured on 1.29: a ship the footman can walk into range of stays where it is.
@@ -76,6 +91,10 @@ public class CBehaviorLoad implements CRangedBehavior {
 		// Measured on 1.29: a ship far out heads for that ground and stops once it is within the cargo hold range of
 		// the ship's centre, not as near the shore as the ship could go.
 		final double toShore = StrictMath.hypot(this.unit.getX() - shore[0], this.unit.getY() - shore[1]);
+		if (toShore <= 0) {
+			this.meetingPoint = new AbilityPointTarget(this.unit.getX(), this.unit.getY());
+			return this;
+		}
 		final float approach = castRange - APPROACH_OVERSHOOT;
 		final float goalX = (float) (shore[0] + (((this.unit.getX() - shore[0]) * approach) / toShore));
 		final float goalY = (float) (shore[1] + (((this.unit.getY() - shore[1]) * approach) / toShore));
@@ -91,9 +110,17 @@ public class CBehaviorLoad implements CRangedBehavior {
 		return this.meetingPoint;
 	}
 
+	private boolean isRangeCheckTick(final CSimulation game) {
+		final int ticks = game.getGameTurnTick() - this.startTick;
+		return (ticks > 0) && ((ticks % RANGE_CHECK_TICKS) == 0);
+	}
+
 	private boolean isAtMeetingPoint() {
 		if (this.meetingPoint == null) {
 			return true;
+		}
+		if (this.sailingToTarget) {
+			return this.unit.distance(this.meetingPoint.x, this.meetingPoint.y) <= 0;
 		}
 		if (StrictMath.hypot(this.unit.getX() - this.shoreX, this.unit.getY() - this.shoreY) <= this.unit
 				.getCargoData().getCastRange()) {
@@ -117,7 +144,9 @@ public class CBehaviorLoad implements CRangedBehavior {
 
 	@Override
 	public boolean isWithinRange(final CSimulation simulation) {
-		return !checkTargetStillValid(simulation) || isWithinCargoRange() || isAtMeetingPoint() || targetMovedOn();
+		return !checkTargetStillValid(simulation)
+				|| (isWithinCargoRange() && (!this.sailingToTarget || isRangeCheckTick(simulation)))
+				|| isAtMeetingPoint() || targetMovedOn();
 	}
 
 	@Override
@@ -125,7 +154,7 @@ public class CBehaviorLoad implements CRangedBehavior {
 		if (!checkTargetStillValid(simulation)) {
 			return this.unit.pollNextOrderBehavior(simulation);
 		}
-		if (isWithinCargoRange()) {
+		if (isWithinCargoRange() && (!this.sailingToTarget || isRangeCheckTick(simulation) || isAtMeetingPoint())) {
 			CAbilityLoad.loadUnit(simulation, this.unit, this.target, false);
 			return this.unit.pollNextOrderBehavior(simulation);
 		}

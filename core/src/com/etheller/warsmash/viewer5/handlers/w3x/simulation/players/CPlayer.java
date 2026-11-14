@@ -71,6 +71,7 @@ public class CPlayer extends CBasePlayer {
 	private int gameResult;
 	private CPlayerGameResult removedResult;
 	private int placed;
+	private int lastCreepOpeningCastTick = Integer.MIN_VALUE / 2;
 	private boolean observerOnDeath;
 	private boolean observer;
 	private boolean unfollowable;
@@ -1327,5 +1328,13 @@ public class CPlayer extends CBasePlayer {
 			this.aiScript.stop();
 		}
 		this.aiScript = aiScript;
+	}
+
+	public int getLastCreepOpeningCastTick() {
+		return this.lastCreepOpeningCastTick;
+	}
+
+	public void setLastCreepOpeningCastTick(final int tick) {
+		this.lastCreepOpeningCastTick = tick;
 	}
 }

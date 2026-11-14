@@ -12,6 +12,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.TimeUtils;
+import com.etheller.warsmash.input.touch.PointKind;
 import com.etheller.warsmash.input.touch.VirtualCursor;
 import com.etheller.warsmash.input.touch.VirtualModifiers;
 import com.etheller.warsmash.parsers.fdf.frames.AbstractRenderableFrame;
@@ -28,6 +29,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability.ItemUI;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitEnumFunction;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitStateListener;
@@ -39,6 +42,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityA
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityView;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityGoldMinable;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityWispHarvest;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.queue.CAbilityRally;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
@@ -1344,7 +1348,8 @@ final class MeleeUIInput {
 	}
 
 	static boolean isControlDown() {
-		return Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT) || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT);
+		return Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT) || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT)
+				|| VirtualModifiers.isControlDown();
 	}
 
 	public boolean touchDragged(final int screenX, final int screenY, final float worldScreenY, final int pointer) {
@@ -1407,8 +1412,70 @@ final class MeleeUIInput {
 				|| (this.ui.tooltips.panelTipAt(MeleeUI.screenCoordsVector.x, MeleeUI.screenCoordsVector.y) != -1);
 	}
 
+	/**
+	 * What a double tap at the point would act on. Anything that is not the world (buttons, the minimap, the dialogs
+	 * and the control group bar) is reported as interface, so those taps keep their single tap meaning.
+	 */
+	public PointKind pointKindAt(final int screenX, final int screenY) {
+		if (!this.ui.userControlEnabled || isOverClickableUi(screenX, screenY)
+				|| (this.ui.groups.touchOverlaySlotAt(screenX, screenY) >= 0)) {
+			return PointKind.INTERFACE;
+		}
+		MeleeUI.screenCoordsVector.set(screenX, screenY);
+		this.ui.uiViewport.unproject(MeleeUI.screenCoordsVector);
+		final float uiX = MeleeUI.screenCoordsVector.x;
+		final float uiY = MeleeUI.screenCoordsVector.y;
+		if (this.ui.meleeUIMinimap.containsMouse(uiX, uiY) || this.ui.questDialog.contains(uiX, uiY)
+				|| this.ui.chat.dialogContains(uiX, uiY) || this.ui.messageLog.contains(uiX, uiY)
+				|| this.ui.allianceDialog.contains(uiX, uiY)) {
+			return PointKind.INTERFACE;
+		}
+		final float worldScreenY = this.ui.war3MapViewer.canvas.getHeight() - screenY;
+		RenderWidget picked = this.ui.war3MapViewer.rayPickUnit(screenX, worldScreenY, this.anyClickableUnitFilter);
+		if (picked == null) {
+			picked = this.ui.war3MapViewer.rayPickUnit(screenX, worldScreenY, this.anyTargetableUnitFilter);
+		}
+		if (picked == null) {
+			picked = this.ui.war3MapViewer.pickNearestTree(screenX, worldScreenY, fingerTreeTolerancePx(),
+					this.selectionHarvestsTreeFilter);
+			return picked != null ? PointKind.RESOURCE : PointKind.GROUND;
+		}
+		final CWidget widget = picked.getSimulationWidget();
+		if (widget instanceof CItem) {
+			return PointKind.ITEM;
+		}
+		if (widget instanceof CDestructable) {
+			return this.selectionHarvestsTreeFilter.call(widget) ? PointKind.RESOURCE : PointKind.GROUND;
+		}
+		if (widget instanceof CUnit) {
+			final CUnit unit = (CUnit) widget;
+			if (isControlledByLocalPlayer(unit)) {
+				return PointKind.OWN_UNIT;
+			}
+			for (final CAbility ability : unit.getAbilities()) {
+				if (ability instanceof CAbilityGoldMinable) {
+					return PointKind.RESOURCE;
+				}
+			}
+			return unit.isUnitAlly(this.ui.localPlayer) ? PointKind.OTHER : PointKind.ENEMY;
+		}
+		return PointKind.OTHER;
+	}
+
+	private boolean isControlledByLocalPlayer(final CUnit unit) {
+		return (unit.getPlayerIndex() == this.ui.war3MapViewer.getLocalPlayerIndex())
+				|| this.ui.war3MapViewer.simulation.getPlayer(this.ui.war3MapViewer.getLocalPlayerIndex())
+						.hasAlliance(unit.getPlayerIndex(), CAllianceType.SHARED_CONTROL);
+	}
+
+	public boolean hasOrderableSelection() {
+		final RenderUnit selected = this.ui.getSelectedUnit();
+		return (selected != null) && isControlledByLocalPlayer(selected.getSimulationUnit());
+	}
+
 	public void screenToWorld(final int screenX, final int screenY, final float[] out) {
-		this.ui.war3MapViewer.getClickLocation(MeleeUI.clickLocationTemp, screenX, Gdx.graphics.getHeight() - screenY,
+		this.ui.war3MapViewer.getClickLocation(MeleeUI.clickLocationTemp, screenX,
+				(int) (this.ui.war3MapViewer.canvas.getHeight() - screenY),
 				false, false);
 		out[0] = MeleeUI.clickLocationTemp.x;
 		out[1] = MeleeUI.clickLocationTemp.y;

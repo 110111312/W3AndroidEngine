@@ -35,6 +35,13 @@ public interface AudioExtension {
 	default void finishLoading(final long maxMillis) {
 	}
 
+	/**
+	 * Starts decoding a sound on another thread when a backend decodes in newSound, so that the newSound which
+	 * follows only has to hand the result over. Nothing to do for a backend that decodes in the background anyway.
+	 */
+	default void prefetchSound(final FileHandle file) {
+	}
+
 	default Music newMusic(final FileHandle file) {
 		return Gdx.audio.newMusic(file);
 	}

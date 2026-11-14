@@ -20,6 +20,7 @@ import com.etheller.warsmash.parsers.fdf.frames.SpriteFrame;
 import com.etheller.warsmash.parsers.fdf.frames.StringFrame;
 import com.etheller.warsmash.parsers.fdf.frames.UIFrame;
 import com.etheller.warsmash.units.Element;
+import com.etheller.warsmash.lan.LanPlay;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
 import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedGame;
@@ -87,6 +88,13 @@ final class MeleeUIMenus {
 		this.ui.scoreScreen = new MeleeScoreScreen(this.ui.rootFrame, this.ui.uiViewport,
 				this.ui.war3MapViewer.simulation, this.ui.war3MapViewer.getAllObjectData(),
 				this.ui.war3MapViewer.getLocalPlayerIndex(), this.ui::quitMission);
+		if (this.ui.war3MapViewer.getGameTurnManager() instanceof com.etheller.warsmash.lan.LockstepTurnManager) {
+			final com.etheller.warsmash.lan.LanPlay play = ((com.etheller.warsmash.lan.LockstepTurnManager) this.ui.war3MapViewer
+					.getGameTurnManager()).play();
+			if (play != null) {
+				this.ui.scoreScreen.setKeyboardAndMouse(play::usesKeyboardAndMouse);
+			}
+		}
 		this.alliesButton.setOnClick(this::toggleAllianceDialog);
 		this.chatButton = (SimpleButtonFrame) this.ui.rootFrame.getFrameByName("UpperButtonBarChatButton", 0);
 		this.ui.chat = new MeleeChat(this.ui.rootFrame, this.ui.uiViewport, this.ui.war3MapViewer.simulation,
@@ -138,6 +146,10 @@ final class MeleeUIMenus {
 						}
 					}
 				});
+		final LanPlay lanPlay = this.ui.lanPlay();
+		if ((lanPlay != null) && lanPlay.isWatcher()) {
+			this.ui.chat.setWatcher(lanPlay.localName(), !lanPlay.isObserver());
+		}
 		this.ui.messageLog = new MeleeMessageLog(this.ui.rootFrame, this.ui.uiViewport);
 		if (this.ui.isSinglePlayerGame() && TouchInputRouter.isActive() && !this.ui.war3MapViewer.isReplayPlayback()) {
 			// A touch screen has no Enter key, so the button keeps opening the chat line that scripts listen to.
@@ -290,7 +302,10 @@ final class MeleeUIMenus {
 				}
 				// 1.29 single player: no Pause Game button (the menu itself pauses), and the upper bar is greyed out
 				// while the menu is up.
-				pauseButton.setVisible(!MeleeUIMenus.this.ui.isSinglePlayerGame());
+				final LanPlay lanPlay = MeleeUIMenus.this.ui.lanPlay();
+				// An observer has no say in the game: its menu has no Pause Game.
+				pauseButton.setVisible(!MeleeUIMenus.this.ui.isSinglePlayerGame()
+						&& !((lanPlay != null) && lanPlay.isObserver()));
 				setUpperButtonsEnabled(false);
 				MeleeUIMenus.this.ui.chat.closeEntry();
 				// A replay's menu has no Save Game, Load Game or Restart Mission (measured).

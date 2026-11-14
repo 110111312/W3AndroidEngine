@@ -305,7 +305,11 @@ final class PlayerNatives extends CommonNatives {
 					if (result != CPlayerGameResult.VICTORY) {
 						player.setSlotState(CPlayerSlotState.LEFT);
 					}
-					if (player.getId() != war3MapViewer.getLocalPlayerIndex()) {
+					// Alone, the local player's own removal fires no event (measured). In a network game every machine
+					// must run the same triggers, or the one whose player is removed leaves the others' game.
+					final boolean local = player.getId() == war3MapViewer.getLocalPlayerIndex();
+					final boolean network = war3MapViewer.isNetworkGame();
+					if (!local || network) {
 						final JassGameEventsWar3 event;
 						if (result == CPlayerGameResult.DEFEAT) {
 							event = JassGameEventsWar3.EVENT_PLAYER_DEFEAT;
@@ -318,7 +322,7 @@ final class PlayerNatives extends CommonNatives {
 						}
 						player.firePlayerEvents(CommonTriggerExecutionScope::triggerPlayerScope, event);
 					}
-					else if ((result == CPlayerGameResult.DEFEAT)
+					if ((local || network) && (result == CPlayerGameResult.DEFEAT)
 							&& war3MapViewer.getMapConfig().isMapFlagSet(CMapFlag.MAP_OBSERVERS_ON_DEATH)) {
 						// 1.29 reports IsPlayerObserver false right after RemovePlayer and true at the next check.
 						final CTimer becomeObserver = new ObserverTimer(player, this.war3MapViewer);
@@ -629,7 +633,9 @@ final class PlayerNatives extends CommonNatives {
 		@Override
 		public void onFire(final CSimulation simulation) {
 			this.player.setPlayerState(simulation, CPlayerState.OBSERVER, 1);
-			this.war3MapViewer.startObserverView();
+			if (this.player.getId() == this.war3MapViewer.getLocalPlayerIndex()) {
+				this.war3MapViewer.startObserverView();
+			}
 		}
 	}
 }

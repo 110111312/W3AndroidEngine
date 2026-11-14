@@ -48,4 +48,14 @@ public interface TouchTarget {
 	 * @return true if cinematic mode is on and the skip was sent
 	 */
 	boolean skipCinematic();
+
+	/** What lies under the point, for orders given by double tap. Screens that cannot tell take no part in them. */
+	default PointKind pointKindAt(final int screenX, final int screenY) {
+		return PointKind.INTERFACE;
+	}
+
+	/** Whether the selection holds a unit of the player's that can take an order. */
+	default boolean hasOrderableSelection() {
+		return false;
+	}
 }

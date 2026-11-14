@@ -19,6 +19,7 @@ import com.etheller.interpreter.ast.scope.variableevent.CLimitOp;
 import com.etheller.warsmash.util.ArgbImage;
 import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.util.WarsmashConstants;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.neutral.creeps.CCreepCastAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.orc.blademaster.CBuffWhirlWindCaster;
 import com.etheller.warsmash.viewer5.handlers.w3x.AnimationTokens.PrimaryTag;
 import com.etheller.warsmash.viewer5.handlers.w3x.SequenceUtils;
@@ -112,6 +113,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.StateModBuff;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.StateModBuffType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.AbilityTargetCheckReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.CommandStringErrorKeys;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.ResourceType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRenderComponentModel;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitAcquisition.AutocastTargetFinderEnum;
@@ -219,6 +221,7 @@ public class CUnit extends CWidget {
 	boolean structure;
 	boolean uprooted;
 	boolean hidden = false;
+	private transient CUnit loadedIn;
 	boolean removedFromGame;
 	boolean paused = false;
 	private static final War3ID INVULNERABLE_ABILITY_ID = War3ID.fromString("Avul");
@@ -283,6 +286,8 @@ public class CUnit extends CWidget {
 
 	private boolean usesAltMinimapIcon;
 
+	private int creationOrder;
+
 	boolean unenumerable = false;
 
 
@@ -346,6 +351,11 @@ public class CUnit extends CWidget {
 		for (final CUnitBehaviorChangeListener listener : new ArrayList<>(this.behaviorChangeListeners)) {
 			listener.onChange(game, this, this.orders.currentBehavior, behavior, ongoing);
 		}
+	}
+
+	/** Whether the unit is in a fight it took up by itself (acquired a target, answered a call for help), not one it was ordered into. */
+	public boolean isFightingByItself() {
+		return this.aggro.postFight || this.aggro.guardEngaged;
 	}
 
 	public void performDefaultBehavior(final CSimulation game) {
@@ -787,9 +797,11 @@ public class CUnit extends CWidget {
 		return (this.acquisition.creepCastOnce != null) && this.acquisition.creepCastOnce.contains(orderId);
 	}
 
-	/** The unit behind the hardest hit this one took in the last given number of ticks. */
-	public CUnit getHeaviestHitBy(final int tick, final int withinTicks) {
-		return ((tick - this.aggro.heaviestHitTick) <= withinTicks) ? this.aggro.heaviestHitBy : null;
+	/** The unit whose hit this one answers with a spell now, if any; asking takes it. */
+	public CUnit takeHitCastSource(final int tick) {
+		final CUnit source = ((tick - this.aggro.hitCastTick) <= 1) ? this.aggro.hitCastSource : null;
+		this.aggro.hitCastSource = null;
+		return source;
 	}
 
 	public void markCastOnce(final int orderId) {
@@ -939,6 +951,15 @@ public class CUnit extends CWidget {
 	 */
 	public boolean isWalking(final int gameTurnTick) {
 		return (gameTurnTick - this.lastWalkTick) <= 2;
+	}
+
+	/** Counts the units a simulation made; of units tied for a target the one made last is looked at first. */
+	public int getCreationOrder() {
+		return this.creationOrder;
+	}
+
+	public void setCreationOrder(final int creationOrder) {
+		this.creationOrder = creationOrder;
 	}
 
 	public int getPlayerIndex() {
@@ -1239,6 +1260,9 @@ public class CUnit extends CWidget {
 	/** Called for help or UnitWakeUp: wakes the creep and keeps it awake for a while even if it already was. */
 	public void wakeUp(final CSimulation game) {
 		this.acquisition.lastWakeTick = game.getGameTurnTick();
+		this.acquisition.creepCastOpeningTick = game.getGameTurnTick() + CCreepCastAbility.OPENING_CAST_DELAY_TICKS;
+		this.acquisition.creepCastOpened = false;
+		this.acquisition.creepCastBeatOrigin = Integer.MIN_VALUE;
 		wakeFromNaturalSleep(game);
 	}
 
@@ -1415,6 +1439,19 @@ public class CUnit extends CWidget {
 	public boolean canBeTargetedBy(final CSimulation simulation, final CUnit source, final boolean targeted,
 			final Set<CTargetType> targetsAllowed, final AbilityTargetCheckReceiver<CWidget> receiver) {
 		return CUnitVisibility.canBeTargetedBy(this, simulation, source, targeted, targetsAllowed, receiver);
+	}
+
+	/**
+	 * Measured on 1.29: a script attack order accepts a unit that only its invisibility hides; every other targeting
+	 * rule still applies.
+	 */
+	public boolean canBeTargetedUnseenBy(final CSimulation simulation, final CUnit source,
+			final Set<CTargetType> targetsAllowed, final AbilityTargetCheckReceiver<CWidget> receiver) {
+		if ((this.visibility.untargetablePlayers & (1 << source.getPlayerIndex())) != 0) {
+			receiver.targetCheckFailed(CommandStringErrorKeys.MUST_TARGET_A_UNIT_WITH_THIS_ACTION);
+			return false;
+		}
+		return CUnitVisibility.canBeTargetedBy(this, simulation, source, false, targetsAllowed, receiver);
 	}
 
 	public boolean canBeTargetedBy(final CSimulation simulation, final CUnit source, final boolean targeted,
@@ -1606,6 +1643,10 @@ public class CUnit extends CWidget {
 		this.production.constructingPaused = constructingPaused;
 	}
 
+	public void setBuildTimeOverride(final float buildTimeOverride) {
+		this.production.buildTimeOverride = buildTimeOverride;
+	}
+
 	public void setConstructionProgress(final float constructionProgress) {
 		this.production.constructionProgress = constructionProgress;
 	}
@@ -1658,6 +1699,18 @@ public class CUnit extends CWidget {
 
 	public boolean isHidden() {
 		return this.hidden;
+	}
+
+	/**
+	 * Measured on 1.29: a unit inside a transport (or burrow, or mine) takes no order from a script; stop is accepted
+	 * and does nothing.
+	 */
+	public boolean isLoaded() {
+		return this.loadedIn != null;
+	}
+
+	public void setLoadedIn(final CUnit transport) {
+		this.loadedIn = transport;
 	}
 
 	/**
@@ -1736,6 +1789,11 @@ public class CUnit extends CWidget {
 
 	public void nudgeAround(final CSimulation simulation, final CUnit structure) {
 		CUnitPlacement.nudgeAround(this, simulation, structure);
+	}
+
+	/** Teleports this unit to a random fitting spot round the structure. */
+	public void placeAroundStructure(final CSimulation simulation, final CUnit structure) {
+		CUnitPlacement.placeAroundStructure(this, simulation, structure);
 	}
 
 	public void placeTrainedUnit(final CSimulation simulation, final CUnit trainer, final AbilityTarget rallyPoint) {

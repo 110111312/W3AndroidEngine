@@ -266,7 +266,7 @@ final class MeleeUIControlGroups {
 
 	/** An enemy hurt the unit: a hero of the bar starts its alert. */
 	void unitAttacked(final CUnit unit, final CUnit attacker) {
-		if (!unit.isHero() || (attacker == null) || (attacker.getPlayerIndex() == unit.getPlayerIndex())) {
+		if (!unit.isHero() || unit.isIllusion() || (attacker == null) || (attacker.getPlayerIndex() == unit.getPlayerIndex())) {
 			return;
 		}
 		final CPlayer owner = this.ui.war3MapViewer.simulation.getPlayer(unit.getPlayerIndex());

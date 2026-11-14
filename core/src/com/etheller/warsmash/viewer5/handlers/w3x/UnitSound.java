@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.TimeUtils;
 import com.etheller.warsmash.util.SessionResources;
 import com.etheller.warsmash.datasources.DataSource;
@@ -27,6 +28,8 @@ public final class UnitSound {
 	private final DataSource dataSource;
 	private final List<String> soundPaths = new ArrayList<>();
 	private final List<Sound> sounds = new ArrayList<>();
+	// Finding the file a path plays is a lookup in every data source, so it is done once for a prefetch and its play.
+	private final List<FileHandle> handles = new ArrayList<>();
 	private final List<Float> durations = new ArrayList<>();
 	private final float volume;
 	private final float pitch;
@@ -84,6 +87,7 @@ public final class UnitSound {
 			if (dataSource.has(resolvedPath)) {
 				sound.soundPaths.add(resolvedPath);
 				sound.sounds.add(null);
+				sound.handles.add(null);
 				sound.durations.add(null);
 			}
 			else if (!fileName.isEmpty()) {
@@ -101,12 +105,20 @@ public final class UnitSound {
 		return DataSourceFileHandle.resolveSoundPath(dataSource, filePath + ".wav");
 	}
 
+	private FileHandle handle(final int index) {
+		FileHandle handle = this.handles.get(index);
+		if (handle == null) {
+			handle = new DataSourceFileHandle(this.dataSource, this.soundPaths.get(index));
+			this.handles.set(index, handle);
+		}
+		return handle;
+	}
+
 	private Sound getSound(final int index) {
 		Sound sound = this.sounds.get(index);
 		if (sound == null) {
 			try {
-				sound = SessionResources.track(
-						Extensions.audio.newSound(new DataSourceFileHandle(this.dataSource, this.soundPaths.get(index))));
+				sound = SessionResources.track(Extensions.audio.newSound(handle(index)));
 			}
 			catch (final Exception exc) {
 				Log.error(exc);
@@ -123,6 +135,18 @@ public final class UnitSound {
 	public void preload() {
 		for (int i = 0; i < this.sounds.size(); i++) {
 			getSound(i);
+		}
+	}
+
+	/**
+	 * Starts decoding every file of this sound where a backend can do it off this thread, so that its first play
+	 * finds it decoded.
+	 */
+	public void prefetch() {
+		for (int i = 0; i < this.sounds.size(); i++) {
+			if ((this.sounds.get(i) == null) && (this.handles.get(i) == null)) {
+				Extensions.audio.prefetchSound(handle(i));
+			}
 		}
 	}
 

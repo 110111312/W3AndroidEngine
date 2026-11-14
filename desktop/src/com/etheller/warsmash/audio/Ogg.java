@@ -17,6 +17,7 @@
 package com.etheller.warsmash.audio;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.StreamUtils;
@@ -61,29 +62,37 @@ public class Ogg {
 		}
 	}
 
+	static OggPcm decode(final InputStream stream) {
+		OggInputStream input = null;
+		try {
+			input = new OggInputStream(stream);
+			final ByteArrayOutputStream output = new ByteArrayOutputStream(4096);
+			final byte[] buffer = new byte[2048];
+			while (!input.atEnd()) {
+				final int length = input.read(buffer);
+				if (length == -1) {
+					break;
+				}
+				output.write(buffer, 0, length);
+			}
+			return new OggPcm(output.toByteArray(), input.getChannels(), input.getSampleRate());
+		}
+		finally {
+			StreamUtils.closeQuietly(input);
+		}
+	}
+
 	static public class Sound extends OpenALSound {
 		public Sound(final OpenALAudio audio, final FileHandle file) {
 			super(audio);
 			if (audio.noDevice) {
 				return;
 			}
-			OggInputStream input = null;
-			try {
-				input = new OggInputStream(file.read());
-				final ByteArrayOutputStream output = new ByteArrayOutputStream(4096);
-				final byte[] buffer = new byte[2048];
-				while (!input.atEnd()) {
-					final int length = input.read(buffer);
-					if (length == -1) {
-						break;
-					}
-					output.write(buffer, 0, length);
-				}
-				setup(output.toByteArray(), input.getChannels(), input.getSampleRate());
+			OggPcm pcm = audio.takePrefetched(file);
+			if (pcm == null) {
+				pcm = decode(file.read());
 			}
-			finally {
-				StreamUtils.closeQuietly(input);
-			}
+			setup(pcm.pcm, pcm.channels, pcm.sampleRate);
 		}
 	}
 }

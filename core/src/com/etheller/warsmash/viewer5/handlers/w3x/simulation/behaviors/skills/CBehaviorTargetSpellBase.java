@@ -17,7 +17,14 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.JassGameEve
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.CommandStringErrorKeys;
 
 public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
+	/**
+	 * Measured on 1.29: a creep's own cast begins on a target up to this much farther than the cast range (an
+	 * Ensnare on a Footman walking away at 563 with a range of 500).
+	 */
+	public static final float AUTO_CAST_REACH_SLACK = 64;
+
 	protected final CAbilitySpellBase ability;
+	private float reachSlack;
 	private final AbilityTargetStillAliveAndTargetableVisitor stillAliveVisitor;
 	private int castStartTick = 0;
 	private boolean doneEffect = false;
@@ -35,6 +42,11 @@ public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
 	}
 
 	public CBehavior reset(CSimulation game, final CWidget target) {
+		return reset(game, target, false);
+	}
+
+	public CBehavior reset(CSimulation game, final CWidget target, final boolean autoOrder) {
+		this.reachSlack = autoOrder ? AUTO_CAST_REACH_SLACK : 0;
 		this.castStartTick = 0;
 		this.castPoint.cancel(game);
 		cancelBackswing(game);
@@ -57,10 +69,12 @@ public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
 
 	@Override
 	public boolean isWithinRange(final CSimulation simulation) {
-		if (this.channeling) {
-			return true; // dont run away after channeling begins
+		if (this.channeling || this.doneEffect || (this.castStartTick != 0)) {
+			// Measured on 1.29: once the cast has started the caster stays, also when the target leaves the range
+			// during the cast point or the effect moved it out of range (a teleport).
+			return true;
 		}
-		final float castRange = this.ability.getCastRange();
+		final float castRange = this.ability.getCastRange() + this.reachSlack;
 		return this.unit.canReach(this.target, castRange);
 	}
 

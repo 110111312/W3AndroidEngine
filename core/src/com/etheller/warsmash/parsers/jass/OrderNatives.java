@@ -35,6 +35,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTa
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Unit, group and item use orders issued by scripts.
@@ -273,11 +274,14 @@ final class OrderNatives extends CommonNatives {
 						return BooleanJassValue.FALSE;
 					}
 					final CItem item = arguments.get(1).visit(ObjectJassValueVisitor.getInstance());
+					if ((item == null) || (item.getContainedInventory() == null)) {
+						return BooleanJassValue.FALSE;
+					}
 					final CPlayerUnitOrderExecutor defaultPlayerUnitOrderExecutor = this.simulation
 							.getDefaultPlayerUnitOrderExecutor(whichUnit.getPlayerIndex());
 					final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 					final int orderId = OrderIdUtils.getOrderId(
-							"itemuse" + String.format("%02d", item.getContainedInventory().getSlot(item)));
+							"itemuse" + String.format(Locale.ROOT, "%02d", item.getContainedInventory().getSlot(item)));
 					int abilityHandleId = 0;
 					boolean itemUsable = false;
 					for (final CAbility ability : whichUnit.getAbilities()) {
@@ -308,12 +312,15 @@ final class OrderNatives extends CommonNatives {
 				return BooleanJassValue.FALSE;
 			}
 			final CItem item = arguments.get(1).visit(ObjectJassValueVisitor.getInstance());
+			if ((item == null) || (item.getContainedInventory() == null)) {
+				return BooleanJassValue.FALSE;
+			}
 			CWidget whichTarget = arguments.get(2).visit(ObjectJassValueVisitor.getInstance());
 			final CPlayerUnitOrderExecutor defaultPlayerUnitOrderExecutor = this.simulation
 					.getDefaultPlayerUnitOrderExecutor(whichUnit.getPlayerIndex());
 			final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 			final int orderId = OrderIdUtils
-					.getOrderId("itemuse" + String.format("%02d", item.getContainedInventory().getSlot(item)));
+					.getOrderId("itemuse" + String.format(Locale.ROOT, "%02d", item.getContainedInventory().getSlot(item)));
 			int abilityHandleId = 0;
 			for (final CAbility ability : whichUnit.getAbilities()) {
 				ability.checkCanUse(this.simulation, whichUnit, whichUnit.getPlayerIndex(), orderId, false,
@@ -343,13 +350,16 @@ final class OrderNatives extends CommonNatives {
 						return BooleanJassValue.FALSE;
 					}
 					final CItem item = arguments.get(1).visit(ObjectJassValueVisitor.getInstance());
+					if ((item == null) || (item.getContainedInventory() == null)) {
+						return BooleanJassValue.FALSE;
+					}
 					final AbilityPointTarget whichLocation = arguments.get(2)
 							.visit(ObjectJassValueVisitor.getInstance());
 					final CPlayerUnitOrderExecutor defaultPlayerUnitOrderExecutor = this.simulation
 							.getDefaultPlayerUnitOrderExecutor(whichUnit.getPlayerIndex());
 					final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 					final int orderId = OrderIdUtils.getOrderId(
-							"itemuse" + String.format("%02d", item.getContainedInventory().getSlot(item)));
+							"itemuse" + String.format(Locale.ROOT, "%02d", item.getContainedInventory().getSlot(item)));
 					int abilityHandleId = 0;
 					AbilityPointTarget targetAsPoint = new AbilityPointTarget(whichLocation.x, whichLocation.y);
 					for (final CAbility ability : whichUnit.getAbilities()) {
@@ -472,16 +482,21 @@ final class OrderNatives extends CommonNatives {
 		return (inventory != null) && (ability != inventory) && inventory.isHeldItemAbility(ability);
 	}
 
+	// Measured (1.29): the spells inside a spell book take no script order; only the book's menu gives them.
+	private static boolean isMenuSpell(final CAbility ability) {
+		return ability.getContainerMenuOrderId() != 0;
+	}
+
 	private boolean issuePointOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
 			final float x, final float y) {
-		if (CAbilityMirrorImage.isHidingCaster(whichUnit)) {
+		if (whichUnit.isLoaded() || CAbilityMirrorImage.isHidingCaster(whichUnit)) {
 			return false;
 		}
 		final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 		int abilityHandleId = 0;
 		AbilityPointTarget targetAsPoint = new AbilityPointTarget(x, y);
 		for (final CAbility ability : whichUnit.getAbilities()) {
-			if (isHeldItemAbility(whichUnit, ability)) {
+			if (isHeldItemAbility(whichUnit, ability) || isMenuSpell(ability)) {
 				continue;
 			}
 			ability.checkCanUse(this.simulation, whichUnit, orderingPlayerIndex, orderId, false, 
@@ -506,7 +521,7 @@ final class OrderNatives extends CommonNatives {
 	private boolean issueTargetOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
 			CWidget whichTarget) {
 		if ((whichTarget == null) || (this.simulation.getWidget(whichTarget.getHandleId()) == null)
-				|| CAbilityMirrorImage.isHidingCaster(whichUnit)) {
+				|| whichUnit.isLoaded() || CAbilityMirrorImage.isHidingCaster(whichUnit)) {
 			return false;
 		}
 		int abilityHandleId = 0;
@@ -516,6 +531,9 @@ final class OrderNatives extends CommonNatives {
 		try {
 			final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 			for (final CAbility ability : whichUnit.getAbilities()) {
+				if (isMenuSpell(ability)) {
+					continue;
+				}
 				ability.checkCanUse(this.simulation, whichUnit, orderingPlayerIndex, orderId, false, 
 						activationReceiver.reset());
 				if (activationReceiver.isOk()) {
@@ -551,8 +569,9 @@ final class OrderNatives extends CommonNatives {
 		int abilityHandleId = 0;
 		AbilityPointTarget targetAsPoint = new AbilityPointTarget(whichTarget.getX(), whichTarget.getY());
 		for (final CAbility ability : whichUnit.getAbilities()) {
-			if (!(ability instanceof CAbilitySpell) && !(ability instanceof AbilityBuilderActiveAbility)
-					&& !(ability instanceof CAbilityCarrionSwarmDummy)) {
+			if (isMenuSpell(ability) || (!(ability instanceof CAbilitySpell)
+					&& !(ability instanceof AbilityBuilderActiveAbility)
+					&& !(ability instanceof CAbilityCarrionSwarmDummy))) {
 				continue;
 			}
 			ability.checkCanUse(this.simulation, whichUnit, orderingPlayerIndex, orderId, false, 
@@ -585,12 +604,15 @@ final class OrderNatives extends CommonNatives {
 	}
 
 	private boolean issueImmediateOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId) {
-		if (CAbilityMirrorImage.isHidingCaster(whichUnit)) {
+		if (whichUnit.isLoaded() || CAbilityMirrorImage.isHidingCaster(whichUnit)) {
 			return orderId == OrderIds.stop;
 		}
 		final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 		int abilityHandleId = 0;
 		for (final CAbility ability : whichUnit.getAbilities()) {
+			if (isMenuSpell(ability)) {
+				continue;
+			}
 			if (ability instanceof CAbilityReviveHero) {
 				// Measured on 1.29: a script order never revives a dead hero at an altar, neither by the hero's
 				// type nor by its handle; players and the AI still can.

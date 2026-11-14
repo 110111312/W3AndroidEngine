@@ -13,6 +13,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.beha
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.behavior.callback.statbuffcallbacks.ABNonStackingStatBuffCallback;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.behavior.callback.statemodcallbacks.ABStateModBuffCallback;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.behavior.callback.stringcallbacks.ABStringCallback;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.buff.ABBuff;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.buff.ABTimedBuff;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABAction;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABCallback;
@@ -59,10 +60,19 @@ public abstract class ABActionCreateTimedBuffBase implements ABAction {
 			int castId, ABTimedBuff buff);
 
 	protected static void addUniqueValues(final Map<String, ABCallback> values, final CSimulation game,
-			final CUnit caster, final Map<String, Object> localStore, final int castId, final ABTimedBuff buff) {
+			final CUnit caster, final Map<String, Object> localStore, final int castId, final ABBuff buff) {
 		if (values != null) {
 			for (final String key : values.keySet()) {
 				buff.addUniqueValue(values.get(key).callback(game, caster, localStore, castId), key);
+			}
+		}
+	}
+
+	protected static void addUniqueFlags(final List<ABStringCallback> flags, final CSimulation game, final CUnit caster,
+			final Map<String, Object> localStore, final int castId, final ABBuff buff) {
+		if (flags != null) {
+			for (final ABStringCallback flag : flags) {
+				buff.addUniqueFlag(flag.callback(game, caster, localStore, castId));
 			}
 		}
 	}
@@ -145,11 +155,7 @@ public abstract class ABActionCreateTimedBuffBase implements ABAction {
 		}
 
 		localStore.put(ABLocalStoreKeys.LASTCREATEDBUFF, ability);
-		if (uniqueFlags != null) {
-			for (final ABStringCallback flag : uniqueFlags) {
-				ability.addUniqueFlag(flag.callback(game, caster, localStore, castId));
-			}
-		}
+		addUniqueFlags(uniqueFlags, game, caster, localStore, castId, ability);
 		addUniqueValues(game, caster, localStore, castId, ability);
 		if (!localStore.containsKey(ABLocalStoreKeys.BUFFCASTINGUNIT)) {
 			localStore.put(ABLocalStoreKeys.BUFFCASTINGUNIT, caster);

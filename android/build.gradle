@@ -24,12 +24,30 @@ android {
         applicationId = "com.etheller.warsmash.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 313
-        versionName = "0.3.13"
+        versionCode = 354
+        versionName = "0.3.54"
+    }
+
+    // Release signing is read from a properties file kept outside the repository; without it the release APK stays unsigned.
+    def signingFile = file(System.getenv("WARSMASH_SIGNING") ?: "${System.getProperty("user.home")}/.warsmash/release-signing.properties")
+    if (signingFile.isFile()) {
+        def signing = new Properties()
+        signingFile.withInputStream { signing.load(it) }
+        signingConfigs {
+            release {
+                storeFile = file(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (signingFile.isFile()) {
+                signingConfig = signingConfigs.release
+            }
             minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"

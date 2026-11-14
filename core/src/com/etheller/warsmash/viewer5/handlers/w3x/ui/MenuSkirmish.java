@@ -88,7 +88,8 @@ final class MenuSkirmish {
 
 		final GlueTextButtonFrame playGameButton = (GlueTextButtonFrame) rootFrame.getFrameByName("PlayGameButton", 0);
 		final MapListContainer mapListContainer = new MapListContainer(rootFrame, uiViewport, "MapListContainer",
-				this.menu.dataSource, ((StringFrame) rootFrame.getFrameByName("ProfileListText", 0)).getFrameFont());
+				this.menu.dataSource, ((StringFrame) rootFrame.getFrameByName("ProfileListText", 0)).getFrameFont(),
+				this.menu.warsmashIni);
 		this.skirmishMapList = mapListContainer;
 		mapListContainer.addSelectionListener(new ListBoxSelelectionListener() {
 			War3Map lastMapListMap;
@@ -101,6 +102,9 @@ final class MenuSkirmish {
 						return;
 					}
 					this.prevSelectedItem = newSelectedItem;
+					if (mapListContainer.isUnreadable(newSelectedItem)) {
+						return;
+					}
 
 					try {
 						final War3Map map = War3MapViewer.beginLoadingMap(MenuSkirmish.this.menu.dataSource,
@@ -122,7 +126,11 @@ final class MenuSkirmish {
 				}
 			}
 		});
-		this.skirmishStart = () -> start(mapListContainer.getSelectedItem());
+		this.skirmishStart = () -> {
+			if (!mapListContainer.isUnreadable(mapListContainer.getSelectedItem())) {
+				start(mapListContainer.getSelectedItem());
+			}
+		};
 		playGameButton.setOnClick(this.skirmishStart);
 
 		this.skirmishCancelButton = (GlueTextButtonFrame) rootFrame.getFrameByName("CancelButton", 0);
@@ -235,6 +243,13 @@ final class MenuSkirmish {
 		this.menu.singlePlayerMenu.setVisible(false);
 		this.menu.profiles.hidePanel();
 		this.menu.menuState = MenuState.GOING_TO_SINGLE_PLAYER_SKIRMISH;
+	}
+
+	/** Makes the list again from the maps the game data has now. */
+	void reloadMapList() {
+		if (this.skirmishMapList != null) {
+			this.skirmishMapList.reload();
+		}
 	}
 
 	void hide() {

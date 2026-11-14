@@ -29,6 +29,7 @@ import com.badlogic.gdx.Audio;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.LifecycleListener;
 import com.badlogic.gdx.Net;
 import com.badlogic.gdx.Preferences;
@@ -37,7 +38,11 @@ import com.badlogic.gdx.utils.Clipboard;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ObjectMap;
 import com.badlogic.gdx.utils.SnapshotArray;
+import com.badlogic.gdx.utils.TimeUtils;
 import com.etheller.warsmash.audio.OpenALAudio;
+import com.etheller.warsmash.input.touch.ControlScheme;
+import com.etheller.warsmash.input.touch.MouseTouchBridge;
+import com.etheller.warsmash.input.touch.TouchInputRouter;
 
 /**
  * An OpenGL surface fullscreen or in a lightweight window. This was modified by
@@ -51,6 +56,7 @@ public class LwjglApplication implements Application {
 	protected OpenALAudio audio;
 	protected final LwjglFiles files;
 	protected final LwjglInput input;
+	private final MouseTouchBridge touchBridge = new MouseTouchBridge(TimeUtils::millis);
 	protected final LwjglNet net;
 	protected final ApplicationListener listener;
 	protected Thread mainLoopThread;
@@ -119,6 +125,23 @@ public class LwjglApplication implements Application {
 		Gdx.input = this.input;
 		Gdx.net = this.net;
 		initialize();
+	}
+
+	/** With the touch scheme chosen, mouse button events of the window go through the bridge to the touch router. */
+	private void processInputEvents() {
+		final TouchInputRouter router = TouchInputRouter.installedRouter();
+		final InputProcessor processor = this.input.getInputProcessor();
+		if ((router == null) || (router.scheme() != ControlScheme.TOUCH) || (processor == null)) {
+			this.input.processEvents();
+			return;
+		}
+		this.touchBridge.setTarget(processor);
+		this.input.setInputProcessor(this.touchBridge);
+		this.input.processEvents();
+		// A handler may have moved input to another screen meanwhile, which stays.
+		if (this.input.getInputProcessor() == this.touchBridge) {
+			this.input.setInputProcessor(processor);
+		}
 	}
 
 	private static LwjglApplicationConfiguration createConfig(final String title, final int width, final int height) {
@@ -246,7 +269,7 @@ public class LwjglApplication implements Application {
 
 			this.input.update();
 			shouldRender |= this.graphics.shouldRender();
-			this.input.processEvents();
+			processInputEvents();
 			if (this.audio != null) {
 				this.audio.update();
 			}

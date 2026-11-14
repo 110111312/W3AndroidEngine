@@ -147,11 +147,18 @@ final class UpdatePrompt {
 		}
 	}
 
-	/** The installed build's version code, which a release has to exceed; zero when it cannot be read. */
+	/**
+	 * The installed build's version code, which a release has to exceed; zero when it cannot be read. The version name
+	 * decides when it has numbers: a build whose code was left behind its name must not take an older release for news.
+	 */
 	@SuppressWarnings("deprecation")
 	private static int installedCode(final Context context) {
 		try {
 			final PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+			final int fromName = UpdateCheck.versionCode(info.versionName);
+			if (fromName > 0) {
+				return fromName;
+			}
 			return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? (int) info.getLongVersionCode() : info.versionCode;
 		}
 		catch (final PackageManager.NameNotFoundException e) {

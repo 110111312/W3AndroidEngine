@@ -1,7 +1,7 @@
 package com.etheller.warsmash.viewer5.handlers.mdx;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
+import java.nio.ByteOrder;
 import java.util.List;
 
 import com.badlogic.gdx.graphics.GL20;
@@ -57,7 +57,14 @@ public class GeometryEmitterFuncs {
 	public static final int FLOAT_OFFSET_P2 = BYTE_OFFSET_P2 >> 2;
 	public static final int FLOAT_OFFSET_P3 = BYTE_OFFSET_P3 >> 2;
 	public static final int FLOAT_OFFSET_HEALTH = BYTE_OFFSET_HEALTH >> 2;
+	public static final int FLOAT_OFFSET_COLOR = BYTE_OFFSET_COLOR >> 2;
+	public static final int FLOAT_OFFSET_TAIL = BYTE_OFFSET_TAIL >> 2;
 	public static final int BYTE_OFFSET_TEAM_COLOR = BYTE_OFFSET_LEFT_RIGHT_TOP;
+
+	// The tail byte as it reads when the 4 bytes at BYTE_OFFSET_TAIL are carried through a float[]. It is a
+	// normal or subnormal value, never a NaN, so the bits survive the copy.
+	public static final float TAIL_FLAG = Float.intBitsToFloat(
+			ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN ? 1 : 0x01000000);
 
 	// Head or tail.
 	public static final int HEAD = 0;
@@ -80,8 +87,7 @@ public class GeometryEmitterFuncs {
 	public static void bindParticleEmitter2Buffer(final ParticleEmitter2 emitter, final ClientBuffer buffer) {
 		final MdxComplexInstance instance = emitter.instance;
 		final List<Particle2> objects = emitter.objects;
-		final ByteBuffer byteView = buffer.byteView;
-		final FloatBuffer floatView = buffer.floatView;
+		final float[] staging = buffer.staging;
 		final ParticleEmitter2Object emitterObject = emitter.emitterObject;
 		final int modelSpace = emitterObject.modelSpace;
 		final float tailLength = emitterObject.tailLength;
@@ -94,7 +100,6 @@ public class GeometryEmitterFuncs {
 			final boolean head = tailness.isIncludesHead();
 
 			if (head) {
-				final int byteOffset = offset * BYTES_PER_OBJECT;
 				final int floatOffset = offset * FLOATS_PER_OBJECT;
 				final int p0Offset = floatOffset + FLOAT_OFFSET_P0;
 				Vector3 location = object.location;
@@ -106,33 +111,32 @@ public class GeometryEmitterFuncs {
 					location = locationHeap.set(location).prj(emitter.node.worldMatrix);
 				}
 
-				floatView.put(p0Offset + 0, location.x);
-				floatView.put(p0Offset + 1, location.y);
-				floatView.put(p0Offset + 2, location.z);
+				staging[p0Offset + 0] = location.x;
+				staging[p0Offset + 1] = location.y;
+				staging[p0Offset + 2] = location.z;
 				if (emitterObject.xYQuad != 0) {
 					final Vector3 velocity = object.velocity;
-					floatView.put(p0Offset + 3, velocity.x);
-					floatView.put(p0Offset + 4, velocity.y);
-//					floatView.put(p0Offset + 5, velocity.z);
+					staging[p0Offset + 3] = velocity.x;
+					staging[p0Offset + 4] = velocity.y;
 				}
 				else {
-					floatView.put(p0Offset + 3, 0);
-					floatView.put(p0Offset + 4, 0);
+					staging[p0Offset + 3] = 0;
+					staging[p0Offset + 4] = 0;
 				}
+				staging[p0Offset + 5] = 0;
 
-				floatView.put(p0Offset + 6, scale.x);
-				floatView.put(p0Offset + 7, scale.y);
-				floatView.put(p0Offset + 8, scale.z);
+				staging[p0Offset + 6] = scale.x;
+				staging[p0Offset + 7] = scale.y;
+				staging[p0Offset + 8] = scale.z;
 
-				floatView.put(floatOffset + FLOAT_OFFSET_HEALTH, object.health);
+				staging[floatOffset + FLOAT_OFFSET_HEALTH] = object.health;
 
-				byteView.put(byteOffset + BYTE_OFFSET_TAIL, (byte) 0);
-				byteView.put(byteOffset + BYTE_OFFSET_TEAM_COLOR, (byte) 0);
+				staging[floatOffset + FLOAT_OFFSET_COLOR] = 0;
+				staging[floatOffset + FLOAT_OFFSET_TAIL] = 0;
 
 				offset += 1;
 			}
 			if (tail) {
-				final int byteOffset = offset * BYTES_PER_OBJECT;
 				final int floatOffset = offset * FLOATS_PER_OBJECT;
 				final int p0Offset = floatOffset + FLOAT_OFFSET_P0;
 				final Vector3 location = object.location;
@@ -153,28 +157,30 @@ public class GeometryEmitterFuncs {
 					end = endHeap.set(end).prj(emitter.node.worldMatrix);
 				}
 
-				floatView.put(p0Offset + 0, start.x);
-				floatView.put(p0Offset + 1, start.y);
-				floatView.put(p0Offset + 2, start.z);
-				floatView.put(p0Offset + 3, end.x);
-				floatView.put(p0Offset + 4, end.y);
-				floatView.put(p0Offset + 5, end.z);
+				staging[p0Offset + 0] = start.x;
+				staging[p0Offset + 1] = start.y;
+				staging[p0Offset + 2] = start.z;
+				staging[p0Offset + 3] = end.x;
+				staging[p0Offset + 4] = end.y;
+				staging[p0Offset + 5] = end.z;
 
-				floatView.put(p0Offset + 6, scale.x);
-				floatView.put(p0Offset + 7, scale.y);
-				floatView.put(p0Offset + 8, scale.z);
+				staging[p0Offset + 6] = scale.x;
+				staging[p0Offset + 7] = scale.y;
+				staging[p0Offset + 8] = scale.z;
 
-				floatView.put(floatOffset + FLOAT_OFFSET_HEALTH, object.health);
+				staging[floatOffset + FLOAT_OFFSET_HEALTH] = object.health;
 
-				byteView.put(byteOffset + BYTE_OFFSET_TAIL, (byte) 1);
-				byteView.put(byteOffset + BYTE_OFFSET_TEAM_COLOR, (byte) 0);
+				staging[floatOffset + FLOAT_OFFSET_COLOR] = 0;
+				staging[floatOffset + FLOAT_OFFSET_TAIL] = TAIL_FLAG;
 
 				offset += 1;
 			}
 
 		}
 
+		buffer.commitStaging(offset * FLOATS_PER_OBJECT);
 	}
+
 
 	public static void bindParticleEmitter2Shader(final ParticleEmitter2 emitter, final ShaderProgram shader) {
 		final MdxComplexInstance instance = emitter.instance;
@@ -256,7 +262,7 @@ public class GeometryEmitterFuncs {
 	public static void bindRibbonEmitterBuffer(final RibbonEmitter emitter, final ClientBuffer buffer) {
 		Ribbon object = emitter.first;
 		final ByteBuffer byteView = buffer.byteView;
-		final FloatBuffer floatView = buffer.floatView;
+		final float[] staging = buffer.staging;
 		final RibbonEmitterObject emitterObject = emitter.emitterObject;
 		final long columns = emitterObject.columns;
 		final int alive = emitter.alive;
@@ -265,30 +271,42 @@ public class GeometryEmitterFuncs {
 
 		while (object.next != null) {
 			final float[] next = object.next.vertices;
-			final int byteOffset = offset * BYTES_PER_OBJECT;
 			final int floatOffset = offset * FLOATS_PER_OBJECT;
 			final int p0Offset = floatOffset + FLOAT_OFFSET_P0;
+			final float[] vertices = object.vertices;
+
+			staging[p0Offset + 0] = vertices[0];
+			staging[p0Offset + 1] = vertices[1];
+			staging[p0Offset + 2] = vertices[2];
+			staging[p0Offset + 3] = vertices[3];
+			staging[p0Offset + 4] = vertices[4];
+			staging[p0Offset + 5] = vertices[5];
+			staging[p0Offset + 6] = next[3];
+			staging[p0Offset + 7] = next[4];
+			staging[p0Offset + 8] = next[5];
+			staging[p0Offset + 9] = next[0];
+			staging[p0Offset + 10] = next[1];
+			staging[p0Offset + 11] = next[2];
+			staging[floatOffset + FLOAT_OFFSET_COLOR] = 0;
+			staging[floatOffset + FLOAT_OFFSET_TAIL] = 0;
+
+			object = object.next;
+			offset += 1;
+		}
+
+		// The color and left/right/top bytes go in after the float copy, over the zeros it leaves in their slots.
+		buffer.commitStaging(offset * FLOATS_PER_OBJECT);
+		offset = 0;
+		object = emitter.first;
+		while (object.next != null) {
+			final int byteOffset = offset * BYTES_PER_OBJECT;
 			final int colorOffset = byteOffset + BYTE_OFFSET_COLOR;
 			final int leftRightTopOffset = byteOffset + BYTE_OFFSET_LEFT_RIGHT_TOP;
 			final float left = ((object.slot % columns) + (1 - (offset * chainLengthFactor) - chainLengthFactor))
 					/ columns;
 			final float top = object.slot / (float) columns;
 			final float right = left + chainLengthFactor;
-			final float[] vertices = object.vertices;
 			final byte[] color = object.color;
-
-			floatView.put(p0Offset + 0, vertices[0]);
-			floatView.put(p0Offset + 1, vertices[1]);
-			floatView.put(p0Offset + 2, vertices[2]);
-			floatView.put(p0Offset + 3, vertices[3]);
-			floatView.put(p0Offset + 4, vertices[4]);
-			floatView.put(p0Offset + 5, vertices[5]);
-			floatView.put(p0Offset + 6, next[3]);
-			floatView.put(p0Offset + 7, next[4]);
-			floatView.put(p0Offset + 8, next[5]);
-			floatView.put(p0Offset + 9, next[0]);
-			floatView.put(p0Offset + 10, next[1]);
-			floatView.put(p0Offset + 11, next[2]);
 
 			byteView.put(colorOffset + 0, color[0]);
 			byteView.put(colorOffset + 1, color[1]);
@@ -301,7 +319,6 @@ public class GeometryEmitterFuncs {
 
 			object = object.next;
 			offset += 1;
-
 		}
 	}
 
@@ -331,42 +348,35 @@ public class GeometryEmitterFuncs {
 			final EventObjectEmitter<EventObjectEmitterObject, EventObjectSpl> emitter, final ClientBuffer buffer) {
 		final List<EventObjectSpl> objects = emitter.objects;
 		final ByteBuffer byteView = buffer.byteView;
-		final FloatBuffer floatView = buffer.floatView;
+		final float[] staging = buffer.staging;
 		int offset = 0;
 
 		for (final EventObjectSpl object : objects) {
 			final int floatOffset = offset * FLOATS_PER_OBJECT;
-			final int p0Offset = floatOffset + FLOAT_OFFSET_P0;
-			final float[] vertices = object.vertices;
-			final IVec3 normal = object.normal;
 
-			if (floatView.limit() < (p0Offset + 11)) {
-				Log.warn(
-						"FloatView has a limit of " + floatView.limit() + " which is not large enough. Aborting");
-				continue;
+			// Once one object does not fit, none of the later ones do either.
+			if (staging.length < (floatOffset + FLOATS_PER_OBJECT)) {
+				Log.warn("Staging has a length of " + staging.length + " which is not large enough. Aborting");
+				break;
 			}
-			floatView.put(p0Offset + 0, vertices[0]);
-			floatView.put(p0Offset + 1, vertices[1]);
-			floatView.put(p0Offset + 2, vertices[2]);
-			floatView.put(p0Offset + 3, vertices[3]);
-			floatView.put(p0Offset + 4, vertices[4]);
-			floatView.put(p0Offset + 5, vertices[5]);
-			floatView.put(p0Offset + 6, vertices[6]);
-			floatView.put(p0Offset + 7, vertices[7]);
-			floatView.put(p0Offset + 8, vertices[8]);
-			floatView.put(p0Offset + 9, vertices[9]);
-			floatView.put(p0Offset + 10, vertices[10]);
-			floatView.put(p0Offset + 11, vertices[11]);
+			System.arraycopy(object.vertices, 0, staging, floatOffset + FLOAT_OFFSET_P0, 12);
 
-			floatView.put(floatOffset + FLOAT_OFFSET_HEALTH, object.health);
+			staging[floatOffset + FLOAT_OFFSET_HEALTH] = object.health;
+			staging[floatOffset + FLOAT_OFFSET_COLOR] = 0;
+			staging[floatOffset + FLOAT_OFFSET_TAIL] = 0;
 
-			final int byteOffset = offset * BYTES_PER_OBJECT;
-			final int leftRightTopOffset = byteOffset + BYTE_OFFSET_LEFT_RIGHT_TOP;
+			offset += 1;
+		}
+
+		buffer.commitStaging(offset * FLOATS_PER_OBJECT);
+
+		// The normal bytes go in after the float copy, over the zeros it leaves in their slots.
+		for (int i = 0; i < offset; i++) {
+			final IVec3 normal = objects.get(i).normal;
+			final int leftRightTopOffset = (i * BYTES_PER_OBJECT) + BYTE_OFFSET_LEFT_RIGHT_TOP;
 			byteView.put(leftRightTopOffset + 0, (byte) (normal.x));
 			byteView.put(leftRightTopOffset + 1, (byte) (normal.y));
 			byteView.put(leftRightTopOffset + 2, (byte) (normal.z));
-
-			offset += 1;
 		}
 	}
 
@@ -421,31 +431,22 @@ public class GeometryEmitterFuncs {
 	public static void bindEventObjectUbrEmitterBuffer(
 			final EventObjectEmitter<EventObjectEmitterObject, EventObjectUbr> emitter, final ClientBuffer buffer) {
 		final List<EventObjectUbr> objects = emitter.objects;
-		final FloatBuffer floatView = buffer.floatView;
+		final float[] staging = buffer.staging;
 		int offset = 0;
 
 		for (final EventObjectUbr object : objects) {
 			final int floatOffset = offset * FLOATS_PER_OBJECT;
-			final int p0Offset = floatOffset + FLOAT_OFFSET_P0;
-			final float[] vertices = object.vertices;
 
-			floatView.put(p0Offset + 0, vertices[0]);
-			floatView.put(p0Offset + 1, vertices[1]);
-			floatView.put(p0Offset + 2, vertices[2]);
-			floatView.put(p0Offset + 3, vertices[3]);
-			floatView.put(p0Offset + 4, vertices[4]);
-			floatView.put(p0Offset + 5, vertices[5]);
-			floatView.put(p0Offset + 6, vertices[6]);
-			floatView.put(p0Offset + 7, vertices[7]);
-			floatView.put(p0Offset + 8, vertices[8]);
-			floatView.put(p0Offset + 9, vertices[9]);
-			floatView.put(p0Offset + 10, vertices[10]);
-			floatView.put(p0Offset + 11, vertices[11]);
+			System.arraycopy(object.vertices, 0, staging, floatOffset + FLOAT_OFFSET_P0, 12);
 
-			floatView.put(floatOffset + FLOAT_OFFSET_HEALTH, object.health);
+			staging[floatOffset + FLOAT_OFFSET_HEALTH] = object.health;
+			staging[floatOffset + FLOAT_OFFSET_COLOR] = 0;
+			staging[floatOffset + FLOAT_OFFSET_TAIL] = 0;
 
 			offset += 1;
 		}
+
+		buffer.commitStaging(offset * FLOATS_PER_OBJECT);
 	}
 
 	public static void bindEventObjectUbrEmitterShader(final EventObjectUbrEmitter emitter,

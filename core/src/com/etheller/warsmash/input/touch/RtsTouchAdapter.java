@@ -20,6 +20,7 @@ public final class RtsTouchAdapter implements GestureListener {
 	private final TouchSettings settings;
 	private final boolean debugLog;
 	private static final int SHIFT_SLOT = 10;
+	private volatile boolean longPressOrders = true;
 	private boolean aiming;
 	private boolean overlayDrag;
 	private boolean itemDrag;
@@ -73,6 +74,11 @@ public final class RtsTouchAdapter implements GestureListener {
 		this.aimX = x;
 		this.aimY = this.aimingBuilding ? Math.max(0, y - this.settings.buildAimOffsetPx) : y;
 		moveTo(processor, this.aimX, this.aimY);
+	}
+
+	/** With double tap orders a long press on the world gives no order; on the interface it keeps its meaning. */
+	void setLongPressOrders(final boolean longPressOrders) {
+		this.longPressOrders = longPressOrders;
 	}
 
 	private static InputProcessor processor() {
@@ -190,6 +196,10 @@ public final class RtsTouchAdapter implements GestureListener {
 		}
 		if ((target != null) && target.isOverClickableUi(Math.round(x), Math.round(y))) {
 			log("long press on interface: tooltip only");
+			return;
+		}
+		if (!this.longPressOrders) {
+			log("long press on the world: no order with double tap orders");
 			return;
 		}
 		click(processor, x, y, Input.Buttons.RIGHT);

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import android.animation.ValueAnimator;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -27,6 +28,9 @@ import android.media.MediaPlayer;
 import android.media.SoundPool;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
@@ -45,7 +49,10 @@ import com.etheller.warsmash.launcher.CampaignChoice;
 import com.etheller.warsmash.launcher.DataFolderCheck;
 import com.etheller.warsmash.launcher.CampaignResult;
 import com.etheller.warsmash.launcher.GameResult;
+import com.etheller.warsmash.launcher.LaunchGuard;
 import com.etheller.warsmash.launcher.LaunchRequest;
+import com.etheller.warsmash.launcher.lan.LanLauncherModel;
+import net.warsmash.lan.maps.LanMapIndex;
 import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.SkinArt;
 import com.etheller.warsmash.units.DataTable;
@@ -87,6 +94,7 @@ public class LauncherActivity extends AndroidApplication {
 	static final int PAGE_LOAD = 6;
 	static final int PAGE_PROFILE = 7;
 	static final int PAGE_REPLAY = 8;
+	static final int PAGE_LAN = 9;
 
 	/** The layers of the live scenes: the page's backdrop and the Continue Campaign banner. */
 	static final int LAYER_PAGE = 0;
@@ -139,10 +147,80 @@ public class LauncherActivity extends AndroidApplication {
 	final HelpPage helpPage = new HelpPage(this);
 	final CampaignPage campaignPage = new CampaignPage(this);
 	final CustomGamePage customPage = new CustomGamePage(this);
+	final CustomContentActions customContent = new CustomContentActions(this);
 	final LoadPage loadPage = new LoadPage(this);
 	final ReplayPage replayPage = new ReplayPage(this);
 	final ProfilePage profilePage = new ProfilePage(this);
+	final LanPage lanPage = new LanPage(this);
+	final LobbyPage lobbyPage = new LobbyPage(this);
 	final LauncherDialogs dialogs = new LauncherDialogs(this);
+
+	private static LanLauncherModel lanModel;
+	private static AndroidLanEnv lanEnv;
+	private static LauncherActivity currentActivity;
+	private final Handler lanClock = new Handler(Looper.getMainLooper());
+	private long lanTickAt;
+	private final Runnable lanTick = new Runnable() {
+		@Override
+		public void run() {
+			final long now = SystemClock.uptimeMillis();
+			final float delta = Math.min(0.5f, (now - LauncherActivity.this.lanTickAt) / 1000f);
+			LauncherActivity.this.lanTickAt = now;
+			final LanLauncherModel model = lan();
+			model.update(delta);
+			LauncherActivity.this.homePage.setLanAttention(model.attention().isLit(), model.attention().hasChatDot());
+			if (LauncherActivity.this.shown == PAGE_LAN) {
+				if (LauncherActivity.this.lobbyPage.isShown()) {
+					LauncherActivity.this.lobbyPage.onTick();
+				}
+				else {
+					LauncherActivity.this.lanPage.onTick();
+				}
+			}
+			if (LauncherActivity.this.resumed) {
+				LauncherActivity.this.lanClock.postDelayed(this, 50);
+			}
+		}
+	};
+
+	/** The LAN pages' model: one for the process, as the LAN session is. */
+	LanLauncherModel lan() {
+		synchronized (LauncherActivity.class) {
+			if (lanModel == null) {
+				lanEnv = new AndroidLanEnv(getApplicationContext());
+				lanModel = new LanLauncherModel(lanEnv);
+			}
+			lanModel.attention().setReducedMotion(!ValueAnimator.areAnimatorsEnabled());
+			return lanModel;
+		}
+	}
+
+	/** The launcher's activity on screen, or null. */
+	static LauncherActivity current() {
+		return currentActivity;
+	}
+
+	/** The index of the maps this device has, which the LAN pages share. */
+	static LanMapIndex lanIndex(final Context context) {
+		synchronized (LauncherActivity.class) {
+			if (lanEnv == null) {
+				lanEnv = new AndroidLanEnv(context.getApplicationContext());
+			}
+			return lanEnv.mapIndex();
+		}
+	}
+
+	boolean lanChecksumAsked;
+
+	/** The game data's checksum the players of a LAN game compare, read once from the catalog. */
+	void askLanChecksum() {
+		if (!this.lanChecksumAsked && (this.catalog != null)) {
+			this.lanChecksumAsked = true;
+			lan();
+			this.catalog.dataChecksum(sum -> lanEnv.setDataChecksum(sum));
+			lanEnv.mapIndex().setVirtualMaps(this.catalog.virtualMaps());
+		}
+	}
 
 	@Override
 	protected void onCreate(final Bundle savedInstanceState) {
@@ -251,6 +329,10 @@ public class LauncherActivity extends AndroidApplication {
 			this.returned = null;
 		}
 		this.afterPrep = this.preferences.getInt(KEY_RETURN_PAGE, PAGE_HOME);
+		if (this.afterPrep == PAGE_LAN) {
+			// The game of the lobby is over: the session closes and the Join Game page shows.
+			lan().gameEnded();
+		}
 		if ((this.returned != null) && "exit".equals(this.returned.result)) {
 			this.afterPrep = PAGE_HOME;
 		}
@@ -262,11 +344,12 @@ public class LauncherActivity extends AndroidApplication {
 			this.afterPrep = PAGE_MISSIONS;
 		}
 		final GameResult result = this.returned;
-		if ((result != null) && LaunchRequest.SOURCE_CUSTOM.equals(result.source) && !result.failed()
+		final boolean lanSource = (result != null) && LaunchRequest.SOURCE_LAN.equals(result.source);
+		if ((result != null) && (LaunchRequest.SOURCE_CUSTOM.equals(result.source) || lanSource) && !result.failed()
 				&& !"exit".equals(result.result) && !result.profile.isEmpty()) {
-			// A random race is counted as the race it drew.
+			// A LAN game counts too; a random race is counted as the race it drew.
 			final int played = (result.race > 0) && (result.race < RACES.length) ? result.race
-					: this.preferences.getInt(KEY_LAUNCH_RACE, 0);
+					: lanSource ? 0 : this.preferences.getInt(KEY_LAUNCH_RACE, 0);
 			this.profiles.record(result.profile, result.result, played);
 		}
 		final SharedPreferences.Editor editor = this.preferences.edit().remove(KEY_LAUNCHED);
@@ -331,6 +414,10 @@ public class LauncherActivity extends AndroidApplication {
 	protected void onResume() {
 		super.onResume();
 		this.resumed = true;
+		currentActivity = this;
+		this.lanTickAt = SystemClock.uptimeMillis();
+		this.lanClock.removeCallbacks(this.lanTick);
+		this.lanClock.post(this.lanTick);
 		for (final BackdropView backdrop : this.backdrops) {
 			backdrop.play();
 		}
@@ -340,6 +427,10 @@ public class LauncherActivity extends AndroidApplication {
 	@Override
 	protected void onPause() {
 		this.resumed = false;
+		this.lanClock.removeCallbacks(this.lanTick);
+		if (currentActivity == this) {
+			currentActivity = null;
+		}
 		for (final BackdropView backdrop : this.backdrops) {
 			backdrop.stop();
 		}
@@ -430,6 +521,11 @@ public class LauncherActivity extends AndroidApplication {
 	}
 
 	@Override
+	public boolean dispatchKeyEvent(final android.view.KeyEvent event) {
+		return this.optionsPage.hotkeys.handleKey(event) || super.dispatchKeyEvent(event);
+	}
+
+	@Override
 	@SuppressWarnings("deprecation")
 	public void onBackPressed() {
 		goBack();
@@ -451,7 +547,12 @@ public class LauncherActivity extends AndroidApplication {
 		else if (this.shown == PAGE_MISSIONS) {
 			this.campaignPage.showCampaign();
 		}
+		else if ((this.shown == PAGE_LAN) && lan().inSession()) {
+			// A lobby is left with its own button, which asks a host once more.
+			this.lobbyPage.leave();
+		}
 		else if ((this.shown == PAGE_OPTIONS) || (this.shown == PAGE_HELP) || (this.shown == PAGE_CAMPAIGN)
+				|| (this.shown == PAGE_LAN)
 				|| (this.shown == PAGE_CUSTOM) || (this.shown == PAGE_LOAD) || (this.shown == PAGE_PROFILE)
 				|| (this.shown == PAGE_REPLAY)) {
 			this.homePage.showHome();
@@ -504,6 +605,9 @@ public class LauncherActivity extends AndroidApplication {
 		this.building = new ArrayList<>();
 		final View previous = this.page;
 		this.page = view;
+		if ((this.shown == PAGE_LAN) && (kind != PAGE_LAN) && (lanModel != null)) {
+			lanModel.pageHidden();
+		}
 		this.shown = kind;
 		// Preparing the skin comes before the page a game returns to, and keeps its result for it.
 		if ((kind != PAGE_MISSIONS) && (kind != PAGE_PREP)) {
@@ -579,6 +683,9 @@ public class LauncherActivity extends AndroidApplication {
 		case PAGE_PROFILE:
 			this.profilePage.showProfile(null);
 			break;
+		case PAGE_LAN:
+			this.lanPage.showLan();
+			break;
 		default:
 			this.homePage.showHome();
 			break;
@@ -642,13 +749,24 @@ public class LauncherActivity extends AndroidApplication {
 		else if (entry == RAIL_REPLAY) {
 			this.replayPage.showReplays();
 		}
+		else if (entry == RAIL_LAN) {
+			this.lanPage.showLan();
+		}
 		else if (entry == RAIL_CUSTOM) {
+			// Maps added to the folders since the list was read are found by reading it again.
+			this.customPage.forget();
 			this.customPage.showCustom();
 		}
 	}
 
 	/** Starts a game in the engine; the launcher comes back when it ends, on the page given. */
 	void launchGame(final LaunchRequest request, final int returnPage) {
+		// Only one game runs at a time: this is where every page's start action ends up.
+		final LaunchGuard.Blocked blocked = LaunchGuard.check(request);
+		if (blocked != null) {
+			this.lanPage.showBlocked(blocked);
+			return;
+		}
 		// A second tap while the first one starts the game would start another game in the same process.
 		if (this.launching || isFinishing()) {
 			return;
@@ -689,6 +807,39 @@ public class LauncherActivity extends AndroidApplication {
 	 */
 	private void cutTo() {
 		overridePendingTransition(0, 0);
+	}
+
+	@Override
+	protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		if ((resultCode != RESULT_OK) || (data == null) || (data.getData() == null)) {
+			return;
+		}
+		if (requestCode == CustomContentActions.REQUEST_FOLDER) {
+			this.customContent.folderChosen(data);
+		}
+		else if (requestCode == CustomContentActions.REQUEST_MAP) {
+			this.customContent.mapChosen(data.getData());
+		}
+	}
+
+	/** The engine configuration was changed by the launcher (the content folder): it is read again with the catalog. */
+	void reloadContent() {
+		final File iniFile = SkinCache.iniFile(this);
+		try {
+			this.ini = AndroidLauncher.loadWarsmashIni(iniFile);
+		}
+		catch (final IOException e) {
+			Log.e(TAG, "Unable to read " + iniFile, e);
+			return;
+		}
+		this.lanChecksumAsked = false;
+		final GameCatalog old = this.catalog;
+		this.catalog = new GameCatalog(this, this.ini, GameCatalog.dataKey(this.ini));
+		if (old != null) {
+			old.close();
+		}
+		this.customPage.forget();
 	}
 
 	void openGameData() {

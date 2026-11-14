@@ -41,6 +41,7 @@ public final class CTerrainData {
 	private final float[] groundCornerHeights;
 	/** Script terrain deformations per corner, in terrain units. */
 	private float[] deformation;
+	private int visionVersion;
 	/** The tile type of each ground texture the corners index, as raw codes. */
 	private final List<Integer> groundTileIds = new ArrayList<>();
 	/** Tile types the terrain data tables know, or null to take any. */
@@ -144,7 +145,13 @@ public final class CTerrainData {
 		return terrainData;
 	}
 
+	/** Changes whenever the ramps that cut or keep sight between cliff levels change. */
+	public int getVisionVersion() {
+		return this.visionVersion;
+	}
+
 	private void layOutCliffs(final Rectangle area) {
+		this.visionVersion++;
 		try {
 			CCliffLayout.update(this.corners, this.columns, this.rows, area, this.cliffTypes,
 					CCliffLayout.Listener.NONE);

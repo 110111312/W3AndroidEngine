@@ -85,7 +85,6 @@ public class CAbilityMonsoon extends CAbilityPointTargetSpellBase {
 		simulation.getWorldCollision().enumUnitsInRange(this.centerX, this.centerY, this.areaOfEffect,
 				(enumUnit) -> {
 					if (enumUnit.canReach(this.centerX, this.centerY, this.areaOfEffect)
-							&& !enumUnit.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex()))
 							&& enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.NOT_HIDDEN_GHOST, getTargetsAllowed(),
 									BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())) {
 						inArea.add(enumUnit);

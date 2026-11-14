@@ -7,7 +7,7 @@ import java.util.List;
 import com.badlogic.gdx.math.Rectangle;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CFogMaskSettings;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSightWorld;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CFogState;
 
 public class CPlayerFogOfWar {
@@ -218,7 +218,7 @@ public class CPlayerFogOfWar {
 				&& ((this.privateCells == null) || (this.privateCells[index] == 0));
 	}
 
-	public void checkCardinalVision(final CSimulation game, final PathingGrid pathingGrid, final boolean flying,
+	public void checkCardinalVision(final CSightWorld game, final PathingGrid pathingGrid, final boolean flying,
 			final int dx, final int dy, final int dxp, final int dyp, final float dxf, final float dyf,
 			final float dxfp, final float dyfp, final int myZ) {
 		if (isAlreadyVisible(dx, dy)) {
@@ -251,7 +251,7 @@ public class CPlayerFogOfWar {
 		return ((indexX != this.viewerX) || (indexY != this.viewerY)) && pathingGrid.isBlockVision(x, y);
 	}
 
-	public void checkCardinalVision(final CSimulation game, final PathingGrid pathingGrid, final byte detections,
+	public void checkCardinalVision(final CSightWorld game, final PathingGrid pathingGrid, final byte detections,
 			final boolean flying, final int dx, final int dy, final int dxp, final int dyp, final float dxf,
 			final float dyf, final float dxfp, final float dyfp, final int myZ) {
 		if ((detections == 0) && isAlreadyVisible(dx, dy)) {
@@ -264,7 +264,7 @@ public class CPlayerFogOfWar {
 		}
 	}
 
-	public void checkDiagonalVision(final CSimulation game, final PathingGrid pathingGrid, final boolean flying,
+	public void checkDiagonalVision(final CSightWorld game, final PathingGrid pathingGrid, final boolean flying,
 			final int x, final int y, final int dx, final int dy, final int dxp, final int dyp, final float dxf,
 			final float dyf, final float dxfp, final float dyfp, final int myZ) {
 		if (isAlreadyVisible(dx, dy)) {
@@ -282,7 +282,7 @@ public class CPlayerFogOfWar {
 		}
 	}
 
-	public void checkDiagonalVision(final CSimulation game, final PathingGrid pathingGrid, final byte detections,
+	public void checkDiagonalVision(final CSightWorld game, final PathingGrid pathingGrid, final byte detections,
 			final boolean flying, final int x, final int y, final int dx, final int dy, final int dxp, final int dyp,
 			final float dxf, final float dyf, final float dxfp, final float dyfp, final int myZ) {
 		if ((detections == 0) && isAlreadyVisible(dx, dy)) {
@@ -296,6 +296,62 @@ public class CPlayerFogOfWar {
 								&& (flying || !pathingGrid.isBlockVision(dxfp, dyf)))
 						|| ((x < y) && this.isVisible(game, dx, dyp)
 								&& (flying || !pathingGrid.isBlockVision(dxf, dyfp))))) {
+			this.setDetecting(dx, dy, CFogState.VISIBLE, detections);
+		}
+	}
+
+	/** What a unit's sight has found out about one cell: not looked at yet, cut off by terrain or a blocker, or clear. */
+	public static final byte SIGHT_UNKNOWN = 0;
+	public static final byte SIGHT_BLOCKED = 1;
+	public static final byte SIGHT_OPEN = 2;
+
+	private boolean isTerrainAndBlockerOpen(final CSightWorld game, final PathingGrid pathingGrid,
+			final boolean flying, final int dxp, final int dyp, final float dxf, final float dyf, final float dxfp,
+			final float dyfp, final int myZ) {
+		return (flying || game.isTerrainWater(dxf, dyf) || (myZ > game.getTerrainHeight(dxf, dyf))
+				|| (!game.isTerrainRomp(dxf, dyf) && (myZ == game.getTerrainHeight(dxf, dyf))))
+				&& (flying || !blocksSightFrom(pathingGrid, dxp, dyp, dxfp, dyfp));
+	}
+
+	/**
+	 * As the check above, with what depends only on the terrain, the sight blockers and the viewer kept in the notes
+	 * (a slot per cell, filled when first needed); what depends on the cells already shown is read every time.
+	 */
+	public void checkCardinalVision(final CSightWorld game, final PathingGrid pathingGrid, final byte detections,
+			final boolean flying, final int dx, final int dy, final int dxp, final int dyp, final float dxf,
+			final float dyf, final float dxfp, final float dyfp, final int myZ, final byte[] notes, final int slot) {
+		if ((detections == 0) && isAlreadyVisible(dx, dy)) {
+			return;
+		}
+		byte note = notes[slot];
+		if (note == SIGHT_UNKNOWN) {
+			note = isTerrainAndBlockerOpen(game, pathingGrid, flying, dxp, dyp, dxf, dyf, dxfp, dyfp, myZ)
+					? SIGHT_OPEN : SIGHT_BLOCKED;
+			notes[slot] = note;
+		}
+		if ((note == SIGHT_OPEN) && this.isVisible(game, dxp, dyp)) {
+			this.setDetecting(dx, dy, CFogState.VISIBLE, detections);
+		}
+	}
+
+	public void checkDiagonalVision(final CSightWorld game, final PathingGrid pathingGrid, final byte detections,
+			final boolean flying, final int x, final int y, final int dx, final int dy, final int dxp, final int dyp,
+			final float dxf, final float dyf, final float dxfp, final float dyfp, final int myZ, final byte[] notes,
+			final int slot) {
+		if ((detections == 0) && isAlreadyVisible(dx, dy)) {
+			return;
+		}
+		byte note = notes[slot];
+		if (note == SIGHT_UNKNOWN) {
+			note = (isTerrainAndBlockerOpen(game, pathingGrid, flying, dxp, dyp, dxf, dyf, dxfp, dyfp, myZ)
+					&& ((x == y) || ((x > y) && (flying || !pathingGrid.isBlockVision(dxfp, dyf)))
+							|| ((x < y) && (flying || !pathingGrid.isBlockVision(dxf, dyfp))))) ? SIGHT_OPEN
+									: SIGHT_BLOCKED;
+			notes[slot] = note;
+		}
+		if ((note == SIGHT_OPEN) && this.isVisible(game, dxp, dyp)
+				&& ((x == y) || ((x > y) && this.isVisible(game, dxp, dy))
+						|| ((x < y) && this.isVisible(game, dx, dyp)))) {
 			this.setDetecting(dx, dy, CFogState.VISIBLE, detections);
 		}
 	}

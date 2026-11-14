@@ -29,6 +29,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceTy
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityEntangledMine;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityOverlayedMine;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.AbilityGenericSingleIconPassiveAbility;
@@ -48,6 +50,14 @@ public class RenderUnit implements RenderWidget {
 	public MdxModel portraitModel;
 	public int playerIndex;
 	private final CUnit simulationUnit;
+	public static final int LANDMARK_NONE = 0;
+	public static final int LANDMARK_GOLD_MINE = 1;
+	public static final int LANDMARK_ENTANGLED_MINE = 2;
+	public static final int LANDMARK_OTHER_OVERLAY_MINE = 3;
+	public static final int LANDMARK_NEUTRAL_BUILDING = 4;
+	private int landmarkAbilityCount = -1;
+	private CUnitType landmarkUnitType;
+	private int landmarkKind;
 	public SplatMover shadow;
 	public BuildingShadow buildingShadowInstance;
 	public SplatMover selectionCircle;
@@ -176,7 +186,16 @@ public class RenderUnit implements RenderWidget {
 		for (final CAbility ability : this.simulationUnit.getAbilities()) {
 			if (!this.simulationUnit.isPaused() || (ability instanceof CBuff)
 					|| (ability instanceof AbilityGenericSingleIconPassiveAbility)) {
-				ability.visit(commandCardPopulatingVisitor);
+				final int containerMenuOrderId = ability.getContainerMenuOrderId();
+				if (containerMenuOrderId == 0) {
+					ability.visit(commandCardPopulatingVisitor);
+				}
+				else if (containerMenuOrderId == subMenuOrderId) {
+					// The spells of a spell book are on its menu; they show as if on the main card.
+					commandCardPopulatingVisitor.setMenuBaseOrderId(0);
+					ability.visit(commandCardPopulatingVisitor);
+					commandCardPopulatingVisitor.setMenuBaseOrderId(subMenuOrderId);
+				}
 			}
 		}
 	}
@@ -793,6 +812,32 @@ public class RenderUnit implements RenderWidget {
 		return this.simulationUnit.isMovementOnWaterAllowed()
 				|| (this.simulationUnit.getMovementType() == MovementType.HOVER)
 				|| (this.simulationUnit.getMovementType() == MovementType.FLY);
+	}
+
+	/**
+	 * What kind of minimap landmark the unit is, kept until its ability list or type changes: the abilities are
+	 * searched for the mine data, and the minimap asks for every unit every frame.
+	 */
+	public int getMinimapLandmarkKind() {
+		final int abilityCount = this.simulationUnit.getAbilities().size();
+		final CUnitType unitType = this.simulationUnit.getUnitType();
+		if ((abilityCount != this.landmarkAbilityCount) || (unitType != this.landmarkUnitType)) {
+			this.landmarkAbilityCount = abilityCount;
+			this.landmarkUnitType = unitType;
+			this.landmarkKind = minimapLandmarkKindOf(this.simulationUnit);
+		}
+		return this.landmarkKind;
+	}
+
+	public static int minimapLandmarkKindOf(final CUnit unit) {
+		if (unit.getGoldMineData() != null) {
+			return LANDMARK_GOLD_MINE;
+		}
+		final CAbilityOverlayedMine overlayed = unit.getOverlayedGoldMineData();
+		if (overlayed != null) {
+			return overlayed instanceof CAbilityEntangledMine ? LANDMARK_ENTANGLED_MINE : LANDMARK_OTHER_OVERLAY_MINE;
+		}
+		return unit.getUnitType().isNeutralBuildingShowMinimapIcon() ? LANDMARK_NEUTRAL_BUILDING : LANDMARK_NONE;
 	}
 
 	public RenderUnitType getTypeData() {

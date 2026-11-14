@@ -153,15 +153,22 @@ public final class CustomKeys {
 		this.sections.clear();
 	}
 
+	/** Whether the player set a key of their own for the command. */
+	public boolean isOwn(final String section, final String field) {
+		return own(section, field) != null;
+	}
+
 	/**
 	 * The key a command uses: the player's own, else in the grid layout the key of its button's place, else the game
 	 * data's. Escape and keys of buttons outside the card stay as they are.
 	 */
 	public String key(final String section, final String field, final String dataKey, final int x, final int y) {
 		final String own = section == null ? null : own(section, field);
-		if (own != null) {
-			return own;
-		}
+		return own != null ? own : defaultKey(dataKey, x, y);
+	}
+
+	/** The key a command has without a key of the player's own: its place's key in the grid layout, else the data's. */
+	public String defaultKey(final String dataKey, final int x, final int y) {
 		if (this.grid && (dataKey != null) && !dataKey.isEmpty() && !keyCode(dataKey)) {
 			final String place = gridKey(x, y);
 			if (place != null) {

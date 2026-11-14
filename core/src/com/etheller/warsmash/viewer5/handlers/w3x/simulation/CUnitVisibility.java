@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
+import java.util.List;
 import java.util.Set;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
@@ -278,88 +279,145 @@ final class CUnitVisibility {
 		if (!self.isDead() && !self.hidden) {
 			final float sightRadius = getCurrentSightRadius(self, game);
 			if (sightRadius > 0) {
-				final int sightCells = CPlayerFogOfWar.getSightCells(sightRadius);
 				final boolean flying = self.getMovementType() == MovementType.FLY;
 				final float myX = self.getX();
 				final float myY = self.getY();
 				final int myZ = flying ? Integer.MAX_VALUE : game.getTerrainHeight(myX, myY);
-				final PathingGrid pathingGrid = game.getPathingGrid();
-				byte detections = 0;
-				for (int d = 0, dn = self.visibility.detectorLevels.size(); d < dn; d++) {
-					final int detectionLevel = self.visibility.detectorLevels.get(d);
-					if ((detectionLevel >> 8) > 0) {
+				final int sightCells = CPlayerFogOfWar.getSightCells(sightRadius);
+				CUnitVisionStamp stamp = null;
+				if (sightCells <= CUnitVisionStamp.MAX_SIGHT_CELLS) {
+					stamp = self.visibility.visionStamp;
+					if (stamp == null) {
+						stamp = new CUnitVisionStamp();
+						self.visibility.visionStamp = stamp;
+					}
+				}
+				scanSight(game, game.getPathingGrid(), fogOfWar, myX, myY, sightCells, flying, myZ,
+						self.visibility.detectorLevels, stamp, game.getVisionBlockerVersion());
+			}
+		}
+	}
+
+	/**
+	 * Shows the cells the viewer sees. With a stamp, what the terrain and the sight blockers decide is kept from one
+	 * update to the next while the viewer's cell, sight, height and the blockers stay the same; without one, it is
+	 * worked out again.
+	 */
+	static void scanSight(final CSightWorld game, final PathingGrid pathingGrid, final CPlayerFogOfWar fogOfWar,
+			final float myX, final float myY, final int sightCells, final boolean flying, final int myZ,
+			final List<Integer> detectorLevels, final CUnitVisionStamp stamp, final int blockerVersion) {
+		byte detections = 0;
+		for (int d = 0, dn = detectorLevels.size(); d < dn; d++) {
+			final int detectionLevel = detectorLevels.get(d);
+			if ((detectionLevel >> 8) > 0) {
+				detections |= (byte) detectionLevel;
+			}
+		}
+		final int myXi = pathingGrid.getFogOfWarIndexX(myX);
+		final int myYi = pathingGrid.getFogOfWarIndexY(myY);
+		fogOfWar.setDetecting(myXi, myYi, CFogState.VISIBLE, detections);
+
+		// Terrain and sight blockers are read at the first pathing cell of each fog cell, not at the unit's offset
+		// within its cell: the cell centre hides far more than 1.29 does, and the offset made it depend on the step.
+		final float cellX = pathingGrid.getFogOfWarSampleX(myXi);
+		final float cellY = pathingGrid.getFogOfWarSampleY(myYi);
+		byte[] cardinalNotes = null;
+		byte[] diagonalNotes = null;
+		if (stamp != null) {
+			stamp.match(myXi, myYi, sightCells, myZ, flying, blockerVersion);
+			cardinalNotes = stamp.cardinalNotes();
+			diagonalNotes = stamp.diagonalNotes();
+		}
+		fogOfWar.setViewerCell(myXi, myYi);
+		for (int a = 1; a <= sightCells; a++) {
+			detections = 0;
+			for (int d = 0, dn = detectorLevels.size(); d < dn; d++) {
+				final int detectionLevel = detectorLevels.get(d);
+				if ((detectionLevel >> 8) > a) {
+					detections |= (byte) detectionLevel;
+				}
+			}
+			final int slot = a - 1;
+			final int near = (a - 1) * CPlayerFogOfWar.GRID_STEP;
+			final int far = a * CPlayerFogOfWar.GRID_STEP;
+			if (stamp != null) {
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi, myYi - a, myXi,
+						(myYi - a) + 1, cellX, cellY - far, cellX, cellY - near, myZ, cardinalNotes, slot);
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi, myYi + a, myXi,
+						(myYi + a) - 1, cellX, cellY + far, cellX, cellY + near, myZ, cardinalNotes,
+						sightCells + slot);
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi - a, myYi, (myXi - a) + 1,
+						myYi, cellX - far, cellY, cellX - near, cellY, myZ, cardinalNotes, (2 * sightCells) + slot);
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi + a, myYi, (myXi + a) - 1,
+						myYi, cellX + far, cellY, cellX + near, cellY, myZ, cardinalNotes, (3 * sightCells) + slot);
+			}
+			else {
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi, myYi - a, myXi,
+						(myYi - a) + 1, cellX, cellY - far, cellX, cellY - near, myZ);
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi, myYi + a, myXi,
+						(myYi + a) - 1, cellX, cellY + far, cellX, cellY + near, myZ);
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi - a, myYi, (myXi - a) + 1,
+						myYi, cellX - far, cellY, cellX - near, cellY, myZ);
+				fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi + a, myYi, (myXi + a) - 1,
+						myYi, cellX + far, cellY, cellX + near, cellY, myZ);
+			}
+		}
+
+		for (int y = 1; y <= sightCells; y++) {
+			for (int x = 1; x <= sightCells; x++) {
+				final float distance = (x * x) + (y * y);
+				detections = 0;
+				for (int d = 0, dn = detectorLevels.size(); d < dn; d++) {
+					final int detectionLevel = detectorLevels.get(d);
+					if (((detectionLevel >> 8) * (detectionLevel >> 8)) > distance) {
 						detections |= (byte) detectionLevel;
 					}
 				}
-				fogOfWar.setDetecting(pathingGrid.getFogOfWarIndexX(myX), pathingGrid.getFogOfWarIndexY(myY),
-						CFogState.VISIBLE, detections);
+				if (CPlayerFogOfWar.isInSight(x, y, sightCells)) {
+					final int xf = x * CPlayerFogOfWar.GRID_STEP;
+					final int yf = y * CPlayerFogOfWar.GRID_STEP;
+					final int slot = (((y - 1) * sightCells) + (x - 1)) * 4;
 
-				final int myXi = pathingGrid.getFogOfWarIndexX(myX);
-				final int myYi = pathingGrid.getFogOfWarIndexY(myY);
-				// Terrain and sight blockers are read at the first pathing cell of each fog cell, not at the unit's offset
-				// within its cell: the cell centre hides far more than 1.29 does, and the offset made it depend on the step.
-				final float cellX = pathingGrid.getFogOfWarSampleX(myXi);
-				final float cellY = pathingGrid.getFogOfWarSampleY(myYi);
-				fogOfWar.setViewerCell(myXi, myYi);
-				for (int a = 1; a <= sightCells; a++) {
-					detections = 0;
-					for (int d = 0, dn = self.visibility.detectorLevels.size(); d < dn; d++) {
-						final int detectionLevel = self.visibility.detectorLevels.get(d);
-						if ((detectionLevel >> 8) > a) {
-							detections |= (byte) detectionLevel;
-						}
+					if (stamp != null) {
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi - x, myYi - y,
+								(myXi - x) + 1, (myYi - y) + 1, cellX - xf, cellY - yf,
+								(cellX - xf) + CPlayerFogOfWar.GRID_STEP, (cellY - yf) + CPlayerFogOfWar.GRID_STEP,
+								myZ, diagonalNotes, slot);
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi - x, myYi + y,
+								(myXi - x) + 1, (myYi + y) - 1, cellX - xf, cellY + yf,
+								(cellX - xf) + CPlayerFogOfWar.GRID_STEP, (cellY + yf) - CPlayerFogOfWar.GRID_STEP,
+								myZ, diagonalNotes, slot + 1);
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi + x, myYi - y,
+								(myXi + x) - 1, (myYi - y) + 1, cellX + xf, cellY - yf,
+								(cellX + xf) - CPlayerFogOfWar.GRID_STEP, (cellY - yf) + CPlayerFogOfWar.GRID_STEP,
+								myZ, diagonalNotes, slot + 2);
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi + x, myYi + y,
+								(myXi + x) - 1, (myYi + y) - 1, cellX + xf, cellY + yf,
+								(cellX + xf) - CPlayerFogOfWar.GRID_STEP, (cellY + yf) - CPlayerFogOfWar.GRID_STEP,
+								myZ, diagonalNotes, slot + 3);
 					}
-
-					fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi, myYi - a, myXi,
-							(myYi - a) + 1, cellX, cellY - (a * CPlayerFogOfWar.GRID_STEP), cellX,
-							cellY - ((a - 1) * CPlayerFogOfWar.GRID_STEP), myZ);
-					fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi, myYi + a, myXi,
-							(myYi + a) - 1, cellX, cellY + (a * CPlayerFogOfWar.GRID_STEP), cellX,
-							cellY + ((a - 1) * CPlayerFogOfWar.GRID_STEP), myZ);
-					fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi - a, myYi,
-							(myXi - a) + 1, myYi, cellX - (a * CPlayerFogOfWar.GRID_STEP), cellY,
-							cellX - ((a - 1) * CPlayerFogOfWar.GRID_STEP), cellY, myZ);
-					fogOfWar.checkCardinalVision(game, pathingGrid, detections, flying, myXi + a, myYi,
-							(myXi + a) - 1, myYi, cellX + (a * CPlayerFogOfWar.GRID_STEP), cellY,
-							cellX + ((a - 1) * CPlayerFogOfWar.GRID_STEP), cellY, myZ);
-				}
-
-				for (int y = 1; y <= sightCells; y++) {
-					for (int x = 1; x <= sightCells; x++) {
-						final float distance = (x * x) + (y * y);
-						detections = 0;
-						for (int d = 0, dn = self.visibility.detectorLevels.size(); d < dn; d++) {
-							final int detectionLevel = self.visibility.detectorLevels.get(d);
-							if (((detectionLevel >> 8) * (detectionLevel >> 8)) > distance) {
-								detections |= (byte) detectionLevel;
-							}
-						}
-						if (CPlayerFogOfWar.isInSight(x, y, sightCells)) {
-							final int xf = x * CPlayerFogOfWar.GRID_STEP;
-							final int yf = y * CPlayerFogOfWar.GRID_STEP;
-
-							fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi - x,
-									myYi - y, (myXi - x) + 1, (myYi - y) + 1, cellX - xf, cellY - yf,
-									(cellX - xf) + CPlayerFogOfWar.GRID_STEP, (cellY - yf) + CPlayerFogOfWar.GRID_STEP,
-									myZ);
-							fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi - x,
-									myYi + y, (myXi - x) + 1, (myYi + y) - 1, cellX - xf, cellY + yf,
-									(cellX - xf) + CPlayerFogOfWar.GRID_STEP, (cellY + yf) - CPlayerFogOfWar.GRID_STEP,
-									myZ);
-							fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi + x,
-									myYi - y, (myXi + x) - 1, (myYi - y) + 1, cellX + xf, cellY - yf,
-									(cellX + xf) - CPlayerFogOfWar.GRID_STEP, (cellY - yf) + CPlayerFogOfWar.GRID_STEP,
-									myZ);
-							fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi + x,
-									myYi + y, (myXi + x) - 1, (myYi + y) - 1, cellX + xf, cellY + yf,
-									(cellX + xf) - CPlayerFogOfWar.GRID_STEP, (cellY + yf) - CPlayerFogOfWar.GRID_STEP,
-									myZ);
-						}
+					else {
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi - x, myYi - y,
+								(myXi - x) + 1, (myYi - y) + 1, cellX - xf, cellY - yf,
+								(cellX - xf) + CPlayerFogOfWar.GRID_STEP, (cellY - yf) + CPlayerFogOfWar.GRID_STEP,
+								myZ);
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi - x, myYi + y,
+								(myXi - x) + 1, (myYi + y) - 1, cellX - xf, cellY + yf,
+								(cellX - xf) + CPlayerFogOfWar.GRID_STEP, (cellY + yf) - CPlayerFogOfWar.GRID_STEP,
+								myZ);
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi + x, myYi - y,
+								(myXi + x) - 1, (myYi - y) + 1, cellX + xf, cellY - yf,
+								(cellX + xf) - CPlayerFogOfWar.GRID_STEP, (cellY - yf) + CPlayerFogOfWar.GRID_STEP,
+								myZ);
+						fogOfWar.checkDiagonalVision(game, pathingGrid, detections, flying, x, y, myXi + x, myYi + y,
+								(myXi + x) - 1, (myYi + y) - 1, cellX + xf, cellY + yf,
+								(cellX + xf) - CPlayerFogOfWar.GRID_STEP, (cellY + yf) - CPlayerFogOfWar.GRID_STEP,
+								myZ);
 					}
 				}
-				fogOfWar.clearViewerCell();
 			}
 		}
+		fogOfWar.clearViewerCell();
 	}
 
 	static void updateSeenBy(final CUnit self, final CSimulation simulation, final int playerCount) {

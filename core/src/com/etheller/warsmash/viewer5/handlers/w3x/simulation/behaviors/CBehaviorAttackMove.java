@@ -18,6 +18,9 @@ public class CBehaviorAttackMove implements CRangedBehavior {
 	private int nextScanTick = Integer.MIN_VALUE;
 	private boolean endedMove = false;
 	private boolean continueMove = false;
+	private CGroupMove group;
+	private float laneX;
+	private float laneY;
 	/** Game time of the order until the first look for targets; negative after it. */
 	private double orderTime = -1;
 
@@ -33,6 +36,7 @@ public class CBehaviorAttackMove implements CRangedBehavior {
 
 	public CBehavior reset(final AbilityPointTarget target) {
 		this.orderTime = -1;
+		this.group = null;
 		this.nextScanTick = Integer.MIN_VALUE;
 		// Measured on 1.29: an attack-move given again to the same point walks on along its way, as a repeated move
 		// does; starting the path search over at every repeat left the unit walking straight into the nearest pocket.
@@ -101,7 +105,19 @@ public class CBehaviorAttackMove implements CRangedBehavior {
 				return this.unit.getMoveBehavior();
 			}
 		}
-		return this.unit.getMoveBehavior().reset(this.target, this, false);
+		final CBehaviorMove move = this.unit.getMoveBehavior().reset(this.target, this, false);
+		if (this.group != null) {
+			move.setGroup(this.group);
+			move.setLane(this.laneX, this.laneY);
+		}
+		return move;
+	}
+
+	/** The group this attack-move was given to with others; its walk takes the group's way and lane. */
+	void joinGroup(final CGroupMove group, final float laneX, final float laneY) {
+		this.group = group;
+		this.laneX = laneX;
+		this.laneY = laneY;
 	}
 
 	@Override

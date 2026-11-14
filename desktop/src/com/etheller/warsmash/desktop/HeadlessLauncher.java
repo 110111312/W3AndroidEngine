@@ -39,6 +39,7 @@ import com.badlogic.gdx.utils.Clipboard;
 import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.WarsmashGdxMultiScreenGame;
+import com.etheller.warsmash.lan.LanHeadless;
 import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.units.Element;
 import com.etheller.warsmash.util.Log;
@@ -160,6 +161,7 @@ public final class HeadlessLauncher {
 			final String computerSlots, final int steps) {
 		LwjglNativesLoader.load();
 		installBackend();
+		com.etheller.warsmash.lan.LanSessions.setNetwork(new DesktopLanNetwork());
 		installExtensions();
 		final DataTable warsmashIni = DesktopLauncher.loadWarsmashIni(iniPath);
 		final Element emulatorConstants = warsmashIni.get("Emulator");
@@ -186,6 +188,10 @@ public final class HeadlessLauncher {
 		if (replayToPlay != null) {
 			menuScreen.startReplay(Gdx.files.absolute(new File(replayToPlay).getAbsolutePath()));
 		}
+		else if (LanHeadless.requested() && (fileToLoad != null)) {
+			final String lanMap = fileToLoad;
+			menuScreen.whenLoaded(menu -> LanHeadless.begin(menu, lanMap, computerSlots));
+		}
 		else {
 			menuScreen.startMap(fileToLoad, computerSlots);
 		}
@@ -194,10 +200,28 @@ public final class HeadlessLauncher {
 		long gameStarted = 0;
 		int firstTick = 0;
 		CSimulation last = null;
+		int lastTick = -1;
 		while (!this.exitRequested) {
 			runPostedRunnables();
 			final CSimulation simulation = runningGame(game);
 			float frame = this.frameTime;
+			if (LanHeadless.isActive()) {
+				// The game moves at the pace of the turns that arrive; waiting for them is not a reason to spin.
+				final int tick = simulation == null ? -1 : simulation.getGameTurnTick();
+				if (tick == lastTick) {
+					try {
+						Thread.sleep(1);
+					}
+					catch (final InterruptedException e) {
+						Thread.currentThread().interrupt();
+					}
+				}
+				lastTick = tick;
+			}
+			if ((simulation != null) && (simulation != last) && LanHeadless.isRestarting()) {
+				// The game was dropped to be played again from the first turn; this is the new one.
+				LanHeadless.restarted();
+			}
 			if (simulation != null) {
 				final int tick = simulation.getGameTurnTick();
 				if (last == null) {
@@ -215,7 +239,7 @@ public final class HeadlessLauncher {
 					frame = Math.min(frame, (steps - tick) * WarsmashConstants.SIMULATION_STEP_TIME);
 				}
 			}
-			else if (last != null) {
+			else if ((last != null) && !LanHeadless.isRestarting()) {
 				break;
 			}
 			this.frameId++;
@@ -237,7 +261,8 @@ public final class HeadlessLauncher {
 		catch (final RuntimeException e) {
 			Log.error(e);
 		}
-		return 0;
+		LanHeadless.finish();
+		return LanHeadless.hasFailed() ? 4 : 0;
 	}
 
 	/**

@@ -7,6 +7,8 @@ java {
 
 sourceSets.main.java.srcDirs = [ "src/" ]
 sourceSets.test.java.srcDirs = [ "test/" ]
+// The launcher's words are the Android strings file; the desktop launcher reads it from its class path, and so do the tests.
+sourceSets.test.resources.srcDirs = [ "../android/res/values" ]
 
 // The build's identity (version, commit, whether it is official) is the Android app's version plus the git state; every
 // platform reads it from this resource, so replays and updates of one platform are known to another.

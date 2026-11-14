@@ -168,6 +168,7 @@ public class CPlayerUnitOrderExecutor implements CPlayerUnitOrderListener {
 		if ((message == null) || message.trim().isEmpty()) {
 			return;
 		}
+		this.game.getPlayerCommandHost().chatMessage(this.playerIndex, recipient, recipientPlayerIndex, message);
 		this.game.getPlayer(this.playerIndex).fireChatEvents(message);
 	}
 
@@ -241,8 +242,20 @@ public class CPlayerUnitOrderExecutor implements CPlayerUnitOrderListener {
 	public void leaveGame() {
 		final CPlayer player = this.game.getPlayer(this.playerIndex);
 		if (player.getRemovedResult() == null) {
+			// Counted before the player is marked, from the game's own data, so a replay of the game agrees.
+			int humans = 0;
+			for (final CPlayer other : this.game.getPlayers()) {
+				if ((other.getController() == CMapControl.USER) && (other.getSlotState() == CPlayerSlotState.PLAYING)) {
+					humans++;
+				}
+			}
 			player.setRemovedResult(CPlayerGameResult.DEFEAT);
 			player.setSlotState(CPlayerSlotState.LEFT);
+			if (humans >= 2) {
+				// Another human is in the game: the map's rules learn that the player left, as in any multiplayer game.
+				player.firePlayerEvents(CommonTriggerExecutionScope::triggerPlayerScope,
+						JassGameEventsWar3.EVENT_PLAYER_LEAVE);
+			}
 		}
 	}
 

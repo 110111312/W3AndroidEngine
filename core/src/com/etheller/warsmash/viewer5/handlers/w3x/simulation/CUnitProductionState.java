@@ -13,6 +13,8 @@ final class CUnitProductionState {
 	War3ID upgradeIdType = null;
 	final List<War3ID> upgradedFromTypeIds = new ArrayList<>();
 	float constructionProgress;
+	/** The seconds a structure made by an item takes to build instead of its unit type's build time; 0 for none. */
+	float buildTimeOverride;
 	CUnit worker;
 	boolean workerInside;
 	final War3ID[] buildQueue = new War3ID[WarsmashConstants.BUILD_QUEUE_SIZE];

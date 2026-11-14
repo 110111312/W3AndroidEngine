@@ -67,6 +67,7 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 	public List<GenericGroup> opaqueGroups = new ArrayList<>();
 	public List<GenericGroup> translucentGroups = new ArrayList<>();
 	public List<GenericGroup> simpleGroups = new ArrayList<>();
+	private int[] nodeIndexByObjectId = new int[0];
 	public int arrayBuffer;
 	public int elementBuffer;
 
@@ -108,6 +109,7 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 		}
 
 		final ModelViewer viewer = this.viewer;
+		parser = ClassicEffects.resolve(viewer, this.fetchUrl, parser);
 		final PathSolver pathSolver = this.pathSolver;
 		final SolverParams solverParams = this.solverParams;
 		final boolean reforged = parser.getVersion() > 800;
@@ -308,6 +310,12 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 		this.genericObjects.addAll(this.eventObjects);
 		this.genericObjects.addAll(this.collisionShapes);
 
+		this.nodeIndexByObjectId = new int[Math.max(this.genericObjects.size(), maxObjectId(this.genericObjects) + 1)];
+		java.util.Arrays.fill(this.nodeIndexByObjectId, -1);
+		for (int i = 0, l = this.genericObjects.size(); i < l; i++) {
+			this.nodeIndexByObjectId[this.genericObjects.get(i).objectId] = i;
+		}
+
 		// Render groups.
 		SetupGroups.setupGroups(this);
 
@@ -317,6 +325,13 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 		// Creates the sorted indices array of the generic objects
 		try {
 			setupHierarchy(-1);
+			// A node whose parent is not a node here (a popcorn emitter) is a root.
+			for (int i = 0, l = this.genericObjects.size(); (i < l) && (this.hierarchy.size() < l); i++) {
+				if (!this.hierarchy.contains(i) && (nodeIndexOf(this.genericObjects.get(i).parentId) == -1)) {
+					this.hierarchy.add(i);
+					setupHierarchy(this.genericObjects.get(i).objectId);
+				}
+			}
 		}
 		catch (final StackOverflowError e) {
 			Log.info("bah");
@@ -327,6 +342,23 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 			this.sortedGenericObjects.add(this.genericObjects.get(this.hierarchy.get(i)));
 		}
 
+	}
+
+	private static int maxObjectId(final List<GenericObject> objects) {
+		int max = -1;
+		for (final GenericObject object : objects) {
+			max = Math.max(max, object.objectId);
+		}
+		return max;
+	}
+
+	/**
+	 * The place of the node in the instance's node list for the id the file gives it. The file counts the popcorn
+	 * emitters, which are not nodes here, so the ids run ahead of the places after them.
+	 */
+	public int nodeIndexOf(final int objectId) {
+		return ((objectId >= 0) && (objectId < this.nodeIndexByObjectId.length)) ? this.nodeIndexByObjectId[objectId]
+				: -1;
 	}
 
 	private void setupHierarchy(final int parent) {

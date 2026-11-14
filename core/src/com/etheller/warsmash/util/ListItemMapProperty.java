@@ -16,6 +16,8 @@ public class ListItemMapProperty extends AbstractListItemProperty {
 	public final String mapName;
 	public final int playerCount;
 	public final MapType mapType;
+	/** Set for a map listed only to say why it cannot be played; such entries come last. */
+	public final boolean unreadable;
 
 	public ListItemMapProperty(ListItemEnum dataType, String rawValue, GameUI gameUI, DataSource data) {
 		super(dataType, rawValue);
@@ -30,10 +32,26 @@ public class ListItemMapProperty extends AbstractListItemProperty {
 			this.mapName = mapNameString == null ? mapInfo.getName() : mapNameString;
 			this.playerCount = mapInfo.getPlayers().size();
 			this.mapType = (mapInfo.hasFlag(War3MapW3iFlags.MELEE_MAP)) ? MapType.MELEE_MAP : MapType.CUSTOM_MAP;
+			this.unreadable = false;
 		}
 		catch (final IOException e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+	/** A map whose information was read before, for a list that does not open the maps again. */
+	public ListItemMapProperty(final String rawValue, final String mapName, final int playerCount,
+			final boolean melee) {
+		this(rawValue, mapName, playerCount, melee, false);
+	}
+
+	public ListItemMapProperty(final String rawValue, final String mapName, final int playerCount,
+			final boolean melee, final boolean unreadable) {
+		super(ListItemEnum.ITEM_MAP, rawValue);
+		this.unreadable = unreadable;
+		this.mapName = mapName;
+		this.playerCount = playerCount;
+		this.mapType = melee ? MapType.MELEE_MAP : MapType.CUSTOM_MAP;
 	}
 
 	@Override
@@ -42,6 +60,9 @@ public class ListItemMapProperty extends AbstractListItemProperty {
 			throw new RuntimeException("Cannot compare with mix items");
 		}
 		final ListItemMapProperty mapProperty = (ListItemMapProperty) itemProperty;
+		if (this.unreadable != mapProperty.unreadable) {
+			return this.unreadable ? 1 : -1;
+		}
 		if (this.playerCount == mapProperty.playerCount) {
 			return this.mapName.compareTo(mapProperty.mapName);
 		}

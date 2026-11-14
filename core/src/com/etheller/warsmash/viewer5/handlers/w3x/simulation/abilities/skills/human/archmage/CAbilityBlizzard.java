@@ -10,6 +10,8 @@ import com.badlogic.gdx.math.Rectangle;
 import com.etheller.warsmash.units.GameObject;
 import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.util.WarsmashConstants;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CHarmfulAreas;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitEnumFunction;
@@ -38,8 +40,6 @@ public class CAbilityBlizzard extends CAbilityPointTargetSpellBase implements CC
 	// Measured on 1.29: creeps rain fire on a group of at least two enemies.
 	private static final int CREEP_CAST_MINIMUM_TARGETS = 2;
 	private static final float WAVE_DAMAGE_DELAY = 0.9f;
-	// Measured on 1.29: a computer player's unit leaves the area this long after the spell starts.
-	private static final float HARMFUL_AREA_REACTION_DELAY = 1.7f;
 	// Measured on 1.29: the hit buff lasts more than 0.9 and less than 1 second.
 	private static final float HIT_BUFF_DURATION = 0.95f;
 
@@ -57,6 +57,7 @@ public class CAbilityBlizzard extends CAbilityPointTargetSpellBase implements CC
 	private final int orderId;
 	private final CDamageType damageType;
 
+	private CHarmfulAreas.Area harmfulArea;
 	private int currentWave;
 	private int nextWaveTick;
 	private int damageTick = -1;
@@ -110,8 +111,8 @@ public class CAbilityBlizzard extends CAbilityPointTargetSpellBase implements CC
 		this.damageTick = -1;
 		this.nextWaveTick = tick;
 		this.channelEndTick = tick + ticks(this.waveDelay * this.waveCount);
-		simulation.getHarmfulAreas().add(simulation, caster, target.getX(), target.getY(), this.areaOfEffect,
-				HARMFUL_AREA_REACTION_DELAY, (this.waveDelay * this.waveCount) + WAVE_DAMAGE_DELAY);
+		this.harmfulArea = simulation.getHarmfulAreas().addUnarmed(simulation, caster, target.getX(), target.getY(),
+				this.areaOfEffect, (this.waveDelay * this.waveCount) + WAVE_DAMAGE_DELAY);
 		return true;
 	}
 
@@ -124,6 +125,11 @@ public class CAbilityBlizzard extends CAbilityPointTargetSpellBase implements CC
 		final int tick = simulation.getGameTurnTick();
 		if ((this.currentWave < this.waveCount) && (tick >= this.nextWaveTick)) {
 			this.currentWave++;
+			if ((this.currentWave == 2) && (this.harmfulArea != null)) {
+				// Measured: units step out once the second wave hurts them, and not at all when the channel ends
+				// before that wave falls.
+				simulation.getHarmfulAreas().arm(simulation, this.harmfulArea, WAVE_DAMAGE_DELAY);
+			}
 			spawnShards(simulation, caster, target);
 			this.damageTick = tick + ticks(WAVE_DAMAGE_DELAY);
 			this.nextWaveTick = tick + ticks(this.waveDelay);
@@ -133,6 +139,24 @@ public class CAbilityBlizzard extends CAbilityPointTargetSpellBase implements CC
 			damageWave(simulation, caster, target);
 		}
 		return tick < this.channelEndTick;
+	}
+
+	/** Measured on 1.29: the waves that already fell still hurt after the channel is cut short. */
+	@Override
+	public void doChannelEnd(final CSimulation game, final CUnit unit, final AbilityTarget target,
+			final boolean interrupted) {
+		if (this.damageTick >= 0) {
+			final int remaining = this.damageTick - game.getGameTurnTick();
+			this.damageTick = -1;
+			final CTimer lateWave = new CTimer() {
+				@Override
+				public void onFire(final CSimulation simulation) {
+					damageWave(simulation, unit, target);
+				}
+			};
+			lateWave.setTimeoutTime(Math.max(0, remaining) * WarsmashConstants.SIMULATION_STEP_TIME);
+			lateWave.start(game);
+		}
 	}
 
 	private void spawnShards(final CSimulation simulation, final CUnit caster, final AbilityTarget target) {
@@ -157,7 +181,7 @@ public class CAbilityBlizzard extends CAbilityPointTargetSpellBase implements CC
 					@Override
 					public boolean call(final CUnit possibleTarget) {
 						if (possibleTarget.canReach(target, CAbilityBlizzard.this.areaOfEffect)
-								&& possibleTarget.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.NOT_HIDDEN_GHOST,
+								&& possibleTarget.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.ANY,
 										getTargetsAllowed(),
 										BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())
 								&& !hasHitBuff(possibleTarget)) {

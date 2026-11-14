@@ -178,6 +178,8 @@ public class ListBoxFrame extends ControlFrame
 	public void setItems(final List<AbstractListItemProperty> items, final GameUI gameUI, final Viewport viewport) {
 		this.listItems.clear();
 		this.listItems.addAll(items);
+		this.selectedIndex = -1;
+		this.mouseOverIndex = -1;
 		refreshItems(gameUI, viewport);
 	}
 
@@ -223,7 +225,7 @@ public class ListBoxFrame extends ControlFrame
 
 	/** Selects an item as a click would: scrolls it into view and tells the selection listener. */
 	public void selectIndex(final int index) {
-		if ((index < 0) || (index >= this.listItems.size())) {
+		if ((index < 0) || (index >= this.listItems.size()) || !this.listItems.get(index).isSelectable()) {
 			return;
 		}
 		this.selectedIndex = index;
@@ -248,6 +250,16 @@ public class ListBoxFrame extends ControlFrame
 		}
 		updateUI(this.gameUI, this.viewport);
 		this.selectionListener.onSelectionChanged(this.selectedIndex, getSelectedItem());
+	}
+
+	/** The first item a click could choose, or -1. */
+	public int firstSelectableIndex() {
+		for (int i = 0; i < this.listItems.size(); i++) {
+			if (this.listItems.get(i).isSelectable()) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	public int indexOf(final String rawValue) {
@@ -303,7 +315,8 @@ public class ListBoxFrame extends ControlFrame
 				
 				final int index = stringFrameIndex + scrollOffset;
 				final boolean selected = (index == this.selectedIndex);
-				final boolean mousedOver = (index == this.mouseOverIndex);
+				final boolean mousedOver = (index == this.mouseOverIndex) && (index < this.listItems.size())
+						&& this.listItems.get(index).isSelectable();
 
 				AbstractListItemDisplay listDisplay = AbstractListItemDisplay.createFromType(ListItemEnum.ITEM_STRING, "LISTY_" + stringFrameIndex, this, gameUI, viewport);
 				if (index < this.listItems.size()) {
@@ -345,7 +358,8 @@ public class ListBoxFrame extends ControlFrame
 			for (int stringFrameIndex = 0; stringFrameIndex < numStringFrames; stringFrameIndex++) {
 				final int index = stringFrameIndex + scrollOffset;
 				final boolean selected = (index == this.selectedIndex);
-				final boolean mousedOver = (index == this.mouseOverIndex);
+				final boolean mousedOver = (index == this.mouseOverIndex) && (index < this.listItems.size())
+						&& this.listItems.get(index).isSelectable();
 
 				AbstractListItemDisplay listDisplay = this.listFrames.get(stringFrameIndex);
 				if (index < this.listItems.size()) {
@@ -438,7 +452,10 @@ public class ListBoxFrame extends ControlFrame
 		int index = 0;
 		for (final AbstractListItemDisplay listFrame : this.listFrames) {
 			if (listFrame.getParentFrame().getRenderBounds().contains(screenX, screenY)) {
-				this.selectedIndex = index + computeScrollOffset(this.listFrames.size());
+				final int clicked = index + computeScrollOffset(this.listFrames.size());
+				if ((clicked < this.listItems.size()) && this.listItems.get(clicked).isSelectable()) {
+					this.selectedIndex = clicked;
+				}
 				break;
 			}
 			index++;

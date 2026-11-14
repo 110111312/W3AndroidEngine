@@ -56,6 +56,8 @@ public class CAbilityDeathAndDecay extends CAbilityPointTargetSpellBase {
 		final int tick = simulation.getGameTurnTick();
 		this.channelEndTick = tick + ticks(getDuration());
 		this.nextPulseTick = tick + ticks(FIRST_PULSE_DELAY);
+		simulation.getHarmfulAreas().add(simulation, caster, target.getX(), target.getY(), this.areaOfEffect,
+				FIRST_PULSE_DELAY, getDuration());
 		this.areaEffect = simulation.spawnSpellEffectOnPoint(target.getX(), target.getY(), 0, getAlias(),
 				CEffectType.EFFECT, 0);
 		simulation.createTemporarySpellEffectOnUnit(caster, getAlias(), CEffectType.CASTER);

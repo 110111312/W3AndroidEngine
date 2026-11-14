@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CMapDifficulty;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.MenuUI;
+import com.etheller.warsmash.launcher.lan.LanLaunch;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.menu.CampaignCatalog;
 
 /**
@@ -20,6 +21,7 @@ public final class LaunchRequest {
 	public static final String SOURCE_CUSTOM = "custom";
 	public static final String SOURCE_LOAD = "load";
 	public static final String SOURCE_REPLAY = "replay";
+	public static final String SOURCE_LAN = "lan";
 
 	/** Campaign number as scripts count campaigns (the named entries of the campaign list); -1 for none. */
 	public int campaign = -1;
@@ -49,6 +51,10 @@ public final class LaunchRequest {
 	public int portrait;
 	/** The player profile the game is played with, by its name. */
 	public String profile;
+	/** A LAN game: the lobby's game of the process's LAN session, whose map is {@link #mapFile}. */
+	public boolean lan;
+	/** The session a LAN game belongs to; the launcher's, never carried to another process. */
+	public Object lanSession;
 
 	/** A campaign mission, on the profile's version of the campaign maps. */
 	public static LaunchRequest mission(final CampaignCatalog catalog, final CampaignCatalog.Entry entry,
@@ -103,9 +109,19 @@ public final class LaunchRequest {
 		return request;
 	}
 
+	/** The LAN game of a session whose host has started it, on the map this machine has. */
+	public static LaunchRequest lan(final Object session, final String mapFile, final String slots) {
+		final LaunchRequest request = new LaunchRequest();
+		request.lan = true;
+		request.lanSession = session;
+		request.mapFile = mapFile;
+		request.slots = slots;
+		return request;
+	}
+
 	/** Where the game was started from, as the result tells the launcher. */
 	public String source() {
-		return this.campaign >= 0 ? SOURCE_CAMPAIGN
+		return this.lan ? SOURCE_LAN : this.campaign >= 0 ? SOURCE_CAMPAIGN
 				: this.customMap != null ? SOURCE_CUSTOM : this.replayFile != null ? SOURCE_REPLAY : SOURCE_LOAD;
 	}
 
@@ -115,7 +131,8 @@ public final class LaunchRequest {
 	 * the one the game was started as.
 	 */
 	public String source(final GameResult played) {
-		if ((played == null) || (played.campaign == GameResult.CAMPAIGN_UNKNOWN) || (this.replayFile != null)) {
+		if (this.lan || (played == null) || (played.campaign == GameResult.CAMPAIGN_UNKNOWN)
+				|| (this.replayFile != null)) {
 			return source();
 		}
 		if (played.campaign >= 0) {
@@ -127,7 +144,7 @@ public final class LaunchRequest {
 	/** Sets up the engine's menu screen to show only this game's loading screen; before the menu is built. */
 	public void prepare(final WarsmashGdxMenuScreen menuScreen) {
 		menuScreen.setLauncherMode(true);
-		menuScreen.setWaitForTap(true);
+		menuScreen.setWaitForTap(!this.lan);
 		menuScreen.setReforgedLoadingScreens(SKIN_REFORGED.equals(this.skin));
 		// A won mission's result comes before the next mission, as on the Reforged campaign screen; a game loaded in
 		// the game from a campaign's mission ends the same way, whatever this game was started as.
@@ -142,6 +159,9 @@ public final class LaunchRequest {
 	public boolean start(final MenuUI menu) {
 		try {
 			menu.useProfile(this.profile);
+			if (this.lan) {
+				return LanLaunch.start(menu, this);
+			}
 			// A campaign mission's save names its campaign too; the save is what is played.
 			if (this.saveFile != null) {
 				return menu.startSavedGame(this.saveFile);
@@ -176,6 +196,6 @@ public final class LaunchRequest {
 	@Override
 	public String toString() {
 		return "campaign=" + this.campaign + " mission=" + this.mission + " custom=" + this.customMap + " save="
-				+ this.saveFile + " replay=" + this.replayFile + (this.replayForced ? " (forced)" : "") + " map=" + this.mapFile;
+				+ this.saveFile + " lan=" + this.lan + " replay=" + this.replayFile + (this.replayForced ? " (forced)" : "") + " map=" + this.mapFile;
 	}
 }

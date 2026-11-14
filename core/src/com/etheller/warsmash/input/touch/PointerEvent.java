@@ -6,7 +6,9 @@ package com.etheller.warsmash.input.touch;
  */
 public final class PointerEvent {
 	public enum Action {
-		DOWN, MOVE, UP, CANCEL, HOVER_MOVE, HOVER_EXIT, SCROLL
+		DOWN, MOVE, UP, CANCEL, HOVER_MOVE, HOVER_EXIT, SCROLL,
+		/** The pen button was pressed or released without the pen moving; only the button state is news. */
+		BUTTONS
 	}
 
 	public enum Tool {

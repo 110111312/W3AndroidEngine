@@ -16,6 +16,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitTypeRequirement;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityCategory;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.AbstractGenericSingleIconNoSmartActiveAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
@@ -42,6 +43,7 @@ public abstract class CAbilitySpellBase extends AbstractGenericSingleIconNoSmart
 	private float heroDuration;
 	private War3ID code;
 	private List<CUnitTypeRequirement> requirements;
+	private CItem item;
 
 	public CAbilitySpellBase(final int handleId, final War3ID alias) {
 		super(handleId, alias, alias);
@@ -158,6 +160,16 @@ public abstract class CAbilitySpellBase extends AbstractGenericSingleIconNoSmart
 
 	public void doChannelEnd(final CSimulation game, final CUnit unit, final AbilityTarget target,
 			final boolean interrupted) {
+	}
+
+	@Override
+	public void setItemAbility(final CItem item, final int slot) {
+		this.item = item;
+	}
+
+	@Override
+	public CItem getItem() {
+		return this.item;
 	}
 
 	@Override

@@ -78,16 +78,8 @@ public class ABActionCreateTimedArtBuff implements ABSingleAction {
 			ability.setVisibilityGroup(visibilityGroup.callback(game, caster, localStore, castId));
 		}
 		localStore.put(ABLocalStoreKeys.LASTCREATEDBUFF, ability);
-		if (uniqueFlags != null) {
-			for (ABStringCallback flag : uniqueFlags) {
-				ability.addUniqueFlag(flag.callback(game, caster, localStore, castId));
-			}
-		}
-		if (uniqueValues != null) {
-			for (String key : uniqueValues.keySet()) {
-				ability.addUniqueValue(uniqueValues.get(key).callback(game, caster, localStore, castId), key);
-			}
-		}
+		ABActionCreateTimedBuffBase.addUniqueFlags(uniqueFlags, game, caster, localStore, castId, ability);
+		ABActionCreateTimedBuffBase.addUniqueValues(uniqueValues, game, caster, localStore, castId, ability);
 		if (!localStore.containsKey(ABLocalStoreKeys.BUFFCASTINGUNIT)) {
 			localStore.put(ABLocalStoreKeys.BUFFCASTINGUNIT, caster);
 		}

@@ -51,9 +51,10 @@ public final class MeleeChat {
 		}
 	}
 
-	/** The usual text colors of the twelve player colors. */
+	/** The usual text colors of the player colors. */
 	private static final String[] PLAYER_TEXT_COLORS = { "ff0303", "0042ff", "1ce6b9", "540081", "fffc01", "feba0e",
-			"20c000", "e55bb0", "959697", "7ebff1", "106246", "4e2a04" };
+			"20c000", "e55bb0", "959697", "7ebff1", "106246", "4e2a04", "9b0000", "0000c3", "00eaff", "be00fe", "ebcd87",
+			"f8a48b", "bfff80", "dcb9eb", "504f55", "ebf0ff", "00781e", "a46f33" };
 
 	interface Host {
 		void showChatMessage(String line);
@@ -104,6 +105,9 @@ public final class MeleeChat {
 	private Recipient shownPreference;
 	private CPlayer shownPrivatePlayer;
 	private final List<String> history = new ArrayList<>();
+	/** The name a LAN referee or observer speaks under (it has no player of its own), or null for a player. */
+	private String watcherName;
+	private boolean watcherMaySpeakToAll;
 
 	MeleeChat(final GameUI rootFrame, final Viewport uiViewport, final CSimulation simulation,
 			final CPlayer localPlayer, final float messageFontHeight, final Host host) {
@@ -209,8 +213,12 @@ public final class MeleeChat {
 	 * other human in the game the line is just "Message:" and everything is sent to all, allies or not.
 	 */
 	void openEntry(final Recipient override) {
-		final boolean alone = !hasOtherHumans();
+		final boolean alone = this.watcherName == null && !hasOtherHumans();
 		this.entryRecipient = alone ? Recipient.ALL : override != null ? override : this.preference;
+		if (this.watcherName != null) {
+			this.entryRecipient = (this.entryRecipient == Recipient.ALL) && this.watcherMaySpeakToAll ? Recipient.ALL
+					: Recipient.OBSERVERS;
+		}
 		if ((this.entryRecipient == Recipient.PLAYER) && (this.privatePlayer == null)) {
 			this.entryRecipient = Recipient.ALLIES;
 		}
@@ -290,6 +298,28 @@ public final class MeleeChat {
 		return true;
 	}
 
+	/**
+	 * Makes this the chat of a LAN watcher: it speaks under its own name to everyone (a referee) or to the observers
+	 * (all it may), never to a player's allies or privately.
+	 */
+	void setWatcher(final String name, final boolean referee) {
+		this.watcherName = name;
+		this.watcherMaySpeakToAll = referee;
+		this.preference = referee ? Recipient.ALL : Recipient.OBSERVERS;
+	}
+
+	private String speakerName() {
+		return this.watcherName != null ? "|cff959697" + this.watcherName + "|r" : coloredName(this.localPlayer);
+	}
+
+	/** A line a LAN referee or observer said, shown to whoever it was meant for. */
+	void showWatcherLine(final String name, final Recipient recipient, final String message) {
+		final String line = this.rootFrame.getTemplates().getDecoratedString(recipient.tagKey) + " |cff959697" + name
+				+ "|r: " + message;
+		this.history.add(line);
+		this.host.showChatMessage(line);
+	}
+
 	/** A line another player sent, as it reaches this one: in the history and on the screen. */
 	void showReceived(final CPlayer sender, final Recipient recipient, final String message) {
 		final String line = this.rootFrame.getTemplates().getDecoratedString(recipient.tagKey) + " "
@@ -306,7 +336,7 @@ public final class MeleeChat {
 			return;
 		}
 		final String line = this.rootFrame.getTemplates().getDecoratedString(recipient.tagKey) + " "
-				+ coloredName(this.localPlayer) + ": " + message;
+				+ speakerName() + ": " + message;
 		this.history.add(line);
 		this.host.showChatMessage(line);
 		this.host.sendChatMessage(recipient.ordinal(),
@@ -393,7 +423,17 @@ public final class MeleeChat {
 		this.playerRadio.setEnabled(otherHumans);
 		this.playerMenu.setEnabled(otherHumans);
 		((GlueTextButtonFrame) this.playerMenu.getPopupTitleFrame()).setEnabled(otherHumans);
-		this.observersRadio.setEnabled(hasObservers());
+		this.observersRadio.setEnabled(this.watcherName != null || hasObservers());
+		if (this.watcherName != null) {
+			this.playerRadio.setEnabled(false);
+			this.playerMenu.setEnabled(false);
+			this.alliesRadio.setEnabled(false);
+			this.everyoneRadio.setEnabled(this.watcherMaySpeakToAll);
+			if (this.shownPreference == Recipient.PLAYER || this.shownPreference == Recipient.ALLIES
+					|| (this.shownPreference == Recipient.ALL && !this.watcherMaySpeakToAll)) {
+				this.shownPreference = Recipient.OBSERVERS;
+			}
+		}
 		this.rootFrame.setText((StringFrame) ((GlueTextButtonFrame) this.playerMenu.getPopupTitleFrame()).getButtonText(),
 				this.shownPrivatePlayer == null ? (otherHumans ? this.menuPlayers.get(0).getName() : "")
 						: this.shownPrivatePlayer.getName());

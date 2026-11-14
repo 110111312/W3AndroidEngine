@@ -81,6 +81,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.G
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityReturnResources;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.hero.CAbilityHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.inventory.CAbilityInventory;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.CAbilityItemSpellBook;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.shop.CAbilityAwakenHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.shop.CAbilityNeutralBuilding;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.item.shop.CAbilitySellItems;
@@ -351,6 +352,15 @@ final class MeleeUICommands {
 					this.ui.unitOrderListener.issueImmediateOrder(
 							this.ui.selectedUnit.getSimulationUnit().getHandleId(), abilityHandleId, orderId,
 							shiftDown);
+					if (abilityToUse instanceof CAbilityInventory) {
+						// Measured: a spell book has no button on the command card; using it from the inventory opens
+						// the menu with its spells.
+						final CAbilityItemSpellBook book = ((CAbilityInventory) abilityToUse)
+								.getSpellBookForOrder(this.ui.war3MapViewer.simulation, orderId);
+						if (book != null) {
+							openMenu(book.getBaseOrderId());
+						}
+					}
 					if (abilityToUse instanceof CAbilityHero) {
 						if ((((CAbilityHero) abilityToUse).getSkillPoints() <= 1) && (orderId != OrderIds.skillmenu)) {
 							// using up the last skill point, so close the menu

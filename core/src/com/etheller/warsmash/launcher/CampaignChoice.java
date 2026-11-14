@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.TreeMap;
 
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CCampaignProgress;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.menu.CampaignCatalog;
@@ -317,21 +316,6 @@ public final class CampaignChoice {
 		return folder;
 	}
 
-	/** The folder the list shows: the one opened last while it still has maps, else the chosen map's. */
-	public static String shownMapFolder(final String kept, final String chosen, final List<GameCatalog.MapEntry> maps) {
-		final String wanted = kept != null ? kept : chosen != null ? mapFolder(chosen) : "";
-		if (wanted.isEmpty()) {
-			return "";
-		}
-		for (final GameCatalog.MapEntry entry : maps) {
-			final String folder = mapFolder(entry.path);
-			if (folder.equalsIgnoreCase(wanted) || folder.regionMatches(true, 0, wanted + "/", 0, wanted.length() + 1)) {
-				return wanted;
-			}
-		}
-		return "";
-	}
-
 	/** The game's own folders as the original list names them; a lower-cased one of the data gets a capital. */
 	public static String folderName(final String name) {
 		switch (name) {
@@ -345,21 +329,6 @@ public final class CampaignChoice {
 			return "..".equals(name) || !name.equals(name.toLowerCase(Locale.ROOT)) ? name
 					: Character.toUpperCase(name.charAt(0)) + name.substring(1);
 		}
-	}
-
-	/** The folders right below a folder of the map list, by their path, in name order. */
-	public static List<String> childFolders(final List<GameCatalog.MapEntry> maps, final String folder) {
-		final String prefix = folder.isEmpty() ? "" : folder + "/";
-		final TreeMap<String, String> folders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-		for (final GameCatalog.MapEntry entry : maps) {
-			final String mapFolder = mapFolder(entry.path);
-			if ((mapFolder.length() > prefix.length()) && mapFolder.regionMatches(true, 0, prefix, 0, prefix.length())) {
-				final int end = mapFolder.indexOf('/', prefix.length());
-				final String child = end < 0 ? mapFolder : mapFolder.substring(0, end);
-				folders.put(child, child);
-			}
-		}
-		return new ArrayList<>(folders.values());
 	}
 
 	/** How many players a map has: its user and computer slots. */
