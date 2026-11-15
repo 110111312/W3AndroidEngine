@@ -170,6 +170,26 @@ class LanFaultTest {
 	}
 
 	@Test
+	void aGameWhoseOnlyActivePlayerLeavesStaysOpenForTheAbsentOne() throws Exception {
+		this.env.timings.absentAfterMs = 300;
+		this.env.startHost();
+		final Node a = this.env.joinAndWait("A");
+		final Node b = this.env.joinAndWait("B");
+		this.env.startGame(a, b);
+		waitFor("traffic", () -> a.client.lastTurn() > 5);
+		b.client.close();
+		waitFor("absent", () -> this.env.host.presenceOf(b.client.participantId()) == LanProtocol.PRESENCE_ABSENT);
+		a.client.leave(LanProtocol.LEAVE_QUIT);
+		waitFor("a gone", () -> this.env.host.presenceOf(a.client.participantId()) == LanProtocol.PRESENCE_LEFT);
+		Thread.sleep(600);
+		assertEquals(LanProtocol.STATE_IN_GAME, this.env.host.state());
+		b.client.reconnect(this.env.address());
+		waitFor("caught up", () -> b.rec.caughtUp > 0);
+		waitFor("playing again", () -> this.env.host.presenceOf(b.client.participantId()) == LanProtocol.PRESENCE_PLAYING);
+		assertEquals(LanProtocol.STATE_IN_GAME, this.env.host.state());
+	}
+
+	@Test
 	void continueWithoutThemReleasesAStalledGame() throws Exception {
 		this.env.startHost();
 		final Node a = this.env.joinAndWait("A");

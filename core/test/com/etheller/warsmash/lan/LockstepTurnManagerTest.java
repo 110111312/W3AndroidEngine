@@ -424,4 +424,31 @@ class LockstepTurnManagerTest {
 		assertEquals(30, this.manager.turnsApplied());
 		assertTrue(this.turns.queue.isEmpty());
 	}
+
+	@Test
+	void aLongPauseInTheArchiveIsPlayedThroughInFewFramesWhileCatchingUp() {
+		this.turns.catching = true;
+		this.turns.catchTotal = 6001;
+		this.turns.received = 6002;
+		this.turns.queue.add(turn(0, 2));
+		this.game.paused = true;
+		for (int i = 1; i < 6000; i++) {
+			this.turns.queue.add(turn(i, 0));
+		}
+		this.manager.whilePaused();
+		assertEquals(4096, this.manager.turnsApplied());
+		this.manager.whilePaused();
+		assertEquals(6000, this.manager.turnsApplied());
+		assertTrue(this.turns.queue.isEmpty());
+	}
+
+	@Test
+	void aPauseOfTheLiveGameTakesNoMoreThanAFewTurnsPerFrame() {
+		this.game.paused = true;
+		for (int i = 0; i < 200; i++) {
+			this.turns.queue.add(turn(i, 0));
+		}
+		this.manager.whilePaused();
+		assertEquals(64, this.manager.turnsApplied());
+	}
 }

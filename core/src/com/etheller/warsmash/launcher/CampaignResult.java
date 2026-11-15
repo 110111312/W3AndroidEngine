@@ -306,6 +306,27 @@ public final class CampaignResult {
 		}
 	}
 
+	/**
+	 * The Reforged chapter icon of a mission: the medal of the difficulty it was won on, the normal one for a win
+	 * recorded without one, the open icon when not won.
+	 */
+	public static String chapterIcon(final boolean won, final int difficulty) {
+		if (!won) {
+			return SkinArt.CHAPTER_OPEN;
+		}
+		switch (difficulty) {
+		case 0:
+			return SkinArt.DIFFICULTY_EASY;
+		case 2:
+		case 3:
+			return SkinArt.DIFFICULTY_HARD;
+		case 1:
+			return SkinArt.DIFFICULTY_NORMAL;
+		default:
+			return SkinArt.CHAPTER_WON;
+		}
+	}
+
 	/** The campaign's mission whose map was played, in either version of the maps; -1 when none is. */
 	public static int playedMission(final CampaignCatalog catalog, final CampaignCatalog.Entry entry,
 			final String mapFile) {

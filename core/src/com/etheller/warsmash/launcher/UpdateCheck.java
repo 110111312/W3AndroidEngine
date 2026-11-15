@@ -119,10 +119,11 @@ public final class UpdateCheck {
 	}
 
 	/**
-	 * Whether the prompt shows for an installed build. Nothing older than the installed build is ever offered, and an
-	 * official build is offered only a release with a higher version code. An unofficial build (one built by someone
-	 * else, signed with another key) is not any release, so it is also offered the release of its own version, as long
-	 * as that has an APK; skipping a release silences it either way.
+	 * Whether the prompt shows for an installed build. Only a release with a higher version code than the installed
+	 * build is ever offered, so a build of the release's own version (a debug build included) is never told to update
+	 * to itself. An official build with an unknown version gets nothing; an unofficial one (built by someone else,
+	 * signed with another key) whose version is unknown is offered a release that has an APK. Skipping a release
+	 * silences it either way.
 	 */
 	public static boolean offers(final String installed, final Release release, final String skipped,
 			final boolean officialBuild) {
@@ -142,7 +143,7 @@ public final class UpdateCheck {
 		if (officialBuild) {
 			return (installedCode > 0) && (releaseCode > installedCode);
 		}
-		return release.hasApk() && (releaseCode >= installedCode);
+		return release.hasApk() && ((installedCode <= 0) || (releaseCode > installedCode));
 	}
 
 	/** The latest release from the API's answer; null when it is a draft, a prerelease or not a release. */

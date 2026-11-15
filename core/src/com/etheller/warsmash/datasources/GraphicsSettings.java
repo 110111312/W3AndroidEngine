@@ -18,6 +18,8 @@ public final class GraphicsSettings {
 	public static final String SECTION = "Graphics";
 	public static final String KEY_SET = "Set";
 	public static final String KEY_TEXTURE_SIZE = "TextureSize";
+	/** "Auto" (the default: compressed on phones and tablets), "On" or "Off"; see {@link #textureCompression}. */
+	public static final String KEY_TEXTURE_COMPRESSION = "TextureCompression";
 	/** The texture size limits offered, in the order the launchers list them; 0 is no limit. */
 	public static final int[] TEXTURE_SIZES = { 512, 1024, 0 };
 	/** Below this much memory a tablet is treated as a phone. */
@@ -53,14 +55,38 @@ public final class GraphicsSettings {
 	}
 
 	/**
-	 * The default limit of a device: 512 on phones, 1024 on tablets with enough memory, none on desktops. Android has
-	 * no block compressed formats in common with the game data, so every texture is decoded to four bytes a pixel.
+	 * The default limit of a device: 512 on phones, 1024 on tablets with enough memory, none on desktops. The game
+	 * data are block compressed in formats Android GPUs lack, so a texture is decoded to four bytes a pixel unless
+	 * {@link #textureCompression} re-encodes it to ETC2.
 	 */
 	public static int defaultTextureSize(final boolean mobile, final boolean tablet, final long memoryMb) {
 		if (!mobile) {
 			return 0;
 		}
 		return tablet && (memoryMb >= TABLET_MEMORY_MB) ? 1024 : 512;
+	}
+
+	/**
+	 * Whether the model textures of a game are uploaded as ETC2 blocks. Only the HD and DE graphics are, Classic keeps
+	 * its textures as they are. Mobile GPUs read the blocks directly, so "Auto" turns it on there; desktop drivers
+	 * mostly expand them again, which saves nothing, so it needs "On".
+	 *
+	 * @param etc2Supported whether the GPU reads ETC2 (every OpenGL ES 3.0 one does)
+	 */
+	public static boolean textureCompression(final DataTable ini, final GraphicsSet graphics, final boolean mobile,
+			final boolean etc2Supported) {
+		if ((graphics == GraphicsSet.CLASSIC) || !etc2Supported) {
+			return false;
+		}
+		final Element section = ini == null ? null : ini.get(SECTION);
+		final String value = section == null ? "" : section.getField(KEY_TEXTURE_COMPRESSION).trim();
+		if (value.equalsIgnoreCase("off") || value.equalsIgnoreCase("false") || value.equals("0")) {
+			return false;
+		}
+		if (value.equalsIgnoreCase("on") || value.equalsIgnoreCase("true") || value.equals("1")) {
+			return true;
+		}
+		return mobile;
 	}
 
 	/** Puts a default texture size limit into a configuration that sets none, for this run only. */

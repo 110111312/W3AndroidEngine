@@ -14,23 +14,17 @@ import com.etheller.warsmash.util.Log;
 public final class NonStackingStatBuffs {
 	private final Map<NonStackingStatBuffType, Map<String, List<NonStackingStatBuff>>> nonStackingBuffs = new HashMap<>();
 
-	public NonStackingStatBuffs() {
-		for (final NonStackingStatBuffType type : new NonStackingStatBuffType[] { NonStackingStatBuffType.ATKSPD,
-				NonStackingStatBuffType.DEF, NonStackingStatBuffType.DEFPCT, NonStackingStatBuffType.HPGEN,
-				NonStackingStatBuffType.HPGENPCT, NonStackingStatBuffType.MAXHPGENPCT, NonStackingStatBuffType.HPSTEAL,
-				NonStackingStatBuffType.MELEEATK, NonStackingStatBuffType.MELEEATKPCT, NonStackingStatBuffType.MPGEN,
-				NonStackingStatBuffType.MPGENPCT, NonStackingStatBuffType.MAXMPGENPCT, NonStackingStatBuffType.MVSPDPCT,
-				NonStackingStatBuffType.MVSPD, NonStackingStatBuffType.RNGDATK, NonStackingStatBuffType.RNGDATKPCT,
-				NonStackingStatBuffType.THORNS, NonStackingStatBuffType.THORNSPCT, NonStackingStatBuffType.MAXHP,
-				NonStackingStatBuffType.MAXHPPCT, NonStackingStatBuffType.MAXMP, NonStackingStatBuffType.MAXMPPCT,
-				NonStackingStatBuffType.STR, NonStackingStatBuffType.STRPCT, NonStackingStatBuffType.AGI,
-				NonStackingStatBuffType.AGIPCT, NonStackingStatBuffType.INT, NonStackingStatBuffType.INTPCT }) {
-			this.nonStackingBuffs.put(type, new HashMap<>(1));
-		}
-	}
-
+	/**
+	 * The live map of one stat, made on first use: attacks keep it, so it is never replaced once there. Units without
+	 * buffs of a stat hold no map for it.
+	 */
 	public Map<String, List<NonStackingStatBuff>> get(final NonStackingStatBuffType type) {
-		return this.nonStackingBuffs.get(type);
+		Map<String, List<NonStackingStatBuff>> buffKeyMap = this.nonStackingBuffs.get(type);
+		if (buffKeyMap == null) {
+			buffKeyMap = new HashMap<>(1);
+			this.nonStackingBuffs.put(type, buffKeyMap);
+		}
+		return buffKeyMap;
 	}
 
 	public void add(final NonStackingStatBuff buff) {
@@ -46,11 +40,7 @@ public final class NonStackingStatBuffs {
 	}
 
 	private void add(final NonStackingStatBuffType type, final NonStackingStatBuff buff) {
-		Map<String, List<NonStackingStatBuff>> buffKeyMap = this.nonStackingBuffs.get(type);
-		if (buffKeyMap == null) {
-			buffKeyMap = new HashMap<>();
-			this.nonStackingBuffs.put(type, buffKeyMap);
-		}
+		final Map<String, List<NonStackingStatBuff>> buffKeyMap = get(type);
 		List<NonStackingStatBuff> theList = buffKeyMap.get(buff.getStackingKey());
 		if (theList == null) {
 			theList = new ArrayList<>();
@@ -90,7 +80,11 @@ public final class NonStackingStatBuffs {
 
 	/** The running total plus the buffs of one stat, each stacking key's value once. */
 	public float sum(final NonStackingStatBuffType type, float total) {
-		for (final Map.Entry<String, List<NonStackingStatBuff>> entry : this.nonStackingBuffs.get(type).entrySet()) {
+		final Map<String, List<NonStackingStatBuff>> buffKeyMap = this.nonStackingBuffs.get(type);
+		if (buffKeyMap == null) {
+			return total;
+		}
+		for (final Map.Entry<String, List<NonStackingStatBuff>> entry : buffKeyMap.entrySet()) {
 			final Float buffForKey = valueForKey(entry.getKey(), entry.getValue());
 			if (buffForKey == null) {
 				continue;
@@ -102,7 +96,11 @@ public final class NonStackingStatBuffs {
 
 	/** As {@link #sum(NonStackingStatBuffType, float)} for a percentage stat, each key's value times the base. */
 	public float sum(final NonStackingStatBuffType type, float total, final float base) {
-		for (final Map.Entry<String, List<NonStackingStatBuff>> entry : this.nonStackingBuffs.get(type).entrySet()) {
+		final Map<String, List<NonStackingStatBuff>> buffKeyMap = this.nonStackingBuffs.get(type);
+		if (buffKeyMap == null) {
+			return total;
+		}
+		for (final Map.Entry<String, List<NonStackingStatBuff>> entry : buffKeyMap.entrySet()) {
 			final Float buffForKey = valueForKey(entry.getKey(), entry.getValue());
 			if (buffForKey == null) {
 				continue;

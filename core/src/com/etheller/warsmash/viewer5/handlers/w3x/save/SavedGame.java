@@ -462,9 +462,9 @@ public final class SavedGame {
 			}
 
 			// Only taking the state apart has to happen between two steps; the rest is left to the save writer.
-			final ByteArrayOutputStream bodyBytes = new SavedObjectGraph.Bytes(1 << 22);
+			final SavedObjectGraph.Bytes bodyBytes = new SavedObjectGraph.Bytes(1 << 22);
 			final SavedObjectGraph.Writer writer;
-			try (DataOutputStream bodies = new DataOutputStream(bodyBytes)) {
+			try (SavedObjectGraph.BytesData bodies = new SavedObjectGraph.BytesData(bodyBytes)) {
 				writer = new SavedObjectGraph.Writer(rules, bodies);
 				writer.writeRoot(root);
 			}

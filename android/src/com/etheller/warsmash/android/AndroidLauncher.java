@@ -530,6 +530,9 @@ public class AndroidLauncher extends AndroidApplication {
 			skipKeyboardHeightClose();
 		}
 		super.onDestroy();
+		// libGDX keeps the application object in Gdx.app until the next game starts; it must not keep the game.
+		this.game = null;
+		this.pointerSource = null;
 	}
 
 	/**
@@ -628,6 +631,7 @@ public class AndroidLauncher extends AndroidApplication {
 	}
 
 	static void loadExtensions(final File soundCache) {
+		SoundCache.trimInBackground(soundCache);
 		Extensions.angleInstancedArrays = new ANGLEInstancedArrays() {
 			@Override
 			public void glVertexAttribDivisorANGLE(final int index, final int divisor) {
@@ -723,7 +727,11 @@ public class AndroidLauncher extends AndroidApplication {
 
 	private static FileHandle cachedCopy(final File cacheFolder, final FileHandle file) {
 		final File copy = new File(cacheFolder, file.path().replaceAll("[^A-Za-z0-9._-]", "_"));
-		if (!copy.isFile() || (copy.length() == 0)) {
+		SoundCache.use(copy);
+		if (copy.isFile() && (copy.length() > 0)) {
+			SoundCache.touch(copy);
+		}
+		else {
 			cacheFolder.mkdirs();
 			final File partial = new File(cacheFolder, copy.getName() + ".part");
 			try (InputStream in = file.read(); OutputStream out = new FileOutputStream(partial)) {
@@ -739,6 +747,7 @@ public class AndroidLauncher extends AndroidApplication {
 			if (!partial.renameTo(copy)) {
 				throw new GdxRuntimeException("Unable to store " + copy);
 			}
+			SoundCache.copied(cacheFolder, copy.length());
 		}
 		return Gdx.files.absolute(copy.getAbsolutePath());
 	}

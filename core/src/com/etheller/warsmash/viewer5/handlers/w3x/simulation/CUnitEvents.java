@@ -63,6 +63,10 @@ final class CUnitEvents {
 			AbilityTarget target) {
 		// 1.29: finish, and the endcast after it, have no target unit and target
 		// point 0,0; an endcast without finish (interrupted) keeps the target.
+		if (eventId == JassGameEventsWar3.EVENT_UNIT_SPELL_CHANNEL) {
+			// A finish that no endcast followed (an instant transformation) must not outlive its cast.
+			self.finishedSpell = null;
+		}
 		if (eventId == JassGameEventsWar3.EVENT_UNIT_SPELL_FINISH) {
 			self.finishedSpell = ability;
 			target = null;

@@ -82,6 +82,7 @@ public class CBehaviorMove implements CBehavior {
 	private List<CPathPoint> path = null;
 	private CPathfindingProcessor.GridMapping gridMapping;
 	private CPathPoint target;
+	private CPathPoint approachCell;
 	private int searchCycles = 0;
 	private CUnit followUnit;
 	private CRangedBehavior rangedBehavior;
@@ -331,6 +332,7 @@ public class CBehaviorMove implements CBehavior {
 		this.path = null;
 		this.searchCycles = 0;
 		this.followUnit = followUnit;
+		this.approachCell = null;
 		this.firstUpdate = true;
 		this.movedDistance = 0;
 		this.pathfindingFailedGiveUp = false;
@@ -357,6 +359,7 @@ public class CBehaviorMove implements CBehavior {
 	private boolean isLastLegToFollowedUnit() {
 		return (this.followUnit != null) && (this.path.size() == 1)
 				&& (this.pathReachesGoal || !this.followUnit.isBuilding())
+				&& !((this.approachCell != null) && (this.path.get(0) == this.approachCell))
 				&& !((this.rangedBehavior instanceof CBehaviorMoveThroughWayGate) && this.followUnit.isBuilding());
 	}
 
@@ -1069,10 +1072,39 @@ public class CBehaviorMove implements CBehavior {
 	public boolean walksRowsToStandingTarget(final CSimulation simulation) {
 		return (this.followUnit != null) && (this.rangedBehavior instanceof CBehaviorAttack)
 				&& !this.followUnit.isBuilding()
-				&& !simulation.isNeutralAggressive(this.followUnit.getPlayerIndex())
 				&& !this.followUnit.isWalking(simulation.getGameTurnTick())
 				&& (StrictMath.hypot(this.unit.getX() - this.followUnit.getX(),
 						this.unit.getY() - this.followUnit.getY()) > ROW_PATH_MIN_DISTANCE);
+	}
+
+	/**
+	 * Measured: an attack on a standing unit from further away than a short walk goes straight from where the unit
+	 * stands to the centre of a cell on the near side of the target: two cells toward the unit along the axis the target
+	 * lies on (a diagonal one: two on both axes) and one across it. Returns null when the order does not walk that way.
+	 */
+	public CPathPoint approachCell(final CSimulation simulation, final float fromX, final float fromY) {
+		if (!walksRowsToStandingTarget(simulation)) {
+			return null;
+		}
+		final float targetX = this.followUnit.getX();
+		final float targetY = this.followUnit.getY();
+		final float dx = targetX - fromX;
+		final float dy = targetY - fromY;
+		final float ax = Math.abs(dx);
+		final float ay = Math.abs(dy);
+		final int alongX = (ax > (1.2f * ay)) ? 2 : (ay > (1.2f * ax)) ? 1 : 2;
+		final int alongY = (ay > (1.2f * ax)) ? 2 : (ax > (1.2f * ay)) ? 1 : 2;
+		return new CPathPoint(
+				(((float) StrictMath.floor(targetX / 32f)) * 32f) + 16f - (32f * alongX * Math.signum(dx)),
+				(((float) StrictMath.floor(targetY / 32f)) * 32f) + 16f - (32f * alongY * Math.signum(dy)));
+	}
+
+	public void pathFoundToApproachCell(final CPathPoint searchedGoal, final CPathPoint cell,
+			final CSimulation simulation) {
+		this.approachCell = cell;
+		final List<CPathPoint> waypoints = new ArrayList<>();
+		waypoints.add(cell);
+		pathFound(searchedGoal, waypoints, true, simulation);
 	}
 
 	private boolean isPlainMove() {

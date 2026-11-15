@@ -1324,8 +1324,10 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			if (reforged) {
 				final boolean won = (index >= 0) && CampaignCatalog.isMissionWon(entry, index, progress);
 				clicked = chapterRow("m" + index + mission.getMissionName(), mission, isChosen,
-						index < 0 ? SkinArt.CHAPTER_CINEMATIC : won ? SkinArt.CHAPTER_WON : SkinArt.CHAPTER_OPEN, x, y,
-						w, rowH);
+						index < 0 ? SkinArt.CHAPTER_CINEMATIC
+								: CampaignResult.chapterIcon(won,
+										progress.getMissionWonDifficulty(entry.getNumber(), index)),
+						x, y, w, rowH);
 			}
 			else {
 				clicked = campaignRow("m" + index + mission.getMissionName(), mission.getHeader(),

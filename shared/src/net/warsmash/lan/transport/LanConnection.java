@@ -60,6 +60,8 @@ public final class LanConnection implements LanLoop.Handler {
 	private LanLoop.Timer outTimer;
 	private boolean closed;
 	private String closeAfterFlushReason;
+	/** Our side is shut down after a flush; the socket stays open, unread, until the peer closes. */
+	private boolean lingering;
 	private volatile int rttMs = -1;
 	private volatile boolean closedFlag;
 
@@ -152,7 +154,7 @@ public final class LanConnection implements LanLoop.Handler {
 			close("timeout");
 			return;
 		}
-		if (this.outDelayed.isEmpty()) {
+		if (this.outDelayed.isEmpty() && !this.lingering) {
 			send(new LanMessages.Ping(now));
 		}
 		scheduleKeepalive();
@@ -188,7 +190,7 @@ public final class LanConnection implements LanLoop.Handler {
 	}
 
 	private void enqueueOut(final byte[] frame) {
-		if (this.closed) {
+		if (this.closed || this.lingering) {
 			return;
 		}
 		final LanFaultInjector f = this.loop.faultInjector();
@@ -283,7 +285,27 @@ public final class LanConnection implements LanLoop.Handler {
 
 	private void read() throws IOException {
 		for (int i = 0; i < 16 && !this.closed; i++) {
-			final int n = this.channel.read(ByteBuffer.wrap(this.readArray));
+			final int n;
+			try {
+				n = this.channel.read(ByteBuffer.wrap(this.readArray));
+			}
+			catch (final IOException e) {
+				if (this.lingering) {
+					doClose(this.closeAfterFlushReason);
+					return;
+				}
+				throw e;
+			}
+			if (this.lingering) {
+				if (n < 0) {
+					doClose(this.closeAfterFlushReason);
+					return;
+				}
+				if (n == 0) {
+					return;
+				}
+				continue;
+			}
 			if (n < 0) {
 				close("closed by peer");
 				return;
@@ -404,8 +426,16 @@ public final class LanConnection implements LanLoop.Handler {
 
 	private void maybeFinishClose() {
 		if (this.closeAfterFlushReason != null && !this.closed && this.outQueue.isEmpty()
-				&& this.outDelayed.isEmpty()) {
-			doClose(this.closeAfterFlushReason);
+				&& this.outDelayed.isEmpty() && !this.lingering) {
+			// Closing a socket that still has unread input resets the connection, and the peer then loses what we
+			// sent last (a LEAVE, a REJECT). Half-close, so everything arrives, and wait for the peer to close.
+			this.lingering = true;
+			try {
+				this.channel.shutdownOutput();
+			}
+			catch (final IOException e) {
+				doClose(this.closeAfterFlushReason);
+			}
 		}
 	}
 

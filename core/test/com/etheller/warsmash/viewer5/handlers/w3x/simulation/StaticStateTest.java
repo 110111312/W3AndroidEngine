@@ -90,7 +90,8 @@ class StaticStateTest {
 			// What the saved games list shows of saves that failed to load.
 			"save.SavedGame#FAILED_LOADS", "save.SavedGame#unreportedFailure",
 			// Saving and loading: what is known of classes and of script functions, and the size the last save needed.
-			"save.SavedGameRules#DROPPED_CLASSES", "save.SavedObjectGraph#FIELDS",
+			"save.SavedGameRules#DROPPED_CLASSES", "save.SavedGameRules#NAMEABLE_CLASSES",
+			"save.SavedGameRules#REPLACEABLE_CLASSES", "save.SavedObjectGraph#FIELDS", "save.SavedObjectGraph#FIELD_PLANS",
 			"save.SavedObjectGraph#UNSTORABLE_CLASSES", "save.SavedObjectGraph#LIST_TYPES",
 			"save.SavedObjectGraph#HASH_COLLECTIONS", "save.SavedObjectGraph#MAP_TYPES",
 			"save.SavedObjectGraph#lastObjectCount", "save.SavedObjectGraph#PRIMITIVES",
@@ -282,7 +283,7 @@ class StaticStateTest {
 			"core.units.StandardObjectData#CLASSIC_FALLBACK_QUALITIES", "core.units.StandardObjectData#GRAPHICS_FIELDS",
 			"core.util.DataSourceFileHandle#SOUND_EXTENSIONS", "core.util.RenderMathUtils#EMPTY_FLOAT_ARRAY",
 			"core.util.RenderMathUtils#FLOAT_VEC3_ZERO", "core.util.RenderMathUtils#FLOAT_QUAT_DEFAULT",
-			"core.util.RenderMathUtils#FLOAT_VEC3_ONE", "core.viewer5.handlers.blp.JpegDecoder#ZIGZAG",
+			"core.util.RenderMathUtils#FLOAT_VEC3_ONE", "core.viewer5.handlers.blp.JpegDecoder#ZIGZAG", "core.viewer5.handlers.blp.Etc2Encoder#COLOR_MODIFIERS", "core.viewer5.handlers.blp.Etc2Encoder#ALPHA_MODIFIERS", "core.viewer5.handlers.blp.TextureTranscoder#folder", "core.viewer5.handlers.blp.TextureTranscoder#folderTried",
 			"core.viewer5.handlers.blp.JpegDecoder#IDCT_COSINES", "core.WarsmashGdxMenuScreen#STARTUP_STEP_WEIGHTS",
 			"hive.lang.Hex#HEX_DIGITS", "hive.lang.Hex#CHAR_VALUES", "hive.rms.parsers.mdlx.AnimationMap#ID_TO_TAG"));
 

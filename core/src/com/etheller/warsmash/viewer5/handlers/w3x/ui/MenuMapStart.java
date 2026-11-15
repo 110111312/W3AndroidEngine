@@ -12,6 +12,8 @@ import java.util.Random;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
+import com.badlogic.gdx.Application.ApplicationType;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
@@ -206,6 +208,9 @@ final class MenuMapStart {
 		final War3MapViewer viewer = new War3MapViewer(codebase, this.menu.screenManager, this.menu.currentMapConfig,
 				turnManager);
 		viewer.setTextureSizeLimit(GraphicsSettings.textureSize(this.menu.warsmashIni));
+		viewer.setTextureCompression(GraphicsSettings.textureCompression(this.menu.warsmashIni,
+				gameGraphics(mapFilename), Gdx.app.getType() == ApplicationType.Android,
+				Gdx.graphics.isGL30Available()));
 		viewer.setCampaign(this.campaign, this.reforgedCampaign);
 		final boolean loadingSavedGame = this.pendingSavedGame != null;
 		viewer.setSavedGameToLoad(this.pendingSavedGame, this.pendingSavedGameByScript);

@@ -18,6 +18,8 @@ public final class CargoReach {
 	// How far around itself a unit looks for the ground nearest to a transport it is to meet. Measured on 1.29: a
 	// footman 8000 from a ship heads for water 1750 away rather than water nearer the ship 3000 away.
 	public static final int MEETING_SEARCH_RADIUS_CELLS = 56;
+	private static final float WALK_OFF_DISTANCE = 512f;
+	private static final float NEAR_WATER_DISTANCE = 256f;
 	private static final float CELL_SIZE = 32f;
 	private static final int[] NEIGHBOR_X = { 1, -1, 0, 0, 1, 1, -1, -1 };
 	private static final int[] NEIGHBOR_Y = { 0, 0, 1, -1, 1, -1, 1, -1 };
@@ -101,8 +103,17 @@ public final class CargoReach {
 			}
 			return false;
 		};
-		final float[] result = search(game, unit, transport.getX(), transport.getY(), nearReach,
-				MEETING_SEARCH_RADIUS_CELLS, false);
+		float[] result = search(game, unit, transport.getX(), transport.getY(), nearReach, MEETING_SEARCH_RADIUS_CELLS,
+				false);
+		if ((result == null) || (StrictMath.hypot(result[0] - unit.getX(), result[1] - unit.getY()) > WALK_OFF_DISTANCE)) {
+			// Measured on 1.29: a unit that would have to walk off, but has such water within 256 of itself, waits
+			// for the transport to sail to it.
+			final float[] near = search(game, unit, unit.getX(), unit.getY(), nearReach, MEETING_SEARCH_RADIUS_CELLS,
+					false);
+			if ((near != null) && (StrictMath.hypot(near[0] - unit.getX(), near[1] - unit.getY()) <= NEAR_WATER_DISTANCE)) {
+				result = near;
+			}
+		}
 		return result != null ? result : new float[] { unit.getX(), unit.getY() };
 	}
 

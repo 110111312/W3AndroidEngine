@@ -50,6 +50,12 @@ public final class DdsDecoder {
 		return (data.remaining() >= HEADER_SIZE) && (data.getInt(0) == MAGIC);
 	}
 
+	/** Whether the file stores two channel (ATI2) normal map data. */
+	public static boolean isNormalMap(final ByteBuffer file) {
+		final ByteBuffer data = file.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+		return (data.remaining() >= HEADER_SIZE) && (data.getInt(0) == MAGIC) && (data.getInt(84) == FOURCC_ATI2);
+	}
+
 	/** The top level only, at its full size. */
 	public static DdsDecoder decode(final ByteBuffer file) throws IOException {
 		return decode(file, 0, false);

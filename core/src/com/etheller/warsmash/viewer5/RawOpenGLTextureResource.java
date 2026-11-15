@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.GL30;
 import com.etheller.warsmash.util.ArgbImage;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.viewer5.handlers.ResourceHandler;
+import com.etheller.warsmash.viewer5.handlers.blp.CompressedMips;
 import com.etheller.warsmash.viewer5.handlers.blp.MipLevels;
 
 /**
@@ -192,6 +193,27 @@ public abstract class RawOpenGLTextureResource extends Texture {
 		}
 		gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL30.GL_TEXTURE_MAX_LEVEL, levels.count() - 1);
 		gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_LINEAR_MIPMAP_LINEAR);
+		this.width = levels.getWidth(0);
+		this.height = levels.getHeight(0);
+		countUpload(levels.byteCount());
+	}
+
+	/**
+	 * Uploads levels that are already in a block format the GPU reads, the largest first. The colors are the
+	 * non sRGB ones, as the plain RGBA levels of the game's textures are.
+	 */
+	public void update(final CompressedMips levels) {
+		final GL20 gl = this.viewer.gl;
+		this.data = null;
+		gl.glBindTexture(GL20.GL_TEXTURE_2D, this.handle);
+		for (int level = 0; level < levels.count(); level++) {
+			final ByteBuffer blocks = levels.getBuffer(level);
+			gl.glCompressedTexImage2D(GL20.GL_TEXTURE_2D, level, levels.getFormat(), levels.getWidth(level),
+					levels.getHeight(level), 0, blocks.remaining(), blocks);
+		}
+		gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL30.GL_TEXTURE_MAX_LEVEL, levels.count() - 1);
+		gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER,
+				levels.count() > 1 ? GL20.GL_LINEAR_MIPMAP_LINEAR : this.minFilter);
 		this.width = levels.getWidth(0);
 		this.height = levels.getHeight(0);
 		countUpload(levels.byteCount());

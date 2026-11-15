@@ -27,6 +27,12 @@ public class WarsmashGdxMultiScreenGame extends Game implements CanvasProvider {
 	 */
 	private WarsmashGdxMenuScreen endedMenuScreen;
 	private GdxMoviePlayer moviePlayer;
+	private boolean closing;
+
+	/** Whether the game is being disposed, when screens left now will get no further frame to finish in. */
+	public boolean isClosing() {
+		return this.closing;
+	}
 
 	/** Plays the movies in this window, in place of the screen while they play. */
 	public void setMoviePlayer(final GdxMoviePlayer moviePlayer) {
@@ -75,6 +81,16 @@ public class WarsmashGdxMultiScreenGame extends Game implements CanvasProvider {
 	 */
 	@Override
 	public void dispose() {
+		this.closing = true;
+		try {
+			disposeScreens();
+		}
+		finally {
+			this.closing = false;
+		}
+	}
+
+	private void disposeScreens() {
 		Screen closing = getScreen();
 		final WarsmashGdxMapScreen left = this.leftMapScreen;
 		this.leftMapScreen = null;
@@ -111,6 +127,12 @@ public class WarsmashGdxMultiScreenGame extends Game implements CanvasProvider {
 			catch (final RuntimeException e) {
 				Log.error(e);
 			}
+		}
+		// The application object outlives this game until the next one starts: through the game's screen and the
+		// input's processor it kept the finished game and its map reachable.
+		this.screen = null;
+		if ((Gdx.input != null) && (Gdx.input.getInputProcessor() != null)) {
+			Gdx.input.setInputProcessor(null);
 		}
 	}
 

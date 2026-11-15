@@ -141,6 +141,7 @@ Thumbs.db
 /core/assets/Logs
 /core/assets/Save
 /core/assets/Replay
+/core/assets/texture-cache
 
 ## The game data folder chosen in the desktop launcher
 /core/assets/warsmash.user.ini

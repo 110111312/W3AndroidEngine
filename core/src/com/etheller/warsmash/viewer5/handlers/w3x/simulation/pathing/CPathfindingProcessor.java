@@ -846,6 +846,16 @@ public class CPathfindingProcessor {
 							simulation);
 					continue JobsLoop;
 				}
+				if (!job.shortSearch && (job.queueItem != null) && !job.goalMoved) {
+					final CPathPoint cell = job.queueItem.approachCell(simulation, job.startX, job.startY);
+					if ((cell != null) && this.pathingGrid.isPathable(cell.x, cell.y, job.movementType,
+							job.collisionSize)
+							&& segmentClear(job, job.startX, job.startY, cell.x, cell.y)) {
+						finishJob();
+						job.queueItem.pathFoundToApproachCell(job.goal, cell, simulation);
+						continue JobsLoop;
+					}
+				}
 				// Measured: an attack on a standing unit keeps to the rows of cell centers, as 1.29 does
 				if (isCollisionSizeBetterSuitedForCorners(job.collisionSize) && !((job.queueItem != null)
 						&& job.queueItem.walksRowsToStandingTarget(simulation))) {

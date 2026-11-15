@@ -47,7 +47,7 @@ public final class LauncherImages {
 		final DataSource archive = map.getInternalMpqContentsDataSource();
 		for (final String name : new String[] { "war3mapPreview", "war3mapMap" }) {
 			try {
-				// The editor saves the map picture as TGA; BLP2 pictures have no decoder here.
+				// The editor saves the map picture as TGA; Reforged-era maps carry a BLP2 that decode reads.
 				if (archive.has(name + ".tga")) {
 					try (InputStream stream = archive.getResourceAsStream(name + ".tga")) {
 						return TgaFile.readTGAPixels(name + ".tga", stream);

@@ -28,6 +28,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.BufferUtils;
 import com.badlogic.gdx.utils.TimeUtils;
+import com.etheller.warsmash.units.HashedGameObject;
 import com.etheller.warsmash.util.SessionResources;
 import com.etheller.warsmash.input.touch.SliderHost;
 import com.etheller.warsmash.input.touch.PointKind;
@@ -272,7 +273,7 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 								WarsmashGdxMapScreen.this.scriptFailed ? "error" : localPlayerResult());
 						if ("victory".equals(result.result)
 								&& !WarsmashGdxMapScreen.this.viewer.isReplayPlayback()) {
-							WarsmashGdxMapScreen.this.menuScreen.recordVictory(result.map);
+							WarsmashGdxMapScreen.this.menuScreen.recordVictory(result.map, result.difficulty);
 						}
 						// The menu picks up its own sounds and textures from here on.
 						WarsmashGdxMapScreen.this.endSession();
@@ -496,6 +497,7 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 			this.sessionResources.dispose();
 		}
 		this.viewer.dispose();
+		HashedGameObject.releaseSharedValues();
 		final IntBuffer vaos = BufferUtils.newIntBuffer(1);
 		vaos.put(0, this.vao);
 		this.vaoGl.glDeleteVertexArrays(1, vaos);
@@ -934,6 +936,12 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 		this.meleeUI.gameClosed();
 		endSession();
 		// Leaving the game happens in the middle of this screen's own frame, which still has to finish.
+		if (this.screenManager.isClosing()) {
+			// A closing activity never runs its queued runnables, and the queue lives as long as the application
+			// object, so a posted dispose would keep this finished game reachable without ever running.
+			dispose();
+			return;
+		}
 		Gdx.app.postRunnable(new Runnable() {
 			@Override
 			public void run() {

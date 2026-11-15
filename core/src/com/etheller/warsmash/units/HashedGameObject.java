@@ -49,6 +49,14 @@ public abstract class HashedGameObject implements GameObject {
 		return existing == null ? value : existing;
 	}
 
+	/**
+	 * Drops the shared values when a map ends; objects keep the strings they already hold, so only the sharing of the
+	 * next load starts over.
+	 */
+	public static void releaseSharedValues() {
+		SHARED_VALUES.clear();
+	}
+
 	public HashedGameObject(final String id, final ObjectData table) {
 		this.id = id;
 		this.parentTable = table;

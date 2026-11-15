@@ -6,6 +6,7 @@ import com.google.gson.internal.LinkedTreeMap;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -66,6 +67,8 @@ public final class SavedObjectGraph {
 	private static final int DROPPED = -1;
 
 	private static final Map<Class<?>, List<Field>> FIELDS = new HashMap<>();
+	// What writing a class's fields needs, resolved once: the field array and a width code per field.
+	private static final Map<Class<?>, FieldPlan> FIELD_PLANS = new ConcurrentHashMap<>();
 	// The class tests below compare class names, which costs more than the rest of storing an object on Android.
 	private static final Map<Class<?>, Boolean> UNSTORABLE_CLASSES = new ConcurrentHashMap<>();
 	private static final Map<Class<?>, Boolean> LIST_TYPES = new ConcurrentHashMap<>();
@@ -114,6 +117,54 @@ public final class SavedObjectGraph {
 		return fields;
 	}
 
+	private static final class FieldPlan {
+		final Field[] fields;
+		final byte[] kinds;
+
+		FieldPlan(final List<Field> list) {
+			this.fields = list.toArray(new Field[0]);
+			this.kinds = new byte[this.fields.length];
+			for (int i = 0; i < this.fields.length; i++) {
+				final Class<?> type = this.fields[i].getType();
+				byte kind = 0;
+				if (type == int.class) {
+					kind = 'I';
+				}
+				else if (type == float.class) {
+					kind = 'F';
+				}
+				else if (type == boolean.class) {
+					kind = 'Z';
+				}
+				else if (type == long.class) {
+					kind = 'J';
+				}
+				else if (type == double.class) {
+					kind = 'D';
+				}
+				else if (type == short.class) {
+					kind = 'S';
+				}
+				else if (type == byte.class) {
+					kind = 'B';
+				}
+				else if (type == char.class) {
+					kind = 'C';
+				}
+				this.kinds[i] = kind;
+			}
+		}
+	}
+
+	private static FieldPlan planOf(final Class<?> type) {
+		FieldPlan plan = FIELD_PLANS.get(type);
+		if (plan == null) {
+			plan = new FieldPlan(fieldsOf(type));
+			FIELD_PLANS.put(type, plan);
+		}
+		return plan;
+	}
+
 	/** The type is part of the key: a field that changed type would otherwise be read with the wrong width. */
 	private static String fieldKey(final Field field) {
 		return field.getDeclaringClass().getName() + "#" + field.getName() + "#" + field.getType().getName();
@@ -121,10 +172,10 @@ public final class SavedObjectGraph {
 
 	public static final class Writer {
 		private final Rules rules;
-		private final DataOutputStream bodies;
+		private final DataOutput bodies;
 		private final ByteArrayOutputStream tableBytes = new Bytes(1 << 16);
 		private final DataOutputStream table = new DataOutputStream(this.tableBytes);
-		private final IdentityHashMap<Object, Integer> ids = new IdentityHashMap<>(lastObjectCount + (lastObjectCount >> 2));
+		private final IdentityIds ids = new IdentityIds(lastObjectCount);
 		private final Set<Object> external = Collections.newSetFromMap(new IdentityHashMap<>());
 		private final ArrayDeque<Object> queue = new ArrayDeque<>();
 		private final Map<Class<?>, Integer> classIds = new HashMap<>();
@@ -132,7 +183,7 @@ public final class SavedObjectGraph {
 		private Class<?> currentHolder;
 		private Field currentField;
 
-		public Writer(final Rules rules, final DataOutputStream bodies) {
+		public Writer(final Rules rules, final DataOutput bodies) {
 			this.rules = rules;
 			this.bodies = bodies;
 		}
@@ -193,8 +244,8 @@ public final class SavedObjectGraph {
 			if (object == null) {
 				return 0;
 			}
-			final Integer known = this.ids.get(object);
-			if (known != null) {
+			final int known = this.ids.get(object);
+			if (known != 0) {
 				return known;
 			}
 			final String externalName = this.rules.externalName(object);
@@ -393,7 +444,7 @@ public final class SavedObjectGraph {
 				writeCollectionContents((Collection<?>) object);
 			}
 			else {
-				writeFields(object, fieldsOf(type));
+				writeFields(object, planOf(type));
 				if (object instanceof Collection) {
 					writeCollectionContents((Collection<?>) object);
 				}
@@ -403,33 +454,43 @@ public final class SavedObjectGraph {
 			}
 		}
 
+		private int[] scratch = new int[256];
+
+		private void push(final int count, final int value) {
+			if (count == this.scratch.length) {
+				this.scratch = Arrays.copyOf(this.scratch, count << 1);
+			}
+			this.scratch[count] = value;
+		}
+
+		// ref() only queues objects, so no nested call can overwrite the scratch array while it is being filled.
 		private void writeMapContents(final Map<?, ?> map) throws IOException {
-			final List<Integer> entries = new ArrayList<>(map.size() * 2);
+			int count = 0;
 			for (final Map.Entry<?, ?> entry : map.entrySet()) {
 				final int key = ref(entry.getKey());
 				final int value = ref(entry.getValue());
 				if ((key != DROPPED) && (value != DROPPED)) {
-					entries.add(key);
-					entries.add(value);
+					push(count++, key);
+					push(count++, value);
 				}
 			}
-			this.bodies.writeInt(entries.size() / 2);
-			for (final int entry : entries) {
-				this.bodies.writeInt(entry);
+			this.bodies.writeInt(count / 2);
+			for (int i = 0; i < count; i++) {
+				this.bodies.writeInt(this.scratch[i]);
 			}
 		}
 
 		private void writeCollectionContents(final Collection<?> collection) throws IOException {
-			final List<Integer> elements = new ArrayList<>(collection.size());
+			int count = 0;
 			for (final Object element : collection) {
 				final int id = ref(element);
 				if (id != DROPPED) {
-					elements.add(id);
+					push(count++, id);
 				}
 			}
-			this.bodies.writeInt(elements.size());
-			for (final int element : elements) {
-				this.bodies.writeInt(element);
+			this.bodies.writeInt(count);
+			for (int i = 0; i < count; i++) {
+				this.bodies.writeInt(this.scratch[i]);
 			}
 		}
 
@@ -437,41 +498,46 @@ public final class SavedObjectGraph {
 			final boolean inPlace = this.rules.isInPlace(object);
 			this.bodies.writeBoolean(inPlace);
 			if (inPlace) {
-				writeFields(object, fieldsOf(object.getClass()));
+				writeFields(object, planOf(object.getClass()));
 			}
 		}
 
-		private void writeFields(final Object object, final List<Field> fields) throws IOException {
-			for (final Field field : fields) {
+		private void writeFields(final Object object, final FieldPlan plan) throws IOException {
+			final Field[] fields = plan.fields;
+			final byte[] kinds = plan.kinds;
+			final DataOutput bodies = this.bodies;
+			for (int i = 0; i < fields.length; i++) {
+				final Field field = fields[i];
 				this.currentField = field;
-				final Class<?> fieldType = field.getType();
 				try {
-					if (fieldType == int.class) {
-						this.bodies.writeInt(field.getInt(object));
-					}
-					else if (fieldType == float.class) {
-						this.bodies.writeFloat(field.getFloat(object));
-					}
-					else if (fieldType == boolean.class) {
-						this.bodies.writeBoolean(field.getBoolean(object));
-					}
-					else if (fieldType == long.class) {
-						this.bodies.writeLong(field.getLong(object));
-					}
-					else if (fieldType == double.class) {
-						this.bodies.writeDouble(field.getDouble(object));
-					}
-					else if (fieldType == short.class) {
-						this.bodies.writeShort(field.getShort(object));
-					}
-					else if (fieldType == byte.class) {
-						this.bodies.writeByte(field.getByte(object));
-					}
-					else if (fieldType == char.class) {
-						this.bodies.writeChar(field.getChar(object));
-					}
-					else {
-						this.bodies.writeInt(ref(field.get(object)));
+					switch (kinds[i]) {
+					case 'I':
+						bodies.writeInt(field.getInt(object));
+						break;
+					case 'F':
+						bodies.writeFloat(field.getFloat(object));
+						break;
+					case 'Z':
+						bodies.writeBoolean(field.getBoolean(object));
+						break;
+					case 'J':
+						bodies.writeLong(field.getLong(object));
+						break;
+					case 'D':
+						bodies.writeDouble(field.getDouble(object));
+						break;
+					case 'S':
+						bodies.writeShort(field.getShort(object));
+						break;
+					case 'B':
+						bodies.writeByte(field.getByte(object));
+						break;
+					case 'C':
+						bodies.writeChar(field.getChar(object));
+						break;
+					default:
+						bodies.writeInt(ref(field.get(object)));
+						break;
 					}
 				}
 				catch (final IllegalAccessException exc) {
@@ -529,6 +595,166 @@ public final class SavedObjectGraph {
 		}
 	}
 
+	/** Object to id (ids start at 1; 0 is absent) by identity, without boxing the ids. */
+	private static final class IdentityIds {
+		private Object[] keys;
+		private int[] values;
+		private int mask;
+		private int size;
+
+		IdentityIds(final int expected) {
+			int capacity = 1024;
+			while (capacity < (expected << 1)) {
+				capacity <<= 1;
+			}
+			this.keys = new Object[capacity];
+			this.values = new int[capacity];
+			this.mask = capacity - 1;
+		}
+
+		private static int spread(final Object key) {
+			final int hash = System.identityHashCode(key);
+			return hash ^ (hash >>> 15);
+		}
+
+		int get(final Object key) {
+			int slot = spread(key) & this.mask;
+			while (true) {
+				final Object found = this.keys[slot];
+				if (found == key) {
+					return this.values[slot];
+				}
+				if (found == null) {
+					return 0;
+				}
+				slot = (slot + 1) & this.mask;
+			}
+		}
+
+		void put(final Object key, final int value) {
+			if (((this.size + 1) << 1) > this.keys.length) {
+				grow();
+			}
+			insert(key, value);
+			this.size++;
+		}
+
+		private void insert(final Object key, final int value) {
+			int slot = spread(key) & this.mask;
+			while (this.keys[slot] != null) {
+				slot = (slot + 1) & this.mask;
+			}
+			this.keys[slot] = key;
+			this.values[slot] = value;
+		}
+
+		private void grow() {
+			final Object[] oldKeys = this.keys;
+			final int[] oldValues = this.values;
+			this.keys = new Object[oldKeys.length << 1];
+			this.values = new int[oldKeys.length << 1];
+			this.mask = this.keys.length - 1;
+			for (int i = 0; i < oldKeys.length; i++) {
+				if (oldKeys[i] != null) {
+					insert(oldKeys[i], oldValues[i]);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Data output over {@link Bytes} that stores each value straight into its array; the bytes are those of
+	 * {@link DataOutputStream}, without a call per byte.
+	 */
+	public static final class BytesData implements DataOutput, java.io.Closeable {
+		private final Bytes target;
+
+		public BytesData(final Bytes target) {
+			this.target = target;
+		}
+
+		@Override
+		public void write(final int b) {
+			this.target.put1(b);
+		}
+
+		@Override
+		public void write(final byte[] b) {
+			this.target.write(b, 0, b.length);
+		}
+
+		@Override
+		public void write(final byte[] b, final int off, final int len) {
+			this.target.write(b, off, len);
+		}
+
+		@Override
+		public void writeBoolean(final boolean v) {
+			this.target.put1(v ? 1 : 0);
+		}
+
+		@Override
+		public void writeByte(final int v) {
+			this.target.put1(v);
+		}
+
+		@Override
+		public void writeShort(final int v) {
+			this.target.put2(v);
+		}
+
+		@Override
+		public void writeChar(final int v) {
+			this.target.put2(v);
+		}
+
+		@Override
+		public void writeInt(final int v) {
+			this.target.put4(v);
+		}
+
+		@Override
+		public void writeLong(final long v) {
+			this.target.put4((int) (v >>> 32));
+			this.target.put4((int) v);
+		}
+
+		@Override
+		public void writeFloat(final float v) {
+			this.target.put4(Float.floatToIntBits(v));
+		}
+
+		@Override
+		public void writeDouble(final double v) {
+			writeLong(Double.doubleToLongBits(v));
+		}
+
+		@Override
+		public void writeBytes(final String s) {
+			for (int i = 0; i < s.length(); i++) {
+				this.target.put1(s.charAt(i));
+			}
+		}
+
+		@Override
+		public void writeChars(final String s) {
+			for (int i = 0; i < s.length(); i++) {
+				this.target.put2(s.charAt(i));
+			}
+		}
+
+		@Override
+		public void writeUTF(final String s) throws IOException {
+			final ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+			new DataOutputStream(encoded).writeUTF(s);
+			this.target.write(encoded.toByteArray(), 0, encoded.size());
+		}
+
+		@Override
+		public void close() {
+		}
+	}
+
 	/**
 	 * A byte buffer without the locking of {@link ByteArrayOutputStream}, which costs more than the copy itself when
 	 * a save writes millions of single values into it from one thread.
@@ -542,6 +768,28 @@ public final class SavedObjectGraph {
 			if ((this.count + needed) > this.buf.length) {
 				this.buf = Arrays.copyOf(this.buf, Math.max(this.buf.length << 1, this.count + needed));
 			}
+		}
+
+		void put1(final int v) {
+			grow(1);
+			this.buf[this.count++] = (byte) v;
+		}
+
+		void put2(final int v) {
+			grow(2);
+			this.buf[this.count++] = (byte) (v >>> 8);
+			this.buf[this.count++] = (byte) v;
+		}
+
+		void put4(final int v) {
+			grow(4);
+			final byte[] b = this.buf;
+			int c = this.count;
+			b[c++] = (byte) (v >>> 24);
+			b[c++] = (byte) (v >>> 16);
+			b[c++] = (byte) (v >>> 8);
+			b[c++] = (byte) v;
+			this.count = c;
 		}
 
 		@Override

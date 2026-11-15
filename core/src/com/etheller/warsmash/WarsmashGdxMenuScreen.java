@@ -1166,10 +1166,10 @@ public class WarsmashGdxMenuScreen implements InputProcessor, Screen, SingleMode
 		return this.endsAtCampaignVictory && (this.menuUI != null) && this.menuUI.isStartedCampaignMission(nextLevel);
 	}
 
-	/** See {@link MenuUI#recordVictory(String)}. */
-	public void recordVictory(final String mapFile) {
+	/** See {@link MenuUI#recordVictory(String, String)}. */
+	public void recordVictory(final String mapFile, final String difficulty) {
 		if (this.menuUI != null) {
-			this.menuUI.recordVictory(mapFile);
+			this.menuUI.recordVictory(mapFile, difficulty);
 		}
 	}
 

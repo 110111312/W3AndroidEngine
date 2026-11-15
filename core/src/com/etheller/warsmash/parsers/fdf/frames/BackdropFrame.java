@@ -226,6 +226,10 @@ public class BackdropFrame extends AbstractUIFrame {
 		return this.cornerSize;
 	}
 
+	public Texture getBackground() {
+		return this.background;
+	}
+
 	public void setBackground(final Texture background) {
 		this.background = background;
 	}

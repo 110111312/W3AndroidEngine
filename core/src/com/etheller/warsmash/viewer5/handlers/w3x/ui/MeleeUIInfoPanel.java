@@ -91,6 +91,7 @@ final class MeleeUIInfoPanel {
 
 	private final Vector2 projectionTemp1 = new Vector2();
 	private final Vector2 projectionTemp2 = new Vector2();
+	private final Rectangle portraitBoundsTemp = new Rectangle();
 	private StringFrame simpleBuildingDescriptionValue;
 	private TextureFrame simpleBuildQueueBackdrop;
 	private final UIFrame[] cargoBackdrop = new UIFrame[WarsmashConstants.MAX_SELECTION_SIZE];
@@ -1369,6 +1370,16 @@ final class MeleeUIInfoPanel {
 		this.ui.rootFrame.setText(this.ui.simpleClassValue, toolTip);
 	}
 
+	/** The unit portrait's place in the console, in interface coordinates. */
+	Rectangle portraitBounds(final Rectangle out) {
+		return out.set(422 * this.ui.widthRatioCorrection, 57 * this.ui.heightRatioCorrection,
+				167 * this.ui.widthRatioCorrection, 170 * this.ui.heightRatioCorrection);
+	}
+
+	boolean isPortraitShown() {
+		return (this.ui.portrait != null) && this.ui.portrait.portraitScene.show;
+	}
+
 	public void positionPortrait() {
 		if (this.ui.cinematicPanel.isVisible() && !(this.ui.cinematics.isInterfaceFading() && this.ui.userUIEnabled)) {
 			this.ui.portrait.portraitScene.show = false;
@@ -1378,16 +1389,19 @@ final class MeleeUIInfoPanel {
 		}
 		else {
 			this.ui.portrait.portraitScene.show = true;
-			this.projectionTemp1.x = 422 * this.ui.widthRatioCorrection;
-			this.projectionTemp1.y = 57 * this.ui.heightRatioCorrection;
-			this.projectionTemp2.x = (422 + 167) * this.ui.widthRatioCorrection;
-			this.projectionTemp2.y = (57 + 170) * this.ui.heightRatioCorrection;
+			final Rectangle bounds = portraitBounds(this.portraitBoundsTemp);
+			this.projectionTemp1.x = bounds.x;
+			this.projectionTemp1.y = bounds.y;
+			this.projectionTemp2.x = bounds.x + bounds.width;
+			this.projectionTemp2.y = bounds.y + bounds.height;
 			this.ui.uiViewport.project(this.projectionTemp1);
 			this.ui.uiViewport.project(this.projectionTemp2);
 		}
 
-		this.ui.tempRect.x = this.projectionTemp1.x + this.ui.uiViewport.getScreenX();
-		this.ui.tempRect.y = this.projectionTemp1.y + this.ui.uiViewport.getScreenY();
+		// project already includes the viewport's screen offset (letterbox bars), adding it again shifts the portrait
+		// out of its frame.
+		this.ui.tempRect.x = this.projectionTemp1.x;
+		this.ui.tempRect.y = this.projectionTemp1.y;
 		this.ui.tempRect.width = this.projectionTemp2.x - this.projectionTemp1.x;
 		this.ui.tempRect.height = this.projectionTemp2.y - this.projectionTemp1.y;
 		this.ui.portrait.portraitScene.camera.viewport(this.ui.tempRect);

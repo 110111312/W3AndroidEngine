@@ -1,5 +1,6 @@
 package com.etheller.warsmash.launcher;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -81,5 +82,44 @@ class CampaignWonTest {
 		final CCampaignProgress.Snapshot progress = progress(4, key(0, 1));
 		assertTrue(CampaignCatalog.isMissionWon(entry, 1, progress));
 		assertTrue(CampaignCatalog.isCompleted(entry, progress));
+	}
+
+	@Test
+	void wonDifficultyIsReadFromVersionSixAndMissingInOlderFiles() throws IOException {
+		final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		final DataOutputStream out = new DataOutputStream(bytes);
+		out.writeInt(6);
+		out.writeInt(1);
+		out.writeUTF(CCampaignProgress.CampaignList.COMBINED.name());
+		out.writeInt(0);
+		for (int flags = 0; flags < 3; flags++) {
+			out.writeInt(0);
+		}
+		out.writeBoolean(false);
+		out.writeInt(-1);
+		out.writeInt(-1);
+		out.writeInt(1);
+		out.writeLong(key(0, 0));
+		out.writeInt(-1);
+		out.writeInt(0);
+		out.writeInt(1);
+		out.writeLong(key(0, 0));
+		out.writeInt(2);
+		out.flush();
+		final CCampaignProgress.Snapshot progress = CCampaignProgress.readSnapshot(
+				new DataInputStream(new ByteArrayInputStream(bytes.toByteArray())),
+				CCampaignProgress.CampaignList.COMBINED);
+		assertEquals(2, progress.getMissionWonDifficulty(0, 0));
+		assertEquals(-1, progress.getMissionWonDifficulty(0, 1));
+		assertEquals(-1, progress(4, key(0, 0)).getMissionWonDifficulty(0, 0));
+	}
+
+	@Test
+	void chapterIconFollowsTheDifficultyWon() {
+		assertEquals(SkinArt.CHAPTER_OPEN, CampaignResult.chapterIcon(false, 2));
+		assertEquals(SkinArt.CHAPTER_WON, CampaignResult.chapterIcon(true, -1));
+		assertEquals(SkinArt.DIFFICULTY_EASY, CampaignResult.chapterIcon(true, 0));
+		assertEquals(SkinArt.DIFFICULTY_NORMAL, CampaignResult.chapterIcon(true, 1));
+		assertEquals(SkinArt.DIFFICULTY_HARD, CampaignResult.chapterIcon(true, 3));
 	}
 }

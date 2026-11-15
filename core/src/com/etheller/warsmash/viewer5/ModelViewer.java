@@ -45,6 +45,7 @@ public abstract class ModelViewer {
 	private final List<DataTexture> dataTextures = new ArrayList<>();
 	/** The largest width and height of a model texture, 0 for no limit; see {@link #setTextureSizeLimit(int)}. */
 	private int textureSizeLimit;
+	private boolean textureCompression;
 	private long textureBytes;
 
 	public ModelViewer(final DataSource dataSource, final CanvasProvider canvas) {
@@ -86,6 +87,18 @@ public abstract class ModelViewer {
 	 */
 	public void setTextureSizeLimit(final int textureSizeLimit) {
 		this.textureSizeLimit = Math.max(0, textureSizeLimit);
+	}
+
+	/**
+	 * Whether the model textures are uploaded as ETC2 blocks, a quarter to a half of the memory of plain RGBA, see
+	 * {@link com.etheller.warsmash.viewer5.handlers.blp.TextureTranscoder}. The caller makes sure the GPU reads them.
+	 */
+	public void setTextureCompression(final boolean textureCompression) {
+		this.textureCompression = textureCompression;
+	}
+
+	public boolean isTextureCompression() {
+		return this.textureCompression;
 	}
 
 	public int getTextureSizeLimit() {

@@ -45,12 +45,14 @@ public final class DebugCrashLog extends ContentProvider {
 	// A game that has closed runs no more frames; one check at a time keeps checks from piling up behind it.
 	private static final AtomicBoolean GL_CHECK_PENDING = new AtomicBoolean();
 	// Freed when the report is written, so that writing it after an OutOfMemoryError has room.
+	// Small, because a debug build's heap figures include it; a report is a few kilobytes of text.
+	private static final int RESERVE_BYTES = 512 << 10;
 	private static byte[] reserve;
 
 	@Override
 	public boolean onCreate() {
 		final File dir = new File(getContext().getFilesDir(), "crash");
-		reserve = new byte[4 << 20];
+		reserve = new byte[RESERVE_BYTES];
 		final Thread.UncaughtExceptionHandler next = Thread.getDefaultUncaughtExceptionHandler();
 		Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
 			reserve = null;

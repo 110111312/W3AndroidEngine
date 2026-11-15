@@ -100,14 +100,24 @@ class UpdateCheckTest {
 	}
 
 	@Test
-	void unofficialBuildIsOfferedTheReleaseOfItsOwnVersionOrHigher() {
+	void buildOfTheReleasesOwnVersionIsNeverOfferedItself() {
 		final UpdateCheck.Release release = UpdateCheck.parseRelease(RELEASE);
-		assertTrue(UpdateCheck.offers("0.3.6", release, null, false));
+		for (final boolean official : new boolean[] { true, false }) {
+			assertFalse(UpdateCheck.offers("0.3.6", release, null, official));
+			assertFalse(UpdateCheck.offers("0.3.6-debug", release, null, official));
+			assertFalse(UpdateCheck.offers(306, release, "", official));
+		}
+	}
+
+	@Test
+	void unofficialBuildIsOfferedOnlyAHigherReleaseWithAnApk() {
+		final UpdateCheck.Release release = UpdateCheck.parseRelease(RELEASE);
+		assertTrue(UpdateCheck.offers("0.3.5", release, null, false));
 		assertTrue(UpdateCheck.offers(305, release, "", false));
 		assertTrue(UpdateCheck.offers(0, release, null, false));
 		assertFalse(UpdateCheck.offers("0.9.0", release, null, false));
 		assertFalse(UpdateCheck.offers(307, release, null, false));
-		assertFalse(UpdateCheck.offers("0.3.6", release, "v0.3.6", false));
+		assertFalse(UpdateCheck.offers("0.3.5", release, "v0.3.6", false));
 		assertFalse(UpdateCheck.offers("0.3.5", null, null, false));
 		assertFalse(UpdateCheck.offers("0.3.5", UpdateCheck.parseRelease(RELEASE.replace(".apk", ".zip")), null, false));
 	}

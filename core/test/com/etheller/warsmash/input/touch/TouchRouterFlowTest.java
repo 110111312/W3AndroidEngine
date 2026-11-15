@@ -368,6 +368,25 @@ class TouchRouterFlowTest {
 	}
 
 	@Test
+	void penButtonAsDragWithTheMouseSchemeKeepsATapWithoutMovementALeftClick() {
+		start(ControlScheme.MOUSE_KEYBOARD, TouchStyle.TAP_HOLD, PenButton.DRAG);
+		pen(PointerEvent.Action.DOWN, 32, 1010);
+		pen(PointerEvent.Action.UP, 32, 1060);
+		assertEquals(List.of("downL", "upL"), this.screen.calls);
+	}
+
+	@Test
+	void penButtonAsDragWithTheMouseSchemePressesMiddleOnlyOnceTheTipMoves() {
+		start(ControlScheme.MOUSE_KEYBOARD, TouchStyle.TAP_HOLD, PenButton.DRAG);
+		pen(PointerEvent.Action.DOWN, 32, 1010);
+		send(PointerEvent.Tool.STYLUS, PointerEvent.Action.MOVE, 101, 100, 32, 1020);
+		assertEquals(List.of(), this.screen.calls);
+		send(PointerEvent.Tool.STYLUS, PointerEvent.Action.MOVE, 160, 100, 32, 1030);
+		send(PointerEvent.Tool.STYLUS, PointerEvent.Action.UP, 160, 100, 32, 1060);
+		assertEquals(List.of("downM", "upM"), this.screen.calls);
+	}
+
+	@Test
 	void rightClickIsOneOfTheNamedPenButtonActions() {
 		assertEquals(PenButton.RIGHT_CLICK, PenButton.parse("rightclick", PenButton.SHIFT));
 		assertEquals(3, PenButton.RIGHT_CLICK.ordinal());

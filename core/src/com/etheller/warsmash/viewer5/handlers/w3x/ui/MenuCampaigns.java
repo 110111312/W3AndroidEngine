@@ -349,18 +349,31 @@ final class MenuCampaigns {
 				&& (CampaignResult.playedMission(this.campaignCatalog, this.startedEntry, mapFile) >= 0);
 	}
 
+	/** The ordinal of the difficulty a game ended on, named as the launcher's result names it; -1 when not told. */
+	private int difficultyOrdinal(final String name) {
+		if ((name == null) || name.isEmpty()) {
+			return this.campaignDifficulty.ordinal();
+		}
+		for (final CMapDifficulty difficulty : CMapDifficulty.VALUES) {
+			if (difficulty.name().equalsIgnoreCase(name)) {
+				return difficulty.ordinal();
+			}
+		}
+		return -1;
+	}
+
 	/**
 	 * A won map that is a mission of the campaign being played is recorded as won: the last missions of some campaigns
 	 * open nothing of their own campaign that would tell. A campaign's map won as a custom game is no mission won.
 	 */
-	void recordVictory(final String mapFile) {
+	void recordVictory(final String mapFile, final String difficulty) {
 		final CampaignCatalog.Entry entry = this.startedEntry;
 		if (entry == null) {
 			return;
 		}
 		final int mission = CampaignResult.playedMission(this.campaignCatalog, entry, mapFile);
 		if (mission >= 0) {
-			CCampaignProgress.setMissionWon(entry.getNumber(), mission);
+			CCampaignProgress.setMissionWon(entry.getNumber(), mission, difficultyOrdinal(difficulty));
 		}
 	}
 

@@ -559,8 +559,8 @@ public class MenuUI {
 	}
 
 	/** Records a won map that is a campaign's mission as won. */
-	public void recordVictory(final String mapFile) {
-		this.campaigns.recordVictory(mapFile);
+	public void recordVictory(final String mapFile, final String difficulty) {
+		this.campaigns.recordVictory(mapFile, difficulty);
 	}
 
 	/**

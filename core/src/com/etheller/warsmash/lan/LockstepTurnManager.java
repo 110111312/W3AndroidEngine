@@ -93,6 +93,8 @@ public final class LockstepTurnManager implements GameTurnManager {
 	}
 
 	private static final int MAX_TURNS_PER_PAUSED_FRAME = 64;
+	/** A player being given the game so far draws nothing, so a long pause in it is played through in few frames. */
+	private static final int MAX_TURNS_PER_CATCH_UP_FRAME = 4096;
 	/** Steps a game plays on its own after it lost its host: two seconds of game time. */
 	private static final int OFFLINE_GRACE_STEPS = 40;
 
@@ -257,7 +259,8 @@ public final class LockstepTurnManager implements GameTurnManager {
 		if (this.pausedListener != null) {
 			this.pausedListener.run();
 		}
-		for (int i = 0; (i < MAX_TURNS_PER_PAUSED_FRAME) && this.game.simPaused(); i++) {
+		final int most = this.turns.catchingUp() ? MAX_TURNS_PER_CATCH_UP_FRAME : MAX_TURNS_PER_PAUSED_FRAME;
+		for (int i = 0; (i < most) && this.game.simPaused(); i++) {
 			final TurnData turn = this.turns.poll();
 			if (turn == null) {
 				break;

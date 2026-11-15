@@ -581,6 +581,52 @@ class SmashJassLexer {
 	}
 
 	/*
+	 * Warcraft III reads a string literal in two passes: every "\\" pair becomes one backslash first, then the
+	 * escapes \n \t \r \b \f \" and \\ are read over that result, so "a\\nb" holds a line feed and "a\\\"b" holds a
+	 * backslash and a quote. Any other backslash stays as it is.
+	 */
+	static String unescapeStringLiteral(final String literalContent) {
+		if (literalContent.indexOf('\\') == -1) {
+			return literalContent;
+		}
+		final String content = literalContent.replace("\\\\", "\\");
+		final StringBuilder result = new StringBuilder(content.length());
+		for (int i = 0; i < content.length(); i++) {
+			final char c = content.charAt(i);
+			if ((c != '\\') || (i + 1 == content.length())) {
+				result.append(c);
+				continue;
+			}
+			final char escaped = content.charAt(++i);
+			switch (escaped) {
+			case 'n':
+				result.append('\n');
+				break;
+			case 't':
+				result.append('\t');
+				break;
+			case 'r':
+				result.append('\r');
+				break;
+			case 'b':
+				result.append('\b');
+				break;
+			case 'f':
+				result.append('\f');
+				break;
+			case '"':
+			case '\\':
+				result.append(escaped);
+				break;
+			default:
+				result.append(c).append(escaped);
+				break;
+			}
+		}
+		return result.toString();
+	}
+
+	/*
 	 * A rawcode is its bytes as base 256 digits, so 'C' is 67, not 'C\0\0\0'. The original game takes one byte, four
 	 * bytes without a backslash, or one escape alone ('\n' is 10); 'ab', 'a\\bc', '\n\n\n\n' and '\q' are syntax
 	 * errors there.
@@ -1179,7 +1225,7 @@ class SmashJassLexer {
           case 111: break;
           case 27: 
             { final String stringLiteralText = yytext();
-	final String parsedString = stringLiteralText.substring(1, stringLiteralText.length() - 1).replace("\\\\", "\\");
+	final String parsedString = unescapeStringLiteral(stringLiteralText.substring(1, stringLiteralText.length() - 1));
 	yylval = parsedString;
 	return SmashJassParser.Lexer.STRING_LITERAL;
             } 

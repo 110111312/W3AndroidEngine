@@ -8,7 +8,6 @@
 
 # libGDX backend classes are created from native code.
 -keep class com.badlogic.gdx.backends.android.** { *; }
--keep class com.badlogic.gdx.physics.box2d.** { *; }
 -keep class com.badlogic.gdx.graphics.g2d.freetype.** { *; }
 -keepclassmembers class com.badlogic.gdx.** { native <methods>; }
 # libGDX pools create their objects through the no-argument constructor by reflection.

@@ -45,6 +45,7 @@ import com.etheller.warsmash.input.touch.VirtualCursor;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.parsers.fdf.GameUI;
 import com.etheller.warsmash.parsers.fdf.datamodel.FramePoint;
+import com.etheller.warsmash.parsers.fdf.frames.BackdropFrame;
 import com.etheller.warsmash.parsers.fdf.frames.ColorCodedText;
 import com.etheller.warsmash.parsers.fdf.frames.FadingSpriteBatch;
 import com.etheller.warsmash.parsers.fdf.frames.SetPoint;
@@ -540,8 +541,11 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		// lower than the openings begin, so without it thin bands of the world show in the command card and info panel.
 		if ((this.rootFrame.getTemplates().getFrame("ConsoleUIBackdrop") != null)
 				&& (this.consoleUI instanceof SimpleFrame)) {
+			final UIFrame consoleBackdrop = this.rootFrame.createFrame("ConsoleUIBackdrop", this.consoleUI, 0, 0);
 			((SimpleFrame) this.consoleUI).add(0,
-					this.rootFrame.createFrame("ConsoleUIBackdrop", this.consoleUI, 0, 0));
+					consoleBackdrop instanceof BackdropFrame
+							? new ConsoleBackdrop((BackdropFrame) consoleBackdrop, this.infoPanel, this.consoleUI)
+							: consoleBackdrop);
 		}
 
 		this.menus.createTopBar();

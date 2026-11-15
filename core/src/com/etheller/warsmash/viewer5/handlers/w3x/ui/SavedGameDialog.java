@@ -444,7 +444,12 @@ public final class SavedGameDialog {
 			final Rectangle box = this.nameBox.getRenderBounds();
 			final Rectangle dialog = this.holder.getRenderBounds();
 			final float room = worldHeight - ((dialog.y + dialog.height) - this.keyboardLift);
-			lift = Math.max(0, Math.min(keyboardTop - (box.y - this.keyboardLift), room));
+			// The Save, Delete and Cancel buttons stand under the name box and must clear the keyboard as well.
+			float lowest = box.y;
+			for (final ShortcutButton button : this.saveButtons) {
+				lowest = Math.min(lowest, button.frame.getRenderBounds().y);
+			}
+			lift = Math.max(0, Math.min(keyboardTop - (lowest - this.keyboardLift), room));
 		}
 		if (lift != this.keyboardLift) {
 			this.keyboardLift = lift;

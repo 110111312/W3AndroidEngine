@@ -26,8 +26,18 @@ public class DdsTexture extends RawOpenGLTextureResource {
 	@Override
 	protected void load(final InputStream src, final Object options) {
 		try {
-			final DdsDecoder image = DdsDecoder.decode(ByteBuffer.wrap(IOUtils.toByteArray(src)),
-					this.viewer.getTextureSizeLimit(), true);
+			final byte[] bytes = IOUtils.toByteArray(src);
+			final ByteBuffer file = ByteBuffer.wrap(bytes);
+			final int limit = this.viewer.getTextureSizeLimit();
+			if (this.viewer.isTextureCompression()) {
+				final CompressedMips blocks = TextureTranscoder.transcode(this.fetchUrl, bytes, limit,
+						() -> DdsDecoder.decode(file, limit, true).getLevels(), DdsDecoder.isNormalMap(file));
+				if (blocks != null) {
+					update(blocks);
+					return;
+				}
+			}
+			final DdsDecoder image = DdsDecoder.decode(file, limit, true);
 			update(image.getLevels(), false);
 		}
 		catch (final IOException e) {

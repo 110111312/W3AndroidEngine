@@ -188,7 +188,7 @@
     <string name="update_checking">Checking for updates…</string>
     <string name="update_title">Update available</string>
     <string name="update_offer">Version %1$s is available; this is %2$s. Download size %3$s.</string>
-    <string name="update_offer_unofficial">Version %1$s is available; this is %2$s, a build that was not made by the project. Download size %3$s.
+    <string name="update_offer_unofficial">Version %1$s is available; this is %2$s, an unofficial build (not made by the project, for example a debug build). Download size %3$s.
 
 Android will not install the release over this copy, because it is signed with another key. After the download you remove this copy yourself (Android Settings, Apps) and then install the release. Nothing is removed for you. Removing the app deletes its own saves and settings; the game data folder you chose stays where it is, so back up anything you want to keep first.</string>
     <string name="update_offer_page">Version %1$s is available; this is %2$s. It has no APK to install from here.</string>

@@ -33,8 +33,21 @@ public class BlpTexture extends RawOpenGLTextureResource {
 	protected void load(final InputStream src, final Object options) {
 		BufferedImage img;
 		try {
-			final ByteBuffer data = ByteBuffer.wrap(IOUtils.toByteArray(src));
-			if (DdsDecoder.isDds(data)) {
+			final byte[] bytes = IOUtils.toByteArray(src);
+			final ByteBuffer data = ByteBuffer.wrap(bytes);
+			final int limit = this.viewer.getTextureSizeLimit();
+			final boolean dds = DdsDecoder.isDds(data);
+			if (this.viewer.isTextureCompression() && (dds || BlpDecoder.isBlp(data))) {
+				final CompressedMips blocks = TextureTranscoder.transcode(this.fetchUrl, bytes, limit,
+						() -> dds ? DdsDecoder.decode(data, limit, true).getLevels()
+								: BlpDecoder.decode(data, limit, true).getLevels(),
+						dds && DdsDecoder.isNormalMap(data));
+				if (blocks != null) {
+					update(blocks);
+					return;
+				}
+			}
+			if (dds) {
 				// A missing .blp can resolve to its .dds. Classic data stores the same colors in
 				// both, so the .dds takes the plain RGBA format of the .blp below.
 				update(DdsDecoder.decode(data, this.viewer.getTextureSizeLimit(), true).getLevels(), false);

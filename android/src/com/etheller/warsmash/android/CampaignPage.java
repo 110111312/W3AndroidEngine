@@ -414,7 +414,9 @@ final class CampaignPage extends LauncherViews {
 			if (reforged) {
 				final boolean won = (number >= 0) && CampaignCatalog.isMissionWon(entry, number, progress);
 				row = chapterRow(mission, number == chosen,
-						number < 0 ? SkinArt.CHAPTER_CINEMATIC : won ? SkinArt.CHAPTER_WON : SkinArt.CHAPTER_OPEN, tap);
+						number < 0 ? SkinArt.CHAPTER_CINEMATIC
+								: CampaignResult.chapterIcon(won, progress.getMissionWonDifficulty(entry.getNumber(), number)),
+						tap);
 			}
 			else {
 				row = campaignRow(mission.getHeader(), mission.getMissionName(), number == chosen, tap);

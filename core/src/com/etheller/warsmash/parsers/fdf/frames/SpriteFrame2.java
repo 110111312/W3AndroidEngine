@@ -135,8 +135,9 @@ public class SpriteFrame2 extends AbstractUIFrame {
 		this.uiViewport.project(projectionTemp1);
 		this.uiViewport.project(projectionTemp2);
 
-		tempRect.x = projectionTemp1.x + this.uiViewport.getScreenX();
-		tempRect.y = projectionTemp1.y + this.uiViewport.getScreenY();
+		// project already includes the viewport's screen offset.
+		tempRect.x = projectionTemp1.x;
+		tempRect.y = projectionTemp1.y;
 		tempRect.width = projectionTemp2.x - projectionTemp1.x;
 		tempRect.height = projectionTemp2.y - projectionTemp1.y;
 

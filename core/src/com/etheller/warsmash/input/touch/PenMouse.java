@@ -18,6 +18,7 @@ final class PenMouse {
 	private int button = Input.Buttons.LEFT;
 	private volatile PenButton penButton = PenButton.SHIFT;
 	private boolean dragged;
+	private boolean panPending;
 	private float downX;
 	private float downY;
 	private long downTime;
@@ -60,7 +61,11 @@ final class PenMouse {
 			this.downY = event.y;
 			this.downTime = event.timeMillis;
 			hover(processor, event.x, event.y);
-			processor.touchDown(x, y, 0, this.button);
+			// The camera drag button must not turn a tap into a middle click: that press waits for the tip to move.
+			this.panPending = panning;
+			if (!panning) {
+				processor.touchDown(x, y, 0, this.button);
+			}
 			break;
 		case MOVE:
 			if (this.down && (event.pointerId == this.pointerId) && !this.held) {
@@ -68,13 +73,26 @@ final class PenMouse {
 					this.dragged = true;
 				}
 				VirtualCursor.moveTo(x, y);
+				if (this.panPending) {
+					if (!this.dragged) {
+						break;
+					}
+					this.panPending = false;
+					processor.touchDown(Math.round(this.downX), Math.round(this.downY), 0, this.button);
+				}
 				processor.touchDragged(x, y, 0);
 			}
 			break;
 		case UP:
 			if (this.down && (event.pointerId == this.pointerId)) {
 				this.down = false;
-				if (!this.held) {
+				if (this.panPending) {
+					this.panPending = false;
+					VirtualCursor.moveTo(x, y);
+					processor.touchDown(x, y, 0, Input.Buttons.LEFT);
+					processor.touchUp(x, y, 0, Input.Buttons.LEFT);
+				}
+				else if (!this.held) {
 					VirtualCursor.moveTo(x, y);
 					processor.touchUp(x, y, 0, this.button);
 				}
@@ -83,6 +101,10 @@ final class PenMouse {
 		case CANCEL:
 			if (this.down) {
 				this.down = false;
+				if (this.panPending) {
+					this.panPending = false;
+					break;
+				}
 				if (processor instanceof TouchTarget) {
 					((TouchTarget) processor).cancelPointerDrag();
 				}

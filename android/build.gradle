@@ -24,8 +24,8 @@ android {
         applicationId = "com.etheller.warsmash.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 354
-        versionName = "0.3.54"
+        versionCode = 372
+        versionName = "0.3.72"
     }
 
     // Release signing is read from a properties file kept outside the repository; without it the release APK stays unsigned.
@@ -76,7 +76,6 @@ dependencies {
     for (abi in ["armeabi-v7a", "arm64-v8a", "x86_64"]) {
         natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-$abi"
         natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-$abi"
-        natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-$abi"
     }
 }
 

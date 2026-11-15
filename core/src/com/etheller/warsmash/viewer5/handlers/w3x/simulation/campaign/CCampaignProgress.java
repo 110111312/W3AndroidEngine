@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -29,6 +30,8 @@ public final class CCampaignProgress {
 		private final Set<Integer> openingCinematics = new HashSet<>();
 		private final Set<Integer> endingCinematics = new HashSet<>();
 		private final Set<Long> wonMissions = new HashSet<>();
+		/** The hardest difficulty (an ordinal of the difficulties) each won mission was won on. */
+		private final Map<Long, Integer> wonDifficulties = new HashMap<>();
 		private boolean tutorialCleared;
 		private int menuCampaignIndex = -1;
 		private int classicMenuCampaignIndex = -1;
@@ -47,6 +50,11 @@ public final class CCampaignProgress {
 			writeMissions(out, this.wonMissions);
 			out.writeInt(this.defaultDifficulty);
 			writeFlags(out, this.customCampaignButtons);
+			out.writeInt(this.wonDifficulties.size());
+			for (final Map.Entry<Long, Integer> won : this.wonDifficulties.entrySet()) {
+				out.writeLong(won.getKey());
+				out.writeInt(won.getValue());
+			}
 		}
 
 		private void read(final DataInputStream in, final int version) throws IOException {
@@ -64,13 +72,20 @@ public final class CCampaignProgress {
 				this.defaultDifficulty = in.readInt();
 				readFlags(in, this.customCampaignButtons);
 			}
+			if (version >= 6) {
+				final int count = in.readInt();
+				for (int i = 0; i < count; i++) {
+					final long key = in.readLong();
+					this.wonDifficulties.put(key, in.readInt());
+				}
+			}
 		}
 	}
 
 	private static final Map<CampaignList, Progress> PROGRESS = new EnumMap<>(CampaignList.class);
 	private static CampaignList campaignList = CampaignList.COMBINED;
 	private static final String STORE_FILE = "Campaigns.w3v";
-	private static final int STORE_VERSION = 5;
+	private static final int STORE_VERSION = 6;
 	private static boolean loaded;
 
 	private CCampaignProgress() {
@@ -181,6 +196,11 @@ public final class CCampaignProgress {
 			return this.progress.wonMissions.contains(missionKey(campaign, mission));
 		}
 
+		/** The ordinal of the hardest difficulty a mission was won on; -1 when none is recorded (older files). */
+		public int getMissionWonDifficulty(final int campaign, final int mission) {
+			return this.progress.wonDifficulties.getOrDefault(missionKey(campaign, mission), -1);
+		}
+
 		/** Scripts open a campaign's ending cinematic when its last mission is won. */
 		public boolean isEndingCinematicAvailable(final int campaign) {
 			return this.progress.endingCinematics.contains(campaign);
@@ -249,8 +269,15 @@ public final class CCampaignProgress {
 	}
 
 	/** The player won a campaign's mission, as the campaign screens mark it. */
-	public static void setMissionWon(final int campaign, final int mission) {
-		if (current().wonMissions.add(missionKey(campaign, mission))) {
+	public static void setMissionWon(final int campaign, final int mission, final int difficulty) {
+		final Progress progress = current();
+		final long key = missionKey(campaign, mission);
+		boolean changed = progress.wonMissions.add(key);
+		if ((difficulty >= 0) && (difficulty > progress.wonDifficulties.getOrDefault(key, -1))) {
+			progress.wonDifficulties.put(key, difficulty);
+			changed = true;
+		}
+		if (changed) {
 			save();
 		}
 	}

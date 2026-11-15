@@ -65,6 +65,9 @@ final class SavedGameRules implements SavedObjectGraph.Rules {
 	private static final String SCRIPT_DIALOG_BUTTON_CLICK = SCRIPT_DIALOG_PREFIX + "Button$1";
 	// Asked for every object a save meets; matching class names is slow enough on Android to show.
 	private static final Map<Class<?>, Boolean> DROPPED_CLASSES = new ConcurrentHashMap<>();
+	// Most objects of a save are of classes that no name rule and no replacement looks at; the tests below run once per class.
+	private static final Map<Class<?>, Boolean> NAMEABLE_CLASSES = new ConcurrentHashMap<>();
+	private static final Map<Class<?>, Boolean> REPLACEABLE_CLASSES = new ConcurrentHashMap<>();
 
 	private final Map<SpellEffectModel, SavedEffectModel> effectModels = new IdentityHashMap<>();
 	private final War3MapViewer viewer;
@@ -258,6 +261,9 @@ final class SavedGameRules implements SavedObjectGraph.Rules {
 		if (known != null) {
 			return known;
 		}
+		if (!isNameable(object.getClass())) {
+			return null;
+		}
 		if ((object instanceof JassInstruction) || (object instanceof CodeJassValue)) {
 			return scriptName(object);
 		}
@@ -286,6 +292,35 @@ final class SavedGameRules implements SavedObjectGraph.Rules {
 			return "gt:" + ((CUpgradeType) object).getTypeId().getValue();
 		}
 		return null;
+	}
+
+	private static boolean isNameable(final Class<?> type) {
+		Boolean nameable = NAMEABLE_CLASSES.get(type);
+		if (nameable == null) {
+			nameable = JassInstruction.class.isAssignableFrom(type) || CodeJassValue.class.isAssignableFrom(type)
+					|| UnitSound.class.isAssignableFrom(type) || Sound.class.isAssignableFrom(type)
+					|| GameObject.class.isAssignableFrom(type) || CUnitType.class.isAssignableFrom(type)
+					|| CItemType.class.isAssignableFrom(type) || CDestructableType.class.isAssignableFrom(type)
+					|| CUpgradeType.class.isAssignableFrom(type);
+			NAMEABLE_CLASSES.put(type, nameable);
+		}
+		return nameable;
+	}
+
+	private static boolean isReplaceable(final Class<?> type) {
+		Boolean replaceable = REPLACEABLE_CLASSES.get(type);
+		if (replaceable == null) {
+			replaceable = JassThread.class.isAssignableFrom(type) || CodeJassValue.class.isAssignableFrom(type)
+					|| RenderSpellEffect.class.isAssignableFrom(type) || SpellEffectModel.class.isAssignableFrom(type)
+					|| RenderLightningEffect.class.isAssignableFrom(type)
+					|| RenderWeatherEffect.class.isAssignableFrom(type) || RenderUbersplat.class.isAssignableFrom(type)
+					|| SavedEffect.class.isAssignableFrom(type) || SavedEffectModel.class.isAssignableFrom(type)
+					|| SavedLightning.class.isAssignableFrom(type) || SavedWeather.class.isAssignableFrom(type)
+					|| SavedUbersplat.class.isAssignableFrom(type)
+					|| SimulationRenderComponent.class.isAssignableFrom(type);
+			REPLACEABLE_CLASSES.put(type, replaceable);
+		}
+		return replaceable;
 	}
 
 	@Override
@@ -326,6 +361,9 @@ final class SavedGameRules implements SavedObjectGraph.Rules {
 
 	@Override
 	public Object replace(final Object object) {
+		if (!isReplaceable(object.getClass())) {
+			return object;
+		}
 		if (object instanceof JassThread) {
 			this.positions.thread((JassThread) object);
 			return object;
