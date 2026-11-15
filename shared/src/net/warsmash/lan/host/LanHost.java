@@ -617,7 +617,7 @@ public final class LanHost {
 					final Participant p = new Participant();
 					p.id = c.participantId;
 					p.name = c.name;
-					p.portrait = "";
+					p.portrait = l.portraits.getOrDefault(c.participantId, "");
 					p.role = LanProtocol.ROLE_PLAYER;
 					p.slot = c.index;
 					p.controlScheme = c.controlScheme;
@@ -634,7 +634,7 @@ public final class LanHost {
 				final Participant p = new Participant();
 				p.id = o.participantId;
 				p.name = o.name;
-				p.portrait = "";
+				p.portrait = l.portraits.getOrDefault(o.participantId, "");
 				p.role = o.role;
 				p.controlScheme = o.controlScheme;
 				p.address = "";
@@ -1480,6 +1480,11 @@ public final class LanHost {
 				o.controlScheme = p.controlScheme;
 				o.pingMs = p.conn == null ? 0 : Math.max(0, Math.min(65535, p.conn.rttMs()));
 				ls.observers.add(o);
+			}
+		}
+		for (final Participant p : this.participants.values()) {
+			if ((p.portrait != null) && !p.portrait.isEmpty()) {
+				ls.portraits.put(p.id, p.portrait);
 			}
 		}
 		for (final Participant p : this.participants.values()) {

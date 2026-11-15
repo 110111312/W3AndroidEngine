@@ -148,8 +148,9 @@ final class UpdatePrompt {
 	}
 
 	/**
-	 * The installed build's version code, which a release has to exceed; zero when it cannot be read. The version name
-	 * decides when it has numbers: a build whose code was left behind its name must not take an older release for news.
+	 * The installed build's version code, the fallback when its version name has no numbers; zero when it cannot be
+	 * read. The name decides when it has numbers (a hotfix has the code of its base version, and a build whose code was
+	 * left behind its name must not take an older release for news).
 	 */
 	@SuppressWarnings("deprecation")
 	private static int installedCode(final Context context) {
@@ -272,7 +273,7 @@ final class UpdatePrompt {
 				final UpdateCheck.Release latest = checked ? release : null;
 				final SharedPreferences preferences = this.activity.getSharedPreferences(LauncherKeys.PREFERENCES,
 						Context.MODE_PRIVATE);
-				if (UpdateCheck.offers(installedCode(this.activity), latest,
+				if (UpdateCheck.offers(installedVersion(this.activity), installedCode(this.activity), latest,
 						preferences.getString(LauncherKeys.KEY_UPDATE_SKIPPED, ""), BuildInfo.current().isOfficial())) {
 					cleanUp(this.activity, latest.apkName);
 					state = State.OFFER;

@@ -3,11 +3,14 @@ package com.etheller.warsmash.viewer5.handlers.mdx;
 import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import com.etheller.warsmash.datasources.CompoundDataSource;
 import com.etheller.warsmash.datasources.DataSource;
@@ -199,34 +202,79 @@ final class ClassicEffects {
 
 	/**
 	 * Moves the key frames of the Classic model into the sequences of the model that have the same names; the
-	 * sequences of the two models are not the same length.
+	 * sequences of the two models are not the same length. Reforged numbers its variations ("Stand 1", "Stand 2",
+	 * "Death 1") where Classic has one plain name, so a Classic sequence feeds every sequence of that base name: a
+	 * sequence left without keys would show an emitter by its static visibility, e.g. the construction dust of a
+	 * finished building.
 	 */
 	private static final class SequenceMap {
 		private final List<MdlxSequence> from;
-		private final MdlxSequence[] to;
+		private final MdlxSequence[][] to;
 		private final int globalSequenceBase;
 
 		SequenceMap(final List<MdlxSequence> from, final List<MdlxSequence> to, final int globalSequenceBase) {
 			this.from = from;
 			this.globalSequenceBase = globalSequenceBase;
-			this.to = new MdlxSequence[from.size()];
-			final Map<String, MdlxSequence> byName = new HashMap<>();
-			final Map<String, MdlxSequence> byBaseName = new HashMap<>();
+			this.to = new MdlxSequence[from.size()][];
+			final Map<String, List<MdlxSequence>> byName = new HashMap<>();
+			final Map<String, List<MdlxSequence>> byBaseName = new HashMap<>();
 			for (final MdlxSequence sequence : to) {
-				final String name = sequence.name.toLowerCase(Locale.ROOT);
-				byName.putIfAbsent(name, sequence);
-				byBaseName.putIfAbsent(baseName(name), sequence);
+				final String name = sequence.name.toLowerCase(Locale.ROOT).trim();
+				addDistinct(byName.computeIfAbsent(name, k -> new ArrayList<>()), sequence);
+				addDistinct(byBaseName.computeIfAbsent(baseName(name), k -> new ArrayList<>()), sequence);
+			}
+			// Each target takes the keys of one Classic sequence: an exact name first, then a base name.
+			final Set<MdlxSequence> claimed = Collections.newSetFromMap(new IdentityHashMap<>());
+			final List<List<MdlxSequence>> targets = new ArrayList<>();
+			for (int i = 0; i < this.to.length; i++) {
+				final List<MdlxSequence> exact = byName.get(from.get(i).name.toLowerCase(Locale.ROOT).trim());
+				final List<MdlxSequence> own = new ArrayList<>();
+				if (exact != null) {
+					for (final MdlxSequence sequence : exact) {
+						if (claimed.add(sequence)) {
+							own.add(sequence);
+						}
+					}
+				}
+				targets.add(own);
 			}
 			for (int i = 0; i < this.to.length; i++) {
-				final String name = from.get(i).name.toLowerCase(Locale.ROOT);
-				final MdlxSequence match = byName.get(name);
-				this.to[i] = match != null ? match : byBaseName.get(baseName(name));
+				final List<MdlxSequence> own = targets.get(i);
+				final List<MdlxSequence> similar = own.isEmpty()
+						? byBaseName.get(baseName(from.get(i).name.toLowerCase(Locale.ROOT).trim()))
+						: null;
+				if (similar != null) {
+					for (final MdlxSequence sequence : similar) {
+						if (claimed.add(sequence)) {
+							own.add(sequence);
+						}
+					}
+				}
+				this.to[i] = own.toArray(new MdlxSequence[0]);
 			}
+		}
+
+		/** Variations that share one interval take the keys once. */
+		private static void addDistinct(final List<MdlxSequence> list, final MdlxSequence sequence) {
+			for (final MdlxSequence other : list) {
+				if ((other.interval[0] == sequence.interval[0]) && (other.interval[1] == sequence.interval[1])) {
+					return;
+				}
+			}
+			list.add(sequence);
 		}
 
 		private static String baseName(final String name) {
 			final int dash = name.indexOf(" - ");
-			return (dash == -1 ? name : name.substring(0, dash)).trim();
+			String base = (dash == -1 ? name : name.substring(0, dash)).trim();
+			int end = base.length();
+			while ((end > 0) && Character.isDigit(base.charAt(end - 1))) {
+				end--;
+			}
+			if ((end < base.length()) && (end > 0) && (base.charAt(end - 1) == ' ')) {
+				base = base.substring(0, end).trim();
+			}
+			return base;
 		}
 
 		void remap(final MdlxAnimatedObject object) {
@@ -250,27 +298,34 @@ final class ClassicEffects {
 		/** Whether any key frame is left. */
 		private <T> boolean remap(final MdlxTimeline<T> timeline) {
 			final int count = timeline.frames.length;
-			final long[] frames = new long[count];
-			final int[] kept = new int[count];
-			int keptCount = 0;
+			final List<long[]> moved = new ArrayList<>();
 			for (int i = 0; i < count; i++) {
 				for (int s = 0; s < this.to.length; s++) {
 					final long[] interval = this.from.get(s).interval;
 					if ((timeline.frames[i] >= interval[0]) && (timeline.frames[i] <= interval[1])) {
-						final MdlxSequence target = this.to[s];
 						final long offset = timeline.frames[i] - interval[0];
-						if ((target != null) && (offset <= (target.interval[1] - target.interval[0]))) {
-							frames[keptCount] = target.interval[0] + offset;
-							kept[keptCount++] = i;
+						for (final MdlxSequence target : this.to[s]) {
+							if (offset <= (target.interval[1] - target.interval[0])) {
+								moved.add(new long[] { target.interval[0] + offset, i });
+							}
 						}
 						break;
 					}
 				}
 			}
-			if (keptCount == 0) {
+			if (moved.isEmpty()) {
 				return false;
 			}
-			timeline.frames = java.util.Arrays.copyOf(frames, keptCount);
+			// One Classic sequence can feed several targets, so the keys are put back in time order.
+			moved.sort((a, b) -> Long.compare(a[0], b[0]));
+			final int keptCount = moved.size();
+			final long[] frames = new long[keptCount];
+			final int[] kept = new int[keptCount];
+			for (int k = 0; k < keptCount; k++) {
+				frames[k] = moved.get(k)[0];
+				kept[k] = (int) moved.get(k)[1];
+			}
+			timeline.frames = frames;
 			timeline.values = pick(timeline.values, kept, keptCount);
 			timeline.inTans = pick(timeline.inTans, kept, keptCount);
 			timeline.outTans = pick(timeline.outTans, kept, keptCount);

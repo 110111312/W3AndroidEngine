@@ -33,6 +33,8 @@ public final class LanLobbyView {
 		public int computerLevel;
 		public boolean ready;
 		public int pingMs;
+		/** The profile portrait the player chose (its number in the skin's portraits), or -1 when none is known. */
+		public int portrait = -1;
 		/** Plays with a keyboard and mouse (the mark after the name). */
 		public boolean keyboardAndMouse;
 		/** The percent of the map this human has received or sent, or -1 when the map is not in transfer. */
@@ -54,6 +56,8 @@ public final class LanLobbyView {
 		public boolean you;
 		public boolean keyboardAndMouse;
 		public int pingMs;
+		/** As {@link Row#portrait}. */
+		public int portrait = -1;
 		/** The host can remove this watcher. */
 		public boolean kickable;
 	}
@@ -106,6 +110,7 @@ public final class LanLobbyView {
 				row.ready = s.ready;
 				row.pingMs = s.pingMs;
 				row.keyboardAndMouse = s.controlScheme == LanProtocol.CONTROL_KBM;
+				row.portrait = portrait(state, s.participantId);
 				row.editable = row.you;
 				row.hostMenu = view.iAmHost && !row.you;
 				row.kickable = row.hostMenu;
@@ -153,6 +158,7 @@ public final class LanLobbyView {
 			w.you = o.participantId == myId;
 			w.keyboardAndMouse = o.controlScheme == LanProtocol.CONTROL_KBM;
 			w.pingMs = o.pingMs;
+			w.portrait = portrait(state, o.participantId);
 			w.kickable = view.iAmHost && !w.you;
 			view.watchers.add(w);
 			if (w.you) {
@@ -160,6 +166,19 @@ public final class LanLobbyView {
 			}
 		}
 		return view;
+	}
+
+	private static int portrait(final LanMessages.LobbyState state, final int participantId) {
+		final String chosen = state.portraits.get(participantId);
+		if (chosen != null) {
+			try {
+				return Math.max(-1, Integer.parseInt(chosen.trim()));
+			}
+			catch (final NumberFormatException e) {
+				// another launcher's name for a portrait: none shown
+			}
+		}
+		return -1;
 	}
 
 	/** The host may start: every person who plays is ready (the host's own mark counts), and someone plays. */

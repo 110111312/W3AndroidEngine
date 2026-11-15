@@ -57,6 +57,23 @@ class LanLobbyViewTest {
 	}
 
 	@Test
+	void everyoneShowsThePortraitTheyChose() {
+		final LanMessages.LobbyState s = lobby(3);
+		human(s, 0, 0, "Host");
+		human(s, 1, 4, "Guest");
+		human(s, 2, 6, "Plain");
+		watcher(s, 5, "Ref", LanProtocol.ROLE_REFEREE);
+		s.portraits.put(0, "7");
+		s.portraits.put(4, "0");
+		s.portraits.put(5, "21");
+		final LanLobbyView view = LanLobbyView.of(s, 4, null, -1);
+		assertEquals(7, view.rows.get(0).portrait);
+		assertEquals(0, view.rows.get(1).portrait);
+		assertEquals(-1, view.rows.get(2).portrait);
+		assertEquals(21, view.watchers.get(0).portrait);
+	}
+
+	@Test
 	void onlyTheHostRemovesWatchers() {
 		final LanMessages.LobbyState s = lobby(4);
 		human(s, 0, 0, "Host");

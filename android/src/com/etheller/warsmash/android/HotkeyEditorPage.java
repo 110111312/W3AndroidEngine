@@ -172,7 +172,8 @@ final class HotkeyEditorPage extends LauncherViews {
 		this.reading = true;
 		final Map<String, String> words = new HashMap<>();
 		for (final String word : WORDS) {
-			words.put(word, getString(this.options.stringId("controls_" + word)));
+			final int id = this.options.stringId("controls_" + word);
+			words.put(word, id != 0 ? getString(id) : word);
 		}
 		final int asking = this.generation;
 		this.activity.catalog.hotkeys(words, found -> {

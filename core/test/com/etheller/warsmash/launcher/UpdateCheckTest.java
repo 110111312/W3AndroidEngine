@@ -123,6 +123,79 @@ class UpdateCheckTest {
 	}
 
 	@Test
+	void parsesHotfixSuffix() {
+		assertArrayEquals(new int[] { 0, 3, 72 }, UpdateCheck.parse("v0.3.72-hotfix2"));
+		assertEquals(372, UpdateCheck.versionCode("v0.3.72-hotfix2"));
+		assertEquals(2, UpdateCheck.hotfix("v0.3.72-hotfix2"));
+		assertEquals(1, UpdateCheck.hotfix("0.3.72-hotfix"));
+		assertEquals(1, UpdateCheck.hotfix("0.3.72-hotfix1"));
+		assertEquals(12, UpdateCheck.hotfix("0.3.72-HotFix12"));
+		assertEquals(0, UpdateCheck.hotfix("0.3.72"));
+		assertEquals(0, UpdateCheck.hotfix("0.3.72-rc1"));
+		assertEquals(0, UpdateCheck.hotfix("0.3.72-beta"));
+		assertEquals(0, UpdateCheck.hotfix("0.3.72-hotfixx"));
+		assertEquals(0, UpdateCheck.hotfix("dev"));
+		assertEquals(0, UpdateCheck.hotfix(null));
+	}
+
+	@Test
+	void hotfixRanksAboveItsBaseAndBelowTheNextVersion() {
+		assertTrue(UpdateCheck.compare("0.3.72-hotfix1", "0.3.72") > 0);
+		assertTrue(UpdateCheck.compare("0.3.72", "0.3.72-hotfix1") < 0);
+		assertTrue(UpdateCheck.compare("v0.3.72-hotfix2", "0.3.72-hotfix1") > 0);
+		assertTrue(UpdateCheck.compare("0.3.72-hotfix", "0.3.72") > 0);
+		assertEquals(0, UpdateCheck.compare("0.3.72-hotfix", "0.3.72-hotfix1"));
+		assertTrue(UpdateCheck.compare("0.3.73", "0.3.72-hotfix2") > 0);
+		assertTrue(UpdateCheck.compare("0.3.72-hotfix9", "0.3.73") < 0);
+		assertEquals(0, UpdateCheck.compare("0.3.72-rc1", "0.3.72"));
+	}
+
+	@Test
+	void hotfixIsOfferedToItsBaseOnly() {
+		final UpdateCheck.Release hotfix = UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.72-hotfix2"));
+		assertEquals("v0.3.72-hotfix2", hotfix.tag);
+		for (final boolean official : new boolean[] { true, false }) {
+			assertTrue(UpdateCheck.offers("0.3.71", hotfix, null, official));
+			assertTrue(UpdateCheck.offers("0.3.72", hotfix, null, official));
+			assertTrue(UpdateCheck.offers("0.3.72-hotfix1", hotfix, null, official));
+			assertFalse(UpdateCheck.offers("0.3.72-hotfix2", hotfix, null, official));
+			assertFalse(UpdateCheck.offers("0.3.72-hotfix3", hotfix, null, official));
+			assertFalse(UpdateCheck.offers("0.3.73", hotfix, null, official));
+			assertTrue(UpdateCheck.offers("0.3.72", 372, hotfix, null, official));
+			assertFalse(UpdateCheck.offers("0.3.72-hotfix2", 372, hotfix, null, official));
+			assertFalse(UpdateCheck.offers("0.3.72-hotfix2-debug", 372, hotfix, null, official));
+		}
+		assertTrue(UpdateCheck.offers("0.3.72", hotfix, null));
+		assertFalse(UpdateCheck.offers("0.3.72", hotfix, "v0.3.72-hotfix2"));
+		assertTrue(UpdateCheck.offers("0.3.72", hotfix, "v0.3.72"));
+		assertTrue(UpdateCheck.offers("dev", 371, hotfix, null, true));
+		assertFalse(UpdateCheck.offers("dev", 0, hotfix, null, true));
+		assertFalse(UpdateCheck.offers("dev", 372, UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.72")), null,
+				true));
+	}
+
+	@Test
+	void nextVersionIsOfferedToAHotfixBuild() {
+		final UpdateCheck.Release next = UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.73"));
+		assertTrue(UpdateCheck.offers("0.3.72-hotfix2", next, null, true));
+		assertTrue(UpdateCheck.offers("0.3.72-hotfix2", next, null, false));
+		final UpdateCheck.Release plain = UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.72"));
+		assertFalse(UpdateCheck.offers("0.3.72-hotfix2", plain, null, true));
+		assertFalse(UpdateCheck.offers("0.3.72-hotfix2", plain, null, false));
+	}
+
+	@Test
+	void unknownSuffixIsNotOfferedOverAPlainRelease() {
+		final UpdateCheck.Release plain = UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.72"));
+		for (final String suffix : new String[] { "-rc1", "-beta", "-debug", "-hotfixx" }) {
+			assertFalse(UpdateCheck.offers("0.3.72" + suffix, plain, null, true));
+			assertFalse(UpdateCheck.offers("0.3.72" + suffix, plain, null, false));
+		}
+		final UpdateCheck.Release rc = UpdateCheck.parseRelease(RELEASE.replace("v0.3.6", "v0.3.72-rc1"));
+		assertFalse(UpdateCheck.offers("0.3.72", rc, null, true));
+	}
+
+	@Test
 	void aFakeReleaseComesFromTheSystemProperty() {
 		System.setProperty(UpdateCheck.FAKE_PROPERTY, "v9.9.99");
 		try {

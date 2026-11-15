@@ -244,6 +244,29 @@ final class LanPage extends LauncherViews {
 		return square;
 	}
 
+	/**
+	 * A participant's profile portrait framed in the player's color; the colored initial when the portrait is not known
+	 * or this skin lacks it.
+	 */
+	static View portraitSquare(final LauncherActivity activity, final int portrait, final int argb, final String name,
+			final float size) {
+		final android.graphics.Bitmap image = portrait < 0 || !activity.art.has(SkinArt.portraitFile(portrait)) ? null
+				: activity.art.bitmap(SkinArt.portraitFile(portrait));
+		if (image == null) {
+			return colorSquare(activity, argb, name, size);
+		}
+		final FrameLayout square = new FrameLayout(activity);
+		square.setBackgroundColor(argb);
+		final android.widget.ImageView picture = new android.widget.ImageView(activity);
+		picture.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
+		picture.setImageBitmap(image);
+		final int frame = Math.max(2, Math.round(size * activity.scale * 0.05f));
+		final FrameLayout.LayoutParams inset = new FrameLayout.LayoutParams(MATCH, MATCH);
+		inset.setMargins(frame, frame, frame, frame);
+		square.addView(picture, inset);
+		return square;
+	}
+
 	private View gameRow(final LanLauncherModel.GameRow row, final float w, final float rowH) {
 		final boolean t = this.activity.board.tablet;
 		final LinearLayout view = new LinearLayout(this.activity);

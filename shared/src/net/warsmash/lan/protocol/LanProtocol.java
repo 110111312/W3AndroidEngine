@@ -15,6 +15,8 @@ public final class LanProtocol {
 
 	public static final int MAX_PLAYER_NAME = 15;
 	public static final int MAX_GAME_NAME = 31;
+	/** A profile portrait as the launcher names it (its number in the skin's portraits). */
+	public static final int MAX_PORTRAIT = 64;
 	public static final int MAX_CHAT = 255;
 	public static final int MAX_SLOTS = 24;
 	public static final int MAX_PARTICIPANTS = 24;

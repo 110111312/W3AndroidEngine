@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.utils.Align;
 import com.etheller.warsmash.input.touch.ControlScheme;
 import com.etheller.warsmash.lan.LanGameStart;
@@ -96,7 +97,7 @@ final class LanPages {
 
 		@Override
 		public String portrait() {
-			return "";
+			return Integer.toString(LanPages.this.s.profiles.portrait(LanPages.this.s.profiles.current()));
 		}
 
 		@Override
@@ -460,6 +461,18 @@ final class LanPages {
 		return this.s.glue("BACK", "Back");
 	}
 
+	/** A participant's profile portrait framed in the player's color; the colored initial when it is not known. */
+	private void portrait(final Gui g, final float x, final float y, final float size, final int portrait,
+			final int argb, final String name) {
+		final TextureRegion image = portrait < 0 ? null : this.s.art.portrait(portrait);
+		if (image == null) {
+			portrait(g, x, y, size, argb, name, false);
+			return;
+		}
+		g.fill(x - 3, y - 3, size + 6, size + 6, argb);
+		g.cover(image, x, y, size, size, 0.5f);
+	}
+
 	private void portrait(final Gui g, final float x, final float y, final float size, final int argb,
 			final String name, final boolean dim) {
 		final int c = dim ? Gui.muted(argb) : argb;
@@ -687,7 +700,7 @@ final class LanPages {
 					Align.left);
 			y += rowH + gp;
 			for (final LanLobbyView.Watcher w : view.watchers) {
-				portrait(g, x0, y + ((rowH - pp) / 2), pp, 0xFF777777, w.name, false);
+				portrait(g, x0, y + ((rowH - pp) / 2), pp, w.portrait, 0xFF777777, w.name);
 				if (w.kickable) {
 					final int who = w.participantId;
 					g.dropdown("lanWatcher" + who, new String[] { w.name, "Kick" }, 0, x1, y + (rowH * 0.05f),
@@ -838,8 +851,9 @@ final class LanPages {
 		final boolean human = row.kind == LanLobbyView.PLAYER;
 		final boolean player = human || row.kind == LanLobbyView.COMPUTER;
 		if (player) {
-			portrait(g, x0, y + ((rowH - pp) / 2), pp, CustomGame.PLAYER_COLORS[Math.floorMod(row.color, CustomGame.PLAYER_COLORS.length)],
-					row.kind == LanLobbyView.COMPUTER ? "C" : row.name, false);
+			portrait(g, x0, y + ((rowH - pp) / 2), pp, row.portrait,
+					CustomGame.PLAYER_COLORS[Math.floorMod(row.color, CustomGame.PLAYER_COLORS.length)],
+					row.kind == LanLobbyView.COMPUTER ? "C" : row.name);
 		}
 		else {
 			g.outline(x0, y + ((rowH - pp) / 2), pp, pp, 3, 0xFF4A4030);

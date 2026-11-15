@@ -127,6 +127,8 @@ public final class LanLoop {
 		}
 	}
 
+	private static final long CALL_POLL_MS = 100;
+
 	private final String name;
 	private final LanTimings timings;
 	private final Selector selector;
@@ -138,6 +140,8 @@ public final class LanLoop {
 	private final Set<Runnable> shutdownHooks = new HashSet<Runnable>();
 	private volatile boolean running;
 	private volatile boolean started;
+	/** Set once the loop has cleaned up: no task queued after it runs any more. */
+	private volatile boolean finished;
 	private volatile LanFaultInjector injector;
 	private long timerOrder;
 
@@ -215,7 +219,18 @@ public final class LanLoop {
 		final FutureTask<T> f = new FutureTask<T>(callable);
 		execute(f);
 		try {
-			return f.get();
+			while (true) {
+				try {
+					return f.get(CALL_POLL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+				}
+				catch (final java.util.concurrent.TimeoutException e) {
+					// A loop that has stopped (a session closed while its listeners still ask it) runs no more tasks;
+					// nothing else touches its state then, so the caller answers for it rather than waiting forever.
+					if (this.finished && this.tasks.remove(f)) {
+						f.run();
+					}
+				}
+			}
 		}
 		catch (final java.util.concurrent.ExecutionException e) {
 			final Throwable c = e.getCause();
@@ -436,6 +451,7 @@ public final class LanLoop {
 		}
 		finally {
 			cleanup();
+			this.finished = true;
 		}
 	}
 
@@ -532,6 +548,7 @@ public final class LanLoop {
 		this.running = false;
 		if (!this.started) {
 			cleanup();
+			this.finished = true;
 			return;
 		}
 		try {

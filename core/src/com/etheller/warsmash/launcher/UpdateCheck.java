@@ -58,7 +58,7 @@ public final class UpdateCheck {
 
 	/**
 	 * The numbers of a version such as v0.3.6, 0.3.6-debug or 0.3: a leading v and anything after the numbers is
-	 * ignored. Null when the text has no number.
+	 * ignored (the hotfix suffix is read by {@link #hotfix}). Null when the text has no number.
 	 */
 	public static int[] parse(final String version) {
 		if (version == null) {
@@ -89,13 +89,40 @@ public final class UpdateCheck {
 		return count == 0 ? null : numbers;
 	}
 
-	/** Positive when {@code a} is the newer version; zero when either has no version. */
-	public static int compare(final String a, final String b) {
-		final int[] left = parse(a);
-		final int[] right = parse(b);
-		if ((left == null) || (right == null)) {
+	/**
+	 * The hotfix number of a version such as 0.3.72-hotfix2: the digits after "-hotfix" (plain "-hotfix" is 1), zero
+	 * for a version without that suffix. Any other suffix (-rc1, -debug, -hotfixx) counts for nothing.
+	 */
+	public static int hotfix(final String version) {
+		if (parse(version) == null) {
 			return 0;
 		}
+		final String text = version.trim().toLowerCase(java.util.Locale.ROOT);
+		final int at = text.indexOf("-hotfix");
+		if (at < 0) {
+			return 0;
+		}
+		int i = at + "-hotfix".length();
+		if ((i < text.length()) && Character.isLetter(text.charAt(i))) {
+			return 0;
+		}
+		long number = 0;
+		boolean digits = false;
+		while ((i < text.length()) && Character.isDigit(text.charAt(i))) {
+			number = Math.min(Integer.MAX_VALUE, (number * 10) + (text.charAt(i) - '0'));
+			digits = true;
+			i++;
+		}
+		return digits ? (int) Math.max(1, number) : 1;
+	}
+
+	/** The full ordering key: major, minor, patch, hotfix; null when the text has no number. */
+	private static int[] rank(final String version) {
+		final int[] numbers = parse(version);
+		return numbers == null ? null : new int[] { numbers[0], numbers[1], numbers[2], hotfix(version) };
+	}
+
+	private static int compareRanks(final int[] left, final int[] right) {
 		for (int i = 0; i < left.length; i++) {
 			if (left[i] != right[i]) {
 				return Integer.compare(left[i], right[i]);
@@ -105,8 +132,22 @@ public final class UpdateCheck {
 	}
 
 	/**
+	 * Positive when {@code a} is the newer version; zero when either has no version. A "-hotfixN" build is newer than
+	 * the same numbers without it and older than the next version.
+	 */
+	public static int compare(final String a, final String b) {
+		final int[] left = rank(a);
+		final int[] right = rank(b);
+		if ((left == null) || (right == null)) {
+			return 0;
+		}
+		return compareRanks(left, right);
+	}
+
+	/**
 	 * The build number of a version as the APK carries it: minor * 100 + patch (0.3.11 is 311), with the major number
-	 * above them. Zero when the text has no number. Valid while minor and patch stay below 100.
+	 * above them. Zero when the text has no number. Valid while minor and patch stay below 100. A hotfix keeps the
+	 * code of its base version, so the code alone never tells a hotfix from its base.
 	 */
 	public static int versionCode(final String version) {
 		final int[] numbers = parse(version);
@@ -115,35 +156,57 @@ public final class UpdateCheck {
 
 	/** Whether the prompt shows: the release is newer than the installed version and not the one the player skipped. */
 	public static boolean offers(final String installed, final Release release, final String skipped) {
-		return offers(versionCode(installed), release, skipped, true);
+		return offers(installed, release, skipped, true);
 	}
 
 	/**
-	 * Whether the prompt shows for an installed build. Only a release with a higher version code than the installed
-	 * build is ever offered, so a build of the release's own version (a debug build included) is never told to update
-	 * to itself. An official build with an unknown version gets nothing; an unofficial one (built by someone else,
-	 * signed with another key) whose version is unknown is offered a release that has an APK. Skipping a release
-	 * silences it either way.
+	 * Whether the prompt shows for an installed build. Only a release with a higher version (hotfix number included)
+	 * than the installed build is ever offered, so a build of the release's own version (a debug build included) is
+	 * never told to update to itself. An official build with an unknown version gets nothing; an unofficial one (built
+	 * by someone else, signed with another key) whose version is unknown is offered a release that has an APK.
+	 * Skipping a release silences it either way.
 	 */
 	public static boolean offers(final String installed, final Release release, final String skipped,
 			final boolean officialBuild) {
-		return offers(versionCode(installed), release, skipped, officialBuild);
+		return offers(rank(installed), release, skipped, officialBuild);
 	}
 
-	/** The same by the installed build's version code; zero means the build does not know its version. */
+	/**
+	 * The same by the installed build's version code, which has no hotfix number; zero means the build does not know
+	 * its version. Prefer the overload that takes the version name.
+	 */
 	public static boolean offers(final int installedCode, final Release release, final String skipped,
+			final boolean officialBuild) {
+		return offers(codeRank(installedCode), release, skipped, officialBuild);
+	}
+
+	/**
+	 * The same by the installed version name, with the code the APK carries as the fallback when the name has no
+	 * numbers.
+	 */
+	public static boolean offers(final String installedName, final int installedCode, final Release release,
+			final String skipped, final boolean officialBuild) {
+		final int[] installed = rank(installedName);
+		return offers(installed != null ? installed : codeRank(installedCode), release, skipped, officialBuild);
+	}
+
+	private static int[] codeRank(final int code) {
+		return code > 0 ? new int[] { code / 10000, (code / 100) % 100, code % 100, 0 } : null;
+	}
+
+	private static boolean offers(final int[] installed, final Release release, final String skipped,
 			final boolean officialBuild) {
 		if ((release == null) || ((skipped != null) && !skipped.isEmpty() && (compare(release.tag, skipped) == 0))) {
 			return false;
 		}
-		final int releaseCode = versionCode(release.tag);
-		if (releaseCode <= 0) {
+		final int[] latest = rank(release.tag);
+		if ((latest == null) || ((latest[0] | latest[1] | latest[2] | latest[3]) == 0)) {
 			return false;
 		}
 		if (officialBuild) {
-			return (installedCode > 0) && (releaseCode > installedCode);
+			return (installed != null) && (compareRanks(latest, installed) > 0);
 		}
-		return release.hasApk() && ((installedCode <= 0) || (releaseCode > installedCode));
+		return release.hasApk() && ((installed == null) || (compareRanks(latest, installed) > 0));
 	}
 
 	/** The latest release from the API's answer; null when it is a draft, a prerelease or not a release. */

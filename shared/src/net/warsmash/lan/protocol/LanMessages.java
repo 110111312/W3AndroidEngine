@@ -49,7 +49,7 @@ public final class LanMessages {
 			w.i32(LanProtocol.MAGIC).u16(this.protocolVersion);
 			w.string(this.engineVersion, 32).string(this.buildCommit, 48).bool(this.officialBuild)
 					.i64(this.dataChecksum).string(this.playerName, LanProtocol.MAX_PLAYER_NAME)
-					.string(this.portrait, 64).u16(this.listenPort).u8(this.controlScheme).u8(this.wantedRole);
+					.string(this.portrait, LanProtocol.MAX_PORTRAIT).u16(this.listenPort).u8(this.controlScheme).u8(this.wantedRole);
 			w.bool(this.rejoin != null);
 			if (this.rejoin != null) {
 				this.rejoin.write(w);
@@ -74,7 +74,7 @@ public final class LanMessages {
 			h.officialBuild = r.bool();
 			h.dataChecksum = r.i64();
 			h.playerName = r.name(LanProtocol.MAX_PLAYER_NAME);
-			h.portrait = r.name(64);
+			h.portrait = r.name(LanProtocol.MAX_PORTRAIT);
 			h.listenPort = r.u16();
 			h.controlScheme = r.u8(1);
 			h.wantedRole = r.u8(2);
@@ -246,6 +246,8 @@ public final class LanMessages {
 		public LanData.Options options = new LanData.Options();
 		public LanData.MapInfo map = new LanData.MapInfo();
 		public boolean syncWarning;
+		/** The profile portrait each participant chose, by participant id; those without one are left out. */
+		public final java.util.TreeMap<Integer, String> portraits = new java.util.TreeMap<Integer, String>();
 
 		@Override
 		public int type() {
@@ -269,6 +271,10 @@ public final class LanMessages {
 			this.options.write(w);
 			this.map.write(w);
 			w.bool(this.syncWarning);
+			w.u16(this.portraits.size());
+			for (final java.util.Map.Entry<Integer, String> e : this.portraits.entrySet()) {
+				w.u8(e.getKey()).string(e.getValue(), LanProtocol.MAX_PORTRAIT);
+			}
 		}
 
 		static LobbyState read(final ByteReader r) throws LanProtocolException {
@@ -290,6 +296,14 @@ public final class LanMessages {
 			m.options = LanData.Options.read(r);
 			m.map = LanData.MapInfo.read(r);
 			m.syncWarning = r.bool();
+			n = r.count(LanProtocol.MAX_PARTICIPANTS, 2);
+			for (int i = 0; i < n; i++) {
+				final int id = r.u8();
+				final String portrait = r.name(LanProtocol.MAX_PORTRAIT);
+				if (m.portraits.put(id, portrait) != null) {
+					throw new LanProtocolException("portrait listed twice");
+				}
+			}
 			return m;
 		}
 	}

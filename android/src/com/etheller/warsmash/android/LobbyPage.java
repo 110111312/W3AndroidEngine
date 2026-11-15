@@ -326,7 +326,8 @@ final class LobbyPage extends LauncherViews {
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setPadding(px(8), 0, px(8), 0);
 		final float pp = t ? 84 : 66;
-		row.addView(LanPage.colorSquare(this.activity, 0xFF777777, w.name, pp), new LinearLayout.LayoutParams(px(pp), px(pp)));
+		row.addView(LanPage.portraitSquare(this.activity, w.portrait, 0xFF777777, w.name, pp),
+				new LinearLayout.LayoutParams(px(pp), px(pp)));
 		final LinearLayout texts = new LinearLayout(this.activity);
 		texts.setOrientation(LinearLayout.VERTICAL);
 		final LinearLayout nameLine = new LinearLayout(this.activity);
@@ -374,7 +375,8 @@ final class LobbyPage extends LauncherViews {
 		final boolean human = row.kind == LanLobbyView.PLAYER;
 		final boolean player = human || (row.kind == LanLobbyView.COMPUTER);
 		if (player) {
-			place(cell, LanPage.colorSquare(this.activity, CustomGame.PLAYER_COLORS[Math.floorMod(row.color, CustomGame.PLAYER_COLORS.length)],
+			place(cell, LanPage.portraitSquare(this.activity, row.portrait,
+					CustomGame.PLAYER_COLORS[Math.floorMod(row.color, CustomGame.PLAYER_COLORS.length)],
 					row.kind == LanLobbyView.COMPUTER ? "C" : row.name, pp), 8, (rowH - pp) / 2, pp, pp);
 		}
 		else {

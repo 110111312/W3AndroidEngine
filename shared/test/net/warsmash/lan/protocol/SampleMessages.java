@@ -73,6 +73,8 @@ public final class SampleMessages {
 		l.options = options();
 		l.map = map();
 		l.syncWarning = true;
+		l.portraits.put(1, "12");
+		l.portraits.put(9, "3");
 		return l;
 	}
 

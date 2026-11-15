@@ -100,7 +100,7 @@ class LanLauncherModelTest {
 
 		@Override
 		public String portrait() {
-			return "";
+			return "5";
 		}
 
 		@Override
@@ -383,6 +383,22 @@ class LanLauncherModelTest {
 		assertNull(LanSessions.current());
 		assertFalse(this.model.inSession());
 		assertEquals(LanLauncherModel.Mode.JOIN, this.model.mode());
+	}
+
+	@Test
+	void leavingDoesNotHangOnTheLateDisconnect() throws Exception {
+		this.model = new LanLauncherModel(this.env);
+		assertNull(this.model.create(settings()));
+		until("the lobby", () -> (this.model.lobby() != null) && (this.model.lobby().mine != null));
+		assertEquals(5, this.model.lobby().mine.portrait);
+		this.model.leave();
+		// the closed session's last word reaches the page's thread after the loop has stopped
+		org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+			Runnable r;
+			while ((r = this.posted.poll()) != null) {
+				r.run();
+			}
+		});
 	}
 
 	@Test
