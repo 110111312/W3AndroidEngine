@@ -36,6 +36,8 @@ import static org.lwjgl.openal.AL10.alSourceStop;
 import static org.lwjgl.openal.AL10.alSourcei;
 
 import java.nio.FloatBuffer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -74,6 +76,7 @@ public class OpenALAudio implements Audio {
 	private int mostRecetSound = -1;
 
 	private final ConcurrentHashMap<String, Future<OggPcm>> prefetchedOgg = new ConcurrentHashMap<>();
+	private final Map<String, byte[]> prefetchedWav = new HashMap<>();
 	private ExecutorService prefetchExecutor;
 
 	Array<OpenALMusic> music = new Array(false, 1, OpenALMusic.class);
@@ -153,8 +156,23 @@ public class OpenALAudio implements Audio {
 	 * which stays on the calling thread. The file is read here, as data sources are not for other threads.
 	 */
 	public void prefetchSound(final FileHandle file) {
-		if (this.noDevice || (file == null) || !"ogg".equalsIgnoreCase(file.extension())
-				|| this.prefetchedOgg.containsKey(file.path())) {
+		if (this.noDevice || (file == null)) {
+			return;
+		}
+		if ("wav".equalsIgnoreCase(file.extension())) {
+			// Most of a wav's newSound is reading it out of the game data (an MPQ decompresses it), which has to stay
+			// on this thread, so the loading screen reads it now.
+			if (!this.prefetchedWav.containsKey(file.path())) {
+				try {
+					this.prefetchedWav.put(file.path(), file.readBytes());
+				}
+				catch (final RuntimeException e) {
+					// Left to newSound, which reports it.
+				}
+			}
+			return;
+		}
+		if (!"ogg".equalsIgnoreCase(file.extension()) || this.prefetchedOgg.containsKey(file.path())) {
 			return;
 		}
 		final byte[] bytes;
@@ -173,6 +191,16 @@ public class OpenALAudio implements Audio {
 		}
 		this.prefetchedOgg.put(file.path(), this.prefetchExecutor.submit(() -> Ogg.decode(
 				new java.io.ByteArrayInputStream(bytes))));
+	}
+
+	/** @return the wav file read ahead, handing it over once, or null when there is none */
+	byte[] takePrefetchedWav(final FileHandle file) {
+		return this.prefetchedWav.remove(file.path());
+	}
+
+	/** Lets go of the wav files read ahead that nothing has asked for. */
+	public void dropPrefetchedWav() {
+		this.prefetchedWav.clear();
 	}
 
 	/** @return the sound decoded ahead for this file, handing it over once, or null when there is none */

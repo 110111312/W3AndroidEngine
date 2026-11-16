@@ -596,6 +596,7 @@ public class Jass2 {
 			CampaignNatives.register(jassProgramVisitor, war3MapViewer, meleeUI);
 			BlzNatives.register(jassProgramVisitor, war3MapViewer);
 			CustomMapNatives.register(jassProgramVisitor, war3MapViewer);
+			ObjectFieldNatives.register(jassProgramVisitor, war3MapViewer);
 			ScriptObjectNatives.register(jassProgramVisitor, war3MapViewer);
 		}
 

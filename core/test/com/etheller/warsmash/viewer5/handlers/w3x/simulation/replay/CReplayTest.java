@@ -155,6 +155,19 @@ public class CReplayTest {
 	}
 
 	@Test
+	void theHeaderKeepsWhichSlotsPlayedWithAKeyboardAndMouse() throws IOException {
+		final CReplayHeader marked = header().withKeyboardAndMouseSlots((1 << 2) | (1 << 5));
+		final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		new CReplayWriter(bytes, marked).close();
+		final CReplayHeader read = CReplay.readHeader(new ByteArrayInputStream(bytes.toByteArray()));
+		assertTrue(read.usesKeyboardAndMouse(2));
+		assertTrue(read.usesKeyboardAndMouse(5));
+		assertFalse(read.usesKeyboardAndMouse(0));
+		assertFalse(read.usesKeyboardAndMouse(-1));
+		assertFalse(header().usesKeyboardAndMouse(2));
+	}
+
+	@Test
 	public void playbackAppliesTheCommandsInTheirStepsAndMatchesEveryChecksum() throws IOException {
 		final CSimulation recorded = gameWithPlayers(300);
 		final HostLog recordedHost = new HostLog(recorded);
@@ -402,6 +415,30 @@ public class CReplayTest {
 		assertEquals(AIDifficulty.INSANE, again.getPlayer(1).getAIDifficulty());
 		assertEquals(0, again.getPlayer(1).getStartLocationIndex());
 		assertEquals(CMapControl.NEUTRAL, again.getPlayer(WarsmashConstants.MAX_PLAYERS - 1).getController());
+	}
+
+	@Test
+	public void aFormat4HeaderStillReadsWithoutTheKeyboardAndMouseMask() throws IOException {
+		final int mask = 0x01020304;
+		final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		new CReplayWriter(bytes, header().withKeyboardAndMouseSlots(mask)).close();
+		final byte[] now = bytes.toByteArray();
+		int at = -1;
+		for (int i = 8; i + 4 <= now.length && at < 0; i++) {
+			if ((now[i] == 1) && (now[i + 1] == 2) && (now[i + 2] == 3) && (now[i + 3] == 4)) {
+				at = i;
+			}
+		}
+		assertTrue(at > 0, "the mask closes the header");
+		final byte[] old = new byte[now.length - 4];
+		System.arraycopy(now, 0, old, 0, at);
+		System.arraycopy(now, at + 4, old, at, now.length - at - 4);
+		old[7] = 4;
+		final CReplayHeader read = CReplay.readHeader(new ByteArrayInputStream(old));
+		assertEquals("test", read.getEngineVersion());
+		assertEquals(1337, read.getSeed());
+		assertFalse(read.usesKeyboardAndMouse(2));
+		assertFalse(CReplay.read(new ByteArrayInputStream(old)).getHeader().usesKeyboardAndMouse(2));
 	}
 
 	@Test

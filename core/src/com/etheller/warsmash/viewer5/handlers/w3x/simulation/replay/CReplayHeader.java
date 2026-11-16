@@ -36,6 +36,7 @@ public final class CReplayHeader {
 	private final int checksumInterval;
 	private final List<Slot> slots;
 	private final byte[] gameCaches;
+	private final int keyboardAndMouseSlots;
 
 	/**
 	 * @param dataChecksum the checksum of the game data the game ran on (see {@code GameReplays#dataChecksum})
@@ -45,6 +46,20 @@ public final class CReplayHeader {
 			final int dataChecksum, final long recordedAt, final int seed, final int localPlayerIndex,
 			final float gameSpeed, final CMapDifficulty difficulty, final int checksumInterval, final List<Slot> slots,
 			final byte[] gameCaches) {
+		this(engineVersion, buildCommit, officialBuild, mapPath, mapChecksum, mapSize, dataChecksum, recordedAt, seed,
+				localPlayerIndex, gameSpeed, difficulty, checksumInterval, slots, gameCaches, 0);
+	}
+
+	/**
+	 * @param keyboardAndMouseSlots bit i set: the human in player slot i played with a keyboard and mouse, not touch
+	 *                              (shown by a replay list, never read by the simulation)
+	 */
+	public CReplayHeader(final String engineVersion, final String buildCommit, final boolean officialBuild,
+			final String mapPath, final int mapChecksum, final long mapSize,
+			final int dataChecksum, final long recordedAt, final int seed, final int localPlayerIndex,
+			final float gameSpeed, final CMapDifficulty difficulty, final int checksumInterval, final List<Slot> slots,
+			final byte[] gameCaches, final int keyboardAndMouseSlots) {
+		this.keyboardAndMouseSlots = keyboardAndMouseSlots;
 		this.engineVersion = engineVersion;
 		this.buildCommit = buildCommit;
 		this.officialBuild = officialBuild;
@@ -78,6 +93,18 @@ public final class CReplayHeader {
 		return new CReplayHeader(engineVersion, buildCommit, officialBuild, mapPath, mapChecksum, mapSize,
 				dataChecksum, recordedAt, seed,
 				localPlayerIndex, gameSpeed, config.getGameDifficulty(), checksumInterval, slots, gameCaches);
+	}
+
+	/** The same header with these slots marked as played with a keyboard and mouse (bit i: player slot i). */
+	public CReplayHeader withKeyboardAndMouseSlots(final int slotMask) {
+		return new CReplayHeader(this.engineVersion, this.buildCommit, this.officialBuild, this.mapPath,
+				this.mapChecksum, this.mapSize, this.dataChecksum, this.recordedAt, this.seed, this.localPlayerIndex,
+				this.gameSpeed, this.difficulty, this.checksumInterval, this.slots, this.gameCaches, slotMask);
+	}
+
+	/** Whether the human in this player slot played with a keyboard and mouse when the game began. */
+	public boolean usesKeyboardAndMouse(final int slot) {
+		return (slot >= 0) && (slot < 32) && ((this.keyboardAndMouseSlots >>> slot) & 1) != 0;
 	}
 
 	/** Puts the recorded game setup over the one the map's own setup made. */
@@ -177,9 +204,10 @@ public final class CReplayHeader {
 			out.writeInt(this.gameCaches.length);
 			out.write(this.gameCaches);
 		}
+		out.writeInt(this.keyboardAndMouseSlots);
 	}
 
-	static CReplayHeader read(final DataInputStream in) throws IOException {
+	static CReplayHeader read(final DataInputStream in, final int formatVersion) throws IOException {
 		final String engineVersion = in.readUTF();
 		final String buildCommit = in.readUTF();
 		final boolean officialBuild = in.readBoolean();
@@ -204,9 +232,10 @@ public final class CReplayHeader {
 			gameCaches = new byte[cachesLength];
 			in.readFully(gameCaches);
 		}
+		final int keyboardAndMouseSlots = formatVersion >= 5 ? in.readInt() : 0;
 		return new CReplayHeader(engineVersion, buildCommit, officialBuild, mapPath, mapChecksum, mapSize,
 				dataChecksum, recordedAt, seed,
-				localPlayerIndex, gameSpeed, difficulty, checksumInterval, slots, gameCaches);
+				localPlayerIndex, gameSpeed, difficulty, checksumInterval, slots, gameCaches, keyboardAndMouseSlots);
 	}
 
 	/** A player slot as the game setup left it. */

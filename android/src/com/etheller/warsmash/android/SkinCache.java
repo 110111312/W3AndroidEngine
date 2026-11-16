@@ -1,7 +1,9 @@
 package com.etheller.warsmash.android;
 
 import static com.etheller.warsmash.launcher.SkinArt.FONT;
+import static com.etheller.warsmash.launcher.SkinArt.FONT_BOLD;
 import static com.etheller.warsmash.launcher.SkinArt.FONT_GLOBAL;
+import static com.etheller.warsmash.launcher.SkinArt.FONT_MASTER;
 import static com.etheller.warsmash.launcher.SkinArt.MISSIONS;
 import static com.etheller.warsmash.launcher.SkinArt.MISSION_FOLDER;
 import static com.etheller.warsmash.launcher.SkinArt.REFORGED_SKIN;
@@ -108,7 +110,8 @@ final class SkinCache {
 		}
 		final boolean reforged = REFORGED_SKIN.equals(skin);
 		final String name = reforged ? REFORGED_SKIN : SkinArt.CLASSIC_SKIN;
-		final StringBuilder key = new StringBuilder().append(FORMAT).append('|').append(name);
+		final StringBuilder key = new StringBuilder().append(FORMAT).append('|')
+				.append(Integer.toHexString(SkinArt.revision(reforged))).append('|').append(name);
 		for (int i = 0; i < sources.size(); i++) {
 			final String id = String.format(Locale.ROOT, "%02d", i);
 			// The player's maps are not part of the art, so the art is not made again when they change.
@@ -560,6 +563,7 @@ final class SkinCache {
 		private final Map<String, Bitmap> bitmaps = new HashMap<>();
 		private final Map<String, String> strings = new HashMap<>();
 		private Typeface font;
+		private Typeface fontBold;
 
 		Art(final SkinCache cache) {
 			this.cache = cache;
@@ -651,24 +655,37 @@ final class SkinCache {
 			return pictures;
 		}
 
+		/** The skin's text font: the Reforged interface's MasterFont there, Friz Quadrata on the classic skin. */
 		Typeface font() {
 			if (this.font == null) {
-				final File file = this.cache.file(FONT);
-				Typeface loaded = null;
-				if (file.isFile()) {
-					try {
-						loaded = Typeface.createFromFile(file);
-					}
-					catch (final RuntimeException e) {
-						Log.w(TAG, "Unable to load " + file, e);
-					}
-				}
-				if ((loaded != null) && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)) {
-					loaded = withGlobalFallback(file, loaded);
-				}
-				this.font = loaded != null ? loaded : Typeface.SERIF;
+				this.font = load(this.cache.reforged && has(FONT_MASTER) ? FONT_MASTER : FONT);
 			}
 			return this.font;
+		}
+
+		/** MasterFontBold of the Reforged interface, for headings and names; the text font where the data lacks it. */
+		Typeface fontBold() {
+			if (this.fontBold == null) {
+				this.fontBold = this.cache.reforged && has(FONT_BOLD) ? load(FONT_BOLD) : font();
+			}
+			return this.fontBold;
+		}
+
+		private Typeface load(final String name) {
+			final File file = this.cache.file(name);
+			Typeface loaded = null;
+			if (file.isFile()) {
+				try {
+					loaded = Typeface.createFromFile(file);
+				}
+				catch (final RuntimeException e) {
+					Log.w(TAG, "Unable to load " + file, e);
+				}
+			}
+			if ((loaded != null) && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)) {
+				loaded = withGlobalFallback(file, loaded);
+			}
+			return loaded != null ? loaded : Typeface.SERIF;
 		}
 
 		private Typeface withGlobalFallback(final File main, final Typeface plain) {

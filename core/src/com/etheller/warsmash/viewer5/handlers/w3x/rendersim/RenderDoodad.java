@@ -181,16 +181,15 @@ public class RenderDoodad {
 	}
 
 
-	public void updateFog(final War3MapViewer war3MapViewer) {
-		final CPlayerFogOfWar fogOfWar = war3MapViewer.getFogOfWar();
-		final PathingGrid pathingGrid = war3MapViewer.simulation.getPathingGrid();
-		final int fogOfWarIndexX = pathingGrid.getFogOfWarIndexX(this.x);
-		final int fogOfWarIndexY = pathingGrid.getFogOfWarIndexY(this.y);
-		final CFogState newFogState = fogOfWar.getFogState(war3MapViewer.simulation, fogOfWarIndexX, fogOfWarIndexY);
-		if (newFogState != this.fogState) {
-			this.fogState = newFogState;
-		}
-		final byte shade = war3MapViewer.getFogShade(newFogState.getMask());
+	/**
+	 * @param shadeByState fog shade of each {@link CFogState}, by ordinal, worked out once for the whole pass
+	 */
+	public void updateFog(final War3MapViewer war3MapViewer, final CPlayerFogOfWar fogOfWar,
+			final PathingGrid pathingGrid, final byte[] shadeByState) {
+		final CFogState newFogState = fogOfWar.getFogState(war3MapViewer.simulation,
+				pathingGrid.getFogOfWarIndexX(this.x), pathingGrid.getFogOfWarIndexY(this.y));
+		this.fogState = newFogState;
+		final byte shade = shadeByState[newFogState.ordinal()];
 		if (shade != this.lastFogStateColor) {
 			this.lastFogStateColor = War3MapViewer.fadeLineOfSightColor(this.lastFogStateColor, shade);
 			for (int i = 0; i < this.vertexColorBase.length; i++) {

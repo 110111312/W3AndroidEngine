@@ -81,6 +81,9 @@ class StaticStateTest {
 			"simulation.combat.attacks.listeners.CUnitAttackDamageTakenListener#ENEMY_TARGET",
 			// Which missing destructors were reported already, for the log.
 			"jass.CommonNatives#REPORTED_MISSING_DESTRUCTORS",
+			// Tables of object field accessors, filled once and only read after.
+			"jass.ObjectFieldNatives#UNIT_INT_GET", "jass.ObjectFieldNatives#UNIT_INT_SET", "jass.ObjectFieldNatives#UNIT_REAL_GET", "jass.ObjectFieldNatives#UNIT_REAL_SET", "jass.ObjectFieldNatives#UNIT_BOOL_GET", "jass.ObjectFieldNatives#UNIT_BOOL_SET",
+			"jass.ObjectFieldNatives#UNIT_STRING_GET", "jass.ObjectFieldNatives#UNIT_STRING_SET", "jass.ObjectFieldNatives#ITEM_INT_GET", "jass.ObjectFieldNatives#ITEM_INT_SET", "jass.ObjectFieldNatives#ITEM_STRING_GET", "jass.ObjectFieldNatives#ITEM_STRING_SET",
 			// The script log file.
 			"interpreter.ast.util.JassLog#jassLogWriter",
 			// Tables of the generated script lexer.
@@ -192,7 +195,7 @@ class StaticStateTest {
 			"w3x.SequenceUtils#WORK", "w3x.SequenceUtils#COMPLETE", "w3x.SequenceUtils#FAST", "w3x.SequenceUtils#ALTERNATE",
 			// Process-wide switches of the graphics device and the command line, set before the viewers exist.
 			"w3x.DynamicShadowManager#IS_SHADOW_MAPPING", "w3x.environment.Terrain#WIREFRAME_TERRAIN",
-			"mdx.MdxViewer#DEFAULT_SHADER_ENV", "w3x.War3MapViewer#defaultTimeScale",
+			"mdx.MdxViewer#DEFAULT_SHADER_ENV", "w3x.War3MapViewer#defaultTimeScale", "mdx.ClassicEffects#emissionScale",
 			// Key counters that only have to stay unique, and the player's options and replay bundle as read from disk.
 			"w3x.rendersim.RenderImage#nextKey", "w3x.rendersim.RenderUbersplat#nextKey", "w3x.ui.GameOptions#current",
 			"mdx.MdxModel#reportedStreamConversion"));
@@ -210,6 +213,7 @@ class StaticStateTest {
 			// State of the graphics device, the render thread and the platform, set up when a GL context or an activity
 			// starts; scratch of the render thread; the open resource scopes of the screens.
 			"core.GammaOverlay#white", "core.GammaOverlay#whiteContext", "core.GammaOverlay#whiteGeneration",
+			"core.viewer5.RenderScaler#currentTarget", "core.util.FrameLimiter#maxFps", "core.util.FrameLimiter#deadline",
 			"core.util.GraphicsContext#generation", "core.parsers.fdf.frames.StringFrame#shapeRenderer",
 			"core.viewer5.gl.Extensions#angleInstancedArrays", "core.viewer5.gl.Extensions#dynamicShadowExtension",
 			"core.viewer5.gl.Extensions#wireframeExtension", "core.viewer5.gl.Extensions#audio",
@@ -260,6 +264,8 @@ class StaticStateTest {
 			// Tables, arrays and sets filled once when the class loads and never written again (object data field lists,
 			// launcher menus and names, skin art, anchor priorities, decoder tables, lookup maps).
 			"core.datasources.AssetPathFallback#GRAPHICS_PACKAGES", "core.datasources.GraphicsSettings#TEXTURE_SIZES",
+			"core.datasources.GraphicsSettings#RENDER_SCALES", "core.launcher.LauncherOptions#RENDER_SCALES",
+			"core.launcher.LauncherOptions#FRAME_CAPS", "core.launcher.LauncherOptions#FRAME_CAP_NAMES",
 			"core.datasources.LayeredDataSource#OTHER_PICTURES", "core.launcher.CampaignResult#ROWS",
 			"core.launcher.CustomGame#SLOT_TYPES", "core.launcher.CustomGame#RACES", "core.launcher.CustomGame#OPTION_NAMES",
 			"core.launcher.CustomGame#OPTION_SHOWN", "core.launcher.CustomGame#COLOR_NAMES",
@@ -272,6 +278,7 @@ class StaticStateTest {
 			"core.launcher.LauncherOptions#GAMEPLAY", "core.launcher.SkinArt#RACE_SYMBOLS", "core.launcher.SkinArt#SCENES",
 			"core.launcher.SkinArt#STRING_FILES", "core.launcher.SkinArt#CLASSIC_PORTRAIT_RACES",
 			"core.launcher.SkinArt#CLASSIC_PORTRAITS", "core.launcher.SkinArt#EDGE_PLACES",
+			"core.launcher.ResultMotion#EASE",
 			"core.parsers.fdf.frames.AbstractRenderableFrame#LEFT_ANCHOR_PRIORITY",
 			"core.parsers.fdf.frames.AbstractRenderableFrame#RIGHT_ANCHOR_PRIORITY",
 			"core.parsers.fdf.frames.AbstractRenderableFrame#CENTER_HORIZ_ANCHOR_PRIORITY",

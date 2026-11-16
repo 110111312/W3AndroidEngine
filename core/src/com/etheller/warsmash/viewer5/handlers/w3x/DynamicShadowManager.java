@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.GL30;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.etheller.warsmash.util.RenderMathUtils;
+import com.etheller.warsmash.viewer5.RenderScaler;
 import com.etheller.warsmash.viewer5.gl.Extensions;
 import com.etheller.warsmash.viewer5.gl.WebGL;
 
@@ -116,7 +117,7 @@ public class DynamicShadowManager {
 	// Don't forget to change viewport back
 	public void endShadowMap() {
 		IS_SHADOW_MAPPING = false;
-		Gdx.gl30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+		Gdx.gl30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, RenderScaler.currentTarget());
 	}
 
 	public int getDepthTexture() {

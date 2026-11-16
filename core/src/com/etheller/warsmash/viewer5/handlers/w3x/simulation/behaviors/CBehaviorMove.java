@@ -1066,24 +1066,33 @@ public class CBehaviorMove implements CBehavior {
 
 	/**
 	 * Measured: the way of an attack to a standing unit, from further away than a short walk, is not smoothed and runs
-	 * on the cell centres (1.29 walks the grid row of its start up to the target); a short walk, a creep target, spell approaches, work
-	 * orders and the way to a walking unit are unchanged.
+	 * on the cell centres (1.29 walks the grid row of its start up to the target); a short walk, a creep target the
+	 * unit was not ordered to attack, spell approaches, work orders and the way to a walking unit are unchanged.
 	 */
 	public boolean walksRowsToStandingTarget(final CSimulation simulation) {
 		return (this.followUnit != null) && (this.rangedBehavior instanceof CBehaviorAttack)
 				&& !this.followUnit.isBuilding()
 				&& !this.followUnit.isWalking(simulation.getGameTurnTick())
 				&& (StrictMath.hypot(this.unit.getX() - this.followUnit.getX(),
-						this.unit.getY() - this.followUnit.getY()) > ROW_PATH_MIN_DISTANCE);
+						this.unit.getY() - this.followUnit.getY()) > ROW_PATH_MIN_DISTANCE)
+				&& (!simulation.isNeutralAggressive(this.followUnit.getPlayerIndex())
+						|| isOrderedAgainstFollowUnit(simulation));
+	}
+
+	/** An attack ordered on this very unit, not one taken up on the way of an attack-move or by acquisition. */
+	private boolean isOrderedAgainstFollowUnit(final CSimulation simulation) {
+		final COrder order = this.unit.getCurrentOrder();
+		return (order != null) && (order.getTarget(simulation) == this.followUnit);
 	}
 
 	/**
 	 * Measured: an attack on a standing unit from further away than a short walk goes straight from where the unit
 	 * stands to the centre of a cell on the near side of the target: two cells toward the unit along the axis the target
-	 * lies on (a diagonal one: two on both axes) and one across it. Returns null when the order does not walk that way.
+	 * lies on (a diagonal one: two on both axes) and one across it, when the unit was ordered to attack that target.
+	 * Returns null when the order does not walk that way.
 	 */
 	public CPathPoint approachCell(final CSimulation simulation, final float fromX, final float fromY) {
-		if (!walksRowsToStandingTarget(simulation)) {
+		if (!walksRowsToStandingTarget(simulation) || !isOrderedAgainstFollowUnit(simulation)) {
 			return null;
 		}
 		final float targetX = this.followUnit.getX();

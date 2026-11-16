@@ -54,6 +54,17 @@ public class ClientBuffer {
 		this.gl.glDeleteBuffer(this.buffer);
 	}
 
+	/**
+	 * Uploads the first size bytes by giving the buffer fresh storage with the data in it, instead of overwriting
+	 * storage that queued draws may still be reading: some mobile GPUs wait for those draws or copy the buffer on
+	 * every partial update.
+	 */
+	public void bindAndReplace(final int size) {
+		final GL20 gl = this.gl;
+		gl.glBindBuffer(GL20.GL_ARRAY_BUFFER, this.buffer);
+		gl.glBufferData(GL20.GL_ARRAY_BUFFER, size, this.byteView, GL20.GL_STREAM_DRAW);
+	}
+
 	public void bindAndUpdate() {
 		bindAndUpdate(this.size);
 	}

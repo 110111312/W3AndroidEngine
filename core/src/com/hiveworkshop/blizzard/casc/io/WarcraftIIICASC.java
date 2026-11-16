@@ -2,6 +2,7 @@ package com.hiveworkshop.blizzard.casc.io;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.file.Files;
@@ -143,6 +144,30 @@ public class WarcraftIIICASC implements AutoCloseable {
 			final ByteBuffer fileBuffer = resolveResult.readFile(null);
 			fileBuffer.flip();
 			return fileBuffer;
+		}
+
+		/**
+		 * Opens the file at the specified file path as a stream that decodes it while it is read, when it is at least
+		 * the given size and stored so that it can be streamed.
+		 *
+		 * @param filePath    File path of file to read.
+		 * @param minimumSize Smaller files give null.
+		 * @return the stream, or null when the file is to be read with {@link #readFileData}
+		 * @throws IOException If an error occurs when opening the file.
+		 */
+		public InputStream openFileStream(final String filePath, final long minimumSize) throws IOException {
+			final byte[][] pathFragments = VirtualFileSystem.convertFilePath(filePath);
+			final PathResult resolveResult = vfs.resolvePath(pathFragments);
+
+			if (!resolveResult.isFile()) {
+				throw new FileNotFoundException("the specified file path does not resolve to a file");
+			} else if (!resolveResult.existsInStorage()) {
+				throw new FileNotFoundException("the specified file is not in local storage");
+			}
+			if (resolveResult.getFileSize() < minimumSize) {
+				return null;
+			}
+			return resolveResult.openStream();
 		}
 	}
 

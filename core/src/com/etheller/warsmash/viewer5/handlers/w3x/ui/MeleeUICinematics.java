@@ -8,7 +8,12 @@ import com.badlogic.gdx.graphics.Pixmap.Blending;
 import com.badlogic.gdx.graphics.Pixmap.Format;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.math.Rectangle;
 import com.etheller.warsmash.parsers.fdf.GameUI;
+import com.etheller.warsmash.parsers.fdf.datamodel.BackdropCornerFlags;
 import com.etheller.warsmash.parsers.fdf.datamodel.FramePoint;
 import com.etheller.warsmash.parsers.fdf.datamodel.TextJustify;
 import com.etheller.warsmash.parsers.fdf.frames.AbstractRenderableFrame;
@@ -79,6 +84,54 @@ final class MeleeUICinematics {
 		styleCinematicPanel();
 		anchorCinematicPanel();
 		this.ui.infoPanel.positionPortrait();
+		final Texture black = this.ui.rootFrame.loadTexture("Textures\\Black32.blp");
+		for (final String name : new String[] { "CinematicTopBorder", "CinematicBottomBorder" }) {
+			final UIFrame border = this.ui.rootFrame.getFrameByName(name, 0);
+			if ((black != null) && (border instanceof BackdropFrame)
+					&& (border.getParent() instanceof AbstractUIFrame)) {
+				final AbstractUIFrame parent = (AbstractUIFrame) border.getParent();
+				parent.add(parent.getChildFrames().indexOf(border),
+						new LetterboxUnderlay((BackdropFrame) border, black, parent));
+			}
+		}
+	}
+
+	/**
+	 * The world under a classic letterbox border, black: on 1.29 the world does not show through the borders, whose
+	 * background art is translucent, while here the world is drawn under the top border and under the bottom border's
+	 * upper part. The black stops a quarter of the edge art in from its outer side, where that art is already opaque,
+	 * so the world still shows past the stones.
+	 */
+	private static final class LetterboxUnderlay extends AbstractUIFrame {
+		private final BackdropFrame border;
+		private final Texture black;
+
+		LetterboxUnderlay(final BackdropFrame border, final Texture black, final UIFrame parent) {
+			super(border.getName() + "Underlay", parent);
+			this.border = border;
+			this.black = black;
+		}
+
+		@Override
+		protected void internalRender(final SpriteBatch batch, final BitmapFont baseFont,
+				final GlyphLayout glyphLayout) {
+			if (!this.border.isVisible()) {
+				return;
+			}
+			final Rectangle bounds = this.border.getRenderBounds();
+			final float edgeInset = this.border.getCornerSize() / 4;
+			float bottom = bounds.y;
+			float top = bounds.y + bounds.height;
+			if (this.border.hasCornerFlag(BackdropCornerFlags.B)) {
+				bottom += edgeInset;
+			}
+			if (this.border.hasCornerFlag(BackdropCornerFlags.T)) {
+				top -= edgeInset;
+			}
+			if (top > bottom) {
+				batch.draw(this.black, bounds.x, bottom, bounds.width, top - bottom);
+			}
+		}
 	}
 
 	static final class CinematicPortrait {

@@ -2,6 +2,7 @@ package com.hiveworkshop.blizzard.casc.vfs;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -184,6 +185,28 @@ public final class VirtualFileSystem {
 
 			destBuffer.position(destBuffer.position() + (int) fileSize);
 			return destBuffer;
+		}
+
+		/**
+		 * Opens this file as a stream that decodes its data while it is read, without a buffer of its size. Only a
+		 * file of one storage reference stored the usual way can be streamed.
+		 *
+		 * @return the stream, or null when the file has to be read with {@link #readFile}
+		 * @throws IOException If an error occurs during reading.
+		 */
+		public InputStream openStream() throws IOException {
+			if (!isFile()) {
+				throw new FileNotFoundException("result is not a file");
+			}
+			final FileNode fileNode = (FileNode) node;
+			if (fileNode.getFileReferenceCount() != 1) {
+				return null;
+			}
+			final StorageReference fileReference = fileNode.getFileReference(0);
+			if ((fileReference.getOffset() != 0) || (fileReference.getSize() != fileReference.getActualSize())) {
+				return null;
+			}
+			return storage.openBankStream(fileReference.getEncodingKey(), fileReference.getSize());
 		}
 	}
 

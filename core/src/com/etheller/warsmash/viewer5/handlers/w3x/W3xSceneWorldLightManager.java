@@ -75,7 +75,7 @@ public class W3xSceneWorldLightManager implements SceneLightManager, W3xSceneLig
 			this.unitLightCount++;
 		}
 		this.lightDataCopyHeap.limit(offset);
-		this.unitLightsTexture.bindAndUpdate(this.lightDataCopyHeap, 4, this.unitLightCount);
+		this.unitLightsTexture.bindAndUpdateIfChanged(this.lightDataCopyHeap, 4, this.unitLightCount);
 
 		this.terrainLightCount = 0;
 		this.lightDataCopyHeap.clear();
@@ -93,7 +93,7 @@ public class W3xSceneWorldLightManager implements SceneLightManager, W3xSceneLig
 			this.terrainLightCount++;
 		}
 		this.lightDataCopyHeap.limit(offset);
-		this.terrainLightsTexture.bindAndUpdate(this.lightDataCopyHeap, 4, this.terrainLightCount);
+		this.terrainLightsTexture.bindAndUpdateIfChanged(this.lightDataCopyHeap, 4, this.terrainLightCount);
 	}
 
 	@Override

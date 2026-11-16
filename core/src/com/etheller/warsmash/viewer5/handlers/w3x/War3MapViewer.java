@@ -93,6 +93,7 @@ import com.etheller.warsmash.util.WorldEditStrings;
 import com.etheller.warsmash.viewer5.CanvasProvider;
 import com.etheller.warsmash.viewer5.FogSettings;
 import com.etheller.warsmash.viewer5.GenericResource;
+import com.etheller.warsmash.viewer5.RenderScaler;
 import com.etheller.warsmash.viewer5.Grid;
 import com.etheller.warsmash.viewer5.ModelInstance;
 import com.etheller.warsmash.viewer5.ModelViewer;
@@ -152,6 +153,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.vision.CPla
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CEffectType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CFogState;
+import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRenderComponentLightning;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRenderComponentLightningMovable;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.command.SettableCommandErrorListener;
@@ -202,6 +204,9 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 
 	public WorldScene worldScene;
 	boolean worldHidden;
+	/** The part of the screen the world is drawn at, stretched to fill (see {@link RenderScaler}). */
+	float renderScale = 1f;
+	final RenderScaler renderScaler = new RenderScaler();
 	NoRenderController renderController;
 	/** The step the game plays on to without drawing (see {@link #fastForwardTo}), or -1. */
 	int fastForwardTarget = -1;
@@ -485,6 +490,7 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 			this.terrain.dispose();
 		}
 		this.dynamicShadowManager.dispose();
+		this.renderScaler.dispose();
 		if (this.lightningTypeToModel != null) {
 			for (final LightningEffectModel model : this.lightningTypeToModel.values()) {
 				model.dispose();
@@ -631,8 +637,18 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 			// Doodads fade with the ground fog, so they only need the step while it changes; once a second they are
 			// checked anyway.
 			if (fogChanged || ((++this.viewer.fogDoodadTicks % 30) == 0)) {
-				for (final RenderDoodad doodad : this.viewer.decals) {
-					doodad.updateFog(this.viewer);
+				final List<RenderDoodad> doodads = this.viewer.decals;
+				final int doodadCount = doodads.size();
+				if (doodadCount > 0) {
+					final CPlayerFogOfWar fogOfWar = this.viewer.getFogOfWar();
+					final PathingGrid pathingGrid = simulation.getPathingGrid();
+					final byte[] shadeByState = new byte[CFogState.VALUES.length];
+					for (final CFogState state : CFogState.VALUES) {
+						shadeByState[state.ordinal()] = this.viewer.getFogShade(state.getMask());
+					}
+					for (int i = 0; i < doodadCount; i++) {
+						doodads.get(i).updateFog(this.viewer, fogOfWar, pathingGrid, shadeByState);
+					}
 				}
 			}
 		}
@@ -1272,6 +1288,14 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 	}
 
 	static final long FAST_FORWARD_FRAME_NANOS = 40_000_000L;
+
+	public void setRenderScale(final float renderScale) {
+		this.renderScale = Math.max(0.25f, Math.min(1f, renderScale));
+	}
+
+	public float getRenderScale() {
+		return this.renderScale;
+	}
 
 	public void setWorldHidden(final boolean worldHidden) {
 		this.worldHidden = worldHidden;

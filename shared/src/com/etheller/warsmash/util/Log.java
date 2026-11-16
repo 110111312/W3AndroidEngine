@@ -18,6 +18,8 @@ public final class Log {
 
 	private static volatile Level threshold = parseLevel(System.getProperty("warsmash.log"), Level.DEBUG);
 	private static final AtomicInteger loggedThrowables = new AtomicInteger();
+	private static volatile Throwable lastError;
+	private static volatile String lastErrorMessage;
 
 	private Log() {
 	}
@@ -37,6 +39,16 @@ public final class Log {
 	/** How many exceptions were logged so far, whatever the threshold, for tests that expect none. */
 	public static int getLoggedThrowableCount() {
 		return loggedThrowables.get();
+	}
+
+	/** The exception of the last error logged with one, which a crash report names beside the crash itself. */
+	public static Throwable getLastError() {
+		return lastError;
+	}
+
+	/** The message that went with {@link #getLastError()}, or null. */
+	public static String getLastErrorMessage() {
+		return lastErrorMessage;
 	}
 
 	public static Level getLevel() {
@@ -109,6 +121,10 @@ public final class Log {
 	private static void write(final Level level, final Object message, final Throwable throwable) {
 		if (throwable != null) {
 			loggedThrowables.incrementAndGet();
+			if (level == Level.ERROR) {
+				lastError = throwable;
+				lastErrorMessage = message == null ? null : message.toString();
+			}
 		}
 		if (!isEnabled(level)) {
 			return;

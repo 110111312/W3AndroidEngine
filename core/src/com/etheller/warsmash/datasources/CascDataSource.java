@@ -1,5 +1,6 @@
 package com.etheller.warsmash.datasources;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
@@ -120,6 +121,12 @@ public class CascDataSource implements DataSource {
 
 	private static final int PARSED_ALIASES_KEPT = 4;
 	private static final int WRITE_CHUNK = 1 << 16;
+	/**
+	 * A file this big is read while it is decoded instead of all at once: a whole file took a buffer of its stored
+	 * size and another of its own, and a long sound read only for its length ran a phone's heap out.
+	 */
+	private static final long STREAM_MIN_BYTES = 1 << 20;
+	private static final int STREAM_BUFFER_BYTES = 1 << 14;
 	private static final LinkedList<ParsedAliases> PARSED_ALIASES = new LinkedList<>();
 
 	private static final class ParsedAliases {
@@ -235,6 +242,10 @@ public class CascDataSource implements DataSource {
 	private InputStream internalGetResourceAsStream(final String tempFilepath) {
 		try {
 			if (isReadable(tempFilepath)) {
+				final InputStream stream = this.mount.fileSystem.openFileStream(tempFilepath, STREAM_MIN_BYTES);
+				if (stream != null) {
+					return new BufferedInputStream(stream, STREAM_BUFFER_BYTES);
+				}
 				final ByteBuffer buffer = this.mount.fileSystem.readFileData(tempFilepath);
 				if (buffer.hasArray()) {
 					return new ByteArrayInputStream(buffer.array());
@@ -294,22 +305,18 @@ public class CascDataSource implements DataSource {
 					if ((again != null) && again.isFile()) {
 						return again;
 					}
-					final ByteBuffer buffer = this.mount.fileSystem.readFileData(tempFilepath);
 					final File tempProduct = new File(Mount.EXTRACT_FOLDER,
 							tempFilepath.replace('\\', File.separatorChar));
 					tempProduct.delete();
 					makeFolders(tempProduct.getParentFile());
-					try (final FileChannel fileChannel = FileChannel.open(tempProduct.toPath(),
-							StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ,
-							StandardOpenOption.TRUNCATE_EXISTING)) {
-						// A channel writes a heap buffer through a direct buffer as big as the write and keeps that on
-						// the writing thread; Android counts those on the Java heap, so the file is written in parts.
-						final int end = buffer.limit();
-						while (buffer.position() < end) {
-							buffer.limit(Math.min(end, buffer.position() + WRITE_CHUNK));
-							fileChannel.write(buffer);
+					try (final InputStream stream = this.mount.fileSystem.openFileStream(tempFilepath,
+							STREAM_MIN_BYTES)) {
+						if (stream != null) {
+							copy(stream, tempProduct);
 						}
-						buffer.limit(end);
+						else {
+							write(this.mount.fileSystem.readFileData(tempFilepath), tempProduct);
+						}
 					}
 					tempProduct.deleteOnExit();
 					this.mount.extractedFiles.put(tempFilepath, tempProduct);
@@ -324,6 +331,34 @@ public class CascDataSource implements DataSource {
 			throw new RuntimeException("CASC parser error for: " + tempFilepath, e);
 		}
 		return null;
+	}
+
+	private static void copy(final InputStream stream, final File target) throws IOException {
+		try (final FileChannel fileChannel = FileChannel.open(target.toPath(), StandardOpenOption.CREATE,
+				StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			final byte[] chunk = new byte[WRITE_CHUNK];
+			int read;
+			while ((read = stream.read(chunk)) >= 0) {
+				final ByteBuffer buffer = ByteBuffer.wrap(chunk, 0, read);
+				while (buffer.hasRemaining()) {
+					fileChannel.write(buffer);
+				}
+			}
+		}
+	}
+
+	private static void write(final ByteBuffer buffer, final File target) throws IOException {
+		try (final FileChannel fileChannel = FileChannel.open(target.toPath(), StandardOpenOption.CREATE,
+				StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING)) {
+			// A channel writes a heap buffer through a direct buffer as big as the write and keeps that on the
+			// writing thread; Android counts those on the Java heap, so the file is written in parts.
+			final int end = buffer.limit();
+			while (buffer.position() < end) {
+				buffer.limit(Math.min(end, buffer.position() + WRITE_CHUNK));
+				fileChannel.write(buffer);
+			}
+			buffer.limit(end);
+		}
 	}
 
 	/** Folders are registered for deletion before the files in them, which exit deletes in reverse order. */

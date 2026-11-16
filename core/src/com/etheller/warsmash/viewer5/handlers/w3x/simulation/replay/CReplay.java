@@ -35,7 +35,9 @@ import java.util.zip.ZipException;
 public final class CReplay {
 	public static final int MAGIC = ('W' << 24) | ('S' << 16) | ('R' << 8) | 'P';
 	/** A replay of another format version is refused rather than played wrong. */
-	public static final int FORMAT_VERSION = 4;
+	public static final int FORMAT_VERSION = 5;
+	/** Format 4 has no keyboard and mouse mask in its header; the rest is the same, so it still plays. */
+	static final int OLDEST_FORMAT_VERSION = 4;
 
 	static final int END = 0;
 	static final int COMMAND = 1;
@@ -111,11 +113,11 @@ public final class CReplay {
 			throw new CReplayException("not a replay file");
 		}
 		final int formatVersion = in.readInt();
-		if (formatVersion != FORMAT_VERSION) {
+		if ((formatVersion < OLDEST_FORMAT_VERSION) || (formatVersion > FORMAT_VERSION)) {
 			throw new CReplayException(
 					"replay format " + formatVersion + ", this engine plays format " + FORMAT_VERSION);
 		}
-		return CReplayHeader.read(in);
+		return CReplayHeader.read(in, formatVersion);
 	}
 
 	public static CReplay read(final InputStream input) throws IOException {

@@ -173,6 +173,18 @@ public final class LanPlay {
 		return false;
 	}
 
+	/** The player slots (bit i: slot i) whose humans play with a keyboard and mouse; a replay header keeps them. */
+	public synchronized int keyboardAndMouseSlots() {
+		int mask = 0;
+		for (final ParticipantInfo p : this.setup.participants) {
+			final Integer scheme = this.controlSchemes.get(p.id);
+			if ((p.slot >= 0) && (p.slot < 32) && (scheme != null) && (scheme == LanProtocol.CONTROL_KBM)) {
+				mask |= 1 << p.slot;
+			}
+		}
+		return mask;
+	}
+
 	// ------------------------------------------------------------------ input
 
 	/** The host says someone is waited for (again every second while it lasts). */

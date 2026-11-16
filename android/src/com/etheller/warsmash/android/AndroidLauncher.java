@@ -11,7 +11,9 @@ import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -165,6 +167,7 @@ public class AndroidLauncher extends AndroidApplication {
 			this.fromLauncher = true;
 			launched = this;
 			leaveCrashResult();
+			CrashLogs.crashIfAsked(this);
 		}
 		final File iniFile = new File(getExternalFilesDir(null), INI_FILE_NAME);
 		if (!iniFile.isFile()) {
@@ -427,12 +430,23 @@ public class AndroidLauncher extends AndroidApplication {
 		return failed;
 	}
 
+	/** The map of the game on the screen, or the one it was asked to start while it loads; for the crash log. */
+	String currentMapFile() {
+		final WarsmashGdxMultiScreenGame current = this.game;
+		final WarsmashGdxMapScreen running = current == null ? null : current.getRunningMapScreen();
+		if ((running != null) && (running.getViewer() != null)) {
+			return running.getViewer().getMapFileName();
+		}
+		return LaunchContract.request(getIntent()).mapFile;
+	}
+
 	/** An exception that ends the program leaves a crash result, so the launcher can tell a crash from a force stop. */
 	private static synchronized void leaveCrashResult() {
 		if (crashHandlerSet) {
 			return;
 		}
 		crashHandlerSet = true;
+		CrashLogs.prepare();
 		final Thread.UncaughtExceptionHandler system = Thread.getDefaultUncaughtExceptionHandler();
 		Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
 			final AndroidLauncher game = launched;
@@ -443,6 +457,7 @@ public class AndroidLauncher extends AndroidApplication {
 				catch (final Throwable e) {
 					Log.e(TAG, "Unable to leave the crash result", e);
 				}
+				CrashLogs.write(game, thread, error);
 			}
 			if (system != null) {
 				system.uncaughtException(thread, error);
@@ -700,10 +715,17 @@ public class AndroidLauncher extends AndroidApplication {
 				});
 			}
 
+			// Sounds the loading screen asked for, already decoding in the pool, by data path.
+			private final Map<String, Sound> prefetched = new HashMap<>();
+
 			// The Android backend plays sounds from real files only, so they are copied out of the
 			// game data once.
 			@Override
 			public Sound newSound(final FileHandle file) {
+				final Sound prefetchedSound = this.prefetched.remove(file.path());
+				if (prefetchedSound != null) {
+					return prefetchedSound;
+				}
 				final FileHandle copy = cachedCopy(soundCache, file);
 				// The launcher's scenes run without sound.
 				if (Gdx.audio instanceof DisabledAndroidAudio) {
@@ -712,9 +734,31 @@ public class AndroidLauncher extends AndroidApplication {
 				return PooledSounds.get().newSound(copy.file().getPath());
 			}
 
+			// The pool decodes only from the newSound on, and the first game step then waited for the decoding of
+			// every answer it preloads; started from the loading screen, that decoding is done by then.
+			@Override
+			public void prefetchSound(final FileHandle file) {
+				if ((file == null) || (Gdx.audio instanceof DisabledAndroidAudio)
+						|| this.prefetched.containsKey(file.path())) {
+					return;
+				}
+				try {
+					this.prefetched.put(file.path(),
+							PooledSounds.get().newSound(cachedCopy(soundCache, file).file().getPath()));
+				}
+				catch (final RuntimeException e) {
+					// Left to newSound, which reports it.
+				}
+			}
+
 			@Override
 			public void finishLoading(final long maxMillis) {
 				PooledSounds.get().finishLoading(maxMillis);
+				// Nothing the game asked for is still to come from the loading screen's list.
+				for (final Sound sound : this.prefetched.values()) {
+					sound.dispose();
+				}
+				this.prefetched.clear();
 			}
 
 			@Override

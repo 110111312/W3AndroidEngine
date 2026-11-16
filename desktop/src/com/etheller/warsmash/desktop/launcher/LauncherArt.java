@@ -51,6 +51,9 @@ final class LauncherArt {
 		}
 	}
 
+	/** Fonts of the bold face are kept under their size plus this. */
+	private static final int BOLD_KEY = 1 << 16;
+
 	final boolean reforged;
 	private final DataSource data;
 	private final Map<String, SkinArt.Item> items = new HashMap<>();
@@ -58,8 +61,7 @@ final class LauncherArt {
 	private final Map<String, Frame> frames = new HashMap<>();
 	private final Map<Integer, BitmapFont> fonts = new HashMap<>();
 	private final Map<String, Texture> owned = new HashMap<>();
-	private FreeTypeFontGenerator generator;
-	private boolean generatorTried;
+	private final Map<String, FreeTypeFontGenerator> generators = new HashMap<>();
 	private Map<String, String> missionPictures;
 	/** While set, the pictures made are made without colour and darker. */
 	private boolean muting;
@@ -299,18 +301,21 @@ final class LauncherArt {
 		return this.missionPictures;
 	}
 
-	/** The game's font at a size in screen pixels, made once per size. */
-	BitmapFont font(final int pixels) {
-		final int size = Math.max(6, Math.min(400, pixels));
+	/**
+	 * The game's font at a size in screen pixels, made once per size: the text font, or MasterFontBold of the Reforged
+	 * interface for headings and names (the text font where the data lacks it).
+	 */
+	BitmapFont font(final int pixels, final boolean bold) {
+		final int size = Math.max(6, Math.min(400, pixels)) + (bold ? BOLD_KEY : 0);
 		BitmapFont font = this.fonts.get(size);
 		if (font == null) {
-			final FreeTypeFontGenerator generator = generator();
+			final FreeTypeFontGenerator generator = generator(bold);
 			if (generator == null) {
 				font = new BitmapFont(true);
 			}
 			else {
 				final FreeTypeFontParameter parameter = new FreeTypeFontParameter();
-				parameter.size = size;
+				parameter.size = size % BOLD_KEY;
 				parameter.flip = true;
 				parameter.characters = CHARACTERS;
 				parameter.minFilter = Texture.TextureFilter.Linear;
@@ -325,20 +330,31 @@ final class LauncherArt {
 		return font;
 	}
 
-	private FreeTypeFontGenerator generator() {
-		if (!this.generatorTried) {
-			this.generatorTried = true;
-			final SkinArt.Item item = this.items.get(SkinArt.FONT);
+	private FreeTypeFontGenerator generator(final boolean bold) {
+		final String name = fontName(bold);
+		if (!this.generators.containsKey(name)) {
+			FreeTypeFontGenerator generator = null;
+			final SkinArt.Item item = this.items.get(name);
 			try {
 				if ((item != null) && this.data.has(item.path)) {
-					this.generator = new FreeTypeFontGenerator(new DataSourceFileHandle(this.data, item.path));
+					generator = new FreeTypeFontGenerator(new DataSourceFileHandle(this.data, item.path));
 				}
 			}
 			catch (final RuntimeException e) {
 				LauncherLog.w("Unable to read the font", e);
 			}
+			this.generators.put(name, generator);
 		}
-		return this.generator;
+		return this.generators.get(name);
+	}
+
+	/** The skin's font file: the Reforged interface's own where the game data has it, else Friz Quadrata. */
+	private String fontName(final boolean bold) {
+		final String own = bold ? SkinArt.FONT_BOLD : SkinArt.FONT_MASTER;
+		if (this.reforged && this.items.containsKey(own) && this.data.has(this.items.get(own).path)) {
+			return own;
+		}
+		return SkinArt.FONT;
 	}
 
 	/** Fonts are made for a scale; a new scale makes them again. */
@@ -351,9 +367,12 @@ final class LauncherArt {
 
 	void dispose() {
 		dropFonts();
-		if (this.generator != null) {
-			this.generator.dispose();
+		for (final FreeTypeFontGenerator generator : this.generators.values()) {
+			if (generator != null) {
+				generator.dispose();
+			}
 		}
+		this.generators.clear();
 		for (final Texture texture : this.owned.values()) {
 			texture.dispose();
 		}

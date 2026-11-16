@@ -16,6 +16,7 @@
 
 package com.etheller.warsmash.audio;
 
+import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -68,7 +69,9 @@ public class Wav {
 
 			WavInputStream input = null;
 			try {
-				input = new WavInputStream(file);
+				final byte[] prefetched = audio.takePrefetchedWav(file);
+				input = prefetched != null ? new WavInputStream(new ByteArrayInputStream(prefetched), file)
+						: new WavInputStream(file);
 				setup(StreamUtils.copyStreamToByteArray(input, input.dataRemaining), input.channels, input.sampleRate);
 			}
 			catch (final IOException ex) {

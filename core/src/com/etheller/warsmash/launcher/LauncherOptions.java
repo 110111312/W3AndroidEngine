@@ -78,6 +78,26 @@ public final class LauncherOptions {
 	public static final String[] TEXTURE_SIZES = { "options_texture_512", "options_texture_1024",
 		"options_texture_full" };
 
+	/** The render scale choices, in the order of {@link GraphicsSettings#RENDER_SCALES}. */
+	public static final String[] RENDER_SCALES = { "options_scale_100", "options_scale_85", "options_scale_70",
+		"options_scale_50" };
+	/** The frame rate caps, where vertical sync cannot be turned off; 0 is none. Stored in Options.dat as frameCap. */
+	public static final int[] FRAME_CAPS = { 0, 30, 60 };
+	public static final String[] FRAME_CAP_NAMES = { "options_cap_none", "options_cap_30", "options_cap_60" };
+	public static final String KEY_FRAME_CAP = "frameCap";
+	public static final String KEY_VSYNC = "vsync";
+
+	/** The choice of a frame rate cap, the nearest lower one for a cap the launcher does not offer. */
+	public static int frameCapChoice(final int cap) {
+		int best = 0;
+		for (int i = 1; i < FRAME_CAPS.length; i++) {
+			if (FRAME_CAPS[i] <= cap) {
+				best = i;
+			}
+		}
+		return best;
+	}
+
 	/** The choice of a texture size limit, the nearest larger one for a limit the launcher does not offer. */
 	public static int textureSizeChoice(final int textureSize) {
 		final int[] sizes = GraphicsSettings.TEXTURE_SIZES;

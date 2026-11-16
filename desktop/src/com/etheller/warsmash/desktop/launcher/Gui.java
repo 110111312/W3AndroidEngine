@@ -24,6 +24,7 @@ import com.badlogic.gdx.utils.Align;
 import com.etheller.warsmash.launcher.GlueText;
 import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.SkinArt;
+import com.etheller.warsmash.launcher.SmallCaps;
 
 /**
  * An immediate mode toolkit drawing the launcher's widgets with the skin's art in board coordinates (design pixels,
@@ -50,6 +51,8 @@ final class Gui {
 	private final GlyphLayout layout = new GlyphLayout();
 	private final Matrix4 projection = new Matrix4();
 	private final Color color = new Color();
+	/** Whether text is drawn in the bold face; see {@link #bold}. */
+	private boolean bold;
 	private final float[] vertices = new float[20];
 
 	LauncherArt art;
@@ -531,6 +534,10 @@ final class Gui {
 		image(this.art.image(name), x, y, w, h, 1);
 	}
 
+	void image(final String name, final float x, final float y, final float w, final float h, final float alpha) {
+		image(this.art.image(name), x, y, w, h, alpha);
+	}
+
 	/** A picture filling the place, cropped around a horizontal focus (0 left, 1 right). */
 	void cover(final TextureRegion region, final float x, final float y, final float w, final float h,
 			final float focus) {
@@ -618,11 +625,47 @@ final class Gui {
 
 	// ---------------------------------------------------------------- text
 
+	/**
+	 * Sets the face the text is drawn in from here on: MasterFontBold of the Reforged interface for headings and
+	 * names, else the skin's text font.
+	 */
+	void bold(final boolean on) {
+		this.bold = on;
+	}
+
 	private BitmapFont sized(final float size) {
 		final int pixels = Math.max(6, Math.round(size * this.b.scale));
-		final BitmapFont font = this.art.font(pixels);
+		final BitmapFont font = this.art.font(pixels, this.bold);
 		font.getData().setScale(1f / this.b.scale);
 		return font;
+	}
+
+	/**
+	 * A line in small capitals, as the Reforged style sheets set them: the small letters are capitals of
+	 * {@link SmallCaps#SCALE} of the size, standing on the same line. Placed and cut as {@link #text}.
+	 */
+	void smallCaps(final String value, final float x, final float y, final float w, final float h,
+			final float size, final int argb, final int align) {
+		if ((value == null) || value.isEmpty()) {
+			return;
+		}
+		final List<SmallCaps.Run> runs = SmallCaps.runs(GlueText.plain(value));
+		final float smaller = size * SmallCaps.SCALE;
+		final float[] widths = new float[runs.size()];
+		float total = 0;
+		for (int i = 0; i < widths.length; i++) {
+			// A bar on both sides keeps the spaces at the ends of a run, which a laid out line drops.
+			final float at = runs.get(i).small ? smaller : size;
+			widths[i] = width('|' + runs.get(i).text + '|', at) - (2 * width("|", at));
+			total += widths[i];
+		}
+		final float lift = (sized(size).getCapHeight() - sized(smaller).getCapHeight()) / 2;
+		float left = align == Align.center ? x + ((w - total) / 2) : align == Align.right ? (x + w) - total : x;
+		for (int i = 0; i < widths.length; i++) {
+			final SmallCaps.Run run = runs.get(i);
+			text(run.text, left, run.small ? y + lift : y, widths[i] + 1, h, run.small ? smaller : size, argb, Align.left);
+			left += widths[i];
+		}
 	}
 
 	/** The width of a text in design pixels. */
@@ -948,8 +991,12 @@ final class Gui {
 				tip(GlueText.plain(items[selected]));
 			}
 		}
-		image(this.art.image(SkinArt.PULLDOWN_ARROW), (x + w) - rim - (arrow * 1.25f), y + ((h - arrow) / 2), arrow,
-				arrow, enabled ? 1 : 0.5f);
+		// The Reforged menu has its own gold chevron, with a disabled picture instead of a faded one.
+		final boolean chevron = this.art.reforged && this.art.has(SkinArt.CHEVRON_DOWN);
+		image(this.art.image(!chevron ? SkinArt.PULLDOWN_ARROW
+				: enabled || !this.art.has(SkinArt.CHEVRON_DOWN_DISABLED) ? SkinArt.CHEVRON_DOWN
+					: SkinArt.CHEVRON_DOWN_DISABLED),
+			(x + w) - rim - (arrow * 1.25f), y + ((h - arrow) / 2), arrow, arrow, enabled || chevron ? 1 : 0.5f);
 		if ((state & CLICK) != 0) {
 			if (open) {
 				this.menuId = null;

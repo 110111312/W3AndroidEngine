@@ -52,6 +52,7 @@ public class CPathfindingProcessor {
 	private static final float NEAREST_PATHABLE_STEP = 32f;
 	private static final float NEAREST_PATHABLE_RADIUS = 1024f;
 	private static final float BESIDE_UNIT_CELL = 32f;
+	private static final float BESIDE_GOAL_REACH = 48f;
 	/**
 	 * Measured on 1.29: round a wall that scripts have made unwalkable a unit finds its way only as far as such a
 	 * search goes, about max(2048, 4 * cells^2) steps (cells = the straight distance in cells): a wall of 1056 is
@@ -500,8 +501,8 @@ public class CPathfindingProcessor {
 		final int cached = grid.pathable(index);
 		if ((cached & ~1) != epoch) {
 			final boolean pathable = this.pathingGrid.isPathable(x, y, job.movementType, job.collisionSize)
-					&& isPathableDynamically(x, y, job.ignoreIntersectionsWithThisUnit,
-							job.ignoreIntersectionsWithThisSecondUnit, job.movementType);
+					&& isPathableDynamically(x, y, job.ignoreIntersectionsWithThisUnit, secondUnitAt(job, x, y),
+							job.movementType);
 			grid.setPathable(index, epoch | (pathable ? 1 : 0));
 			return pathable;
 		}
@@ -811,6 +812,7 @@ public class CPathfindingProcessor {
 				job.goalY = job.goal.y;
 				job.goalMoved = false;
 				job.goalBesideUnit = false;
+				job.besideBlocker = null;
 				job.goalOutOfReach = false;
 				job.goalOnBlockedGround = false;
 				job.weightForHittingWalls = 1E9f;
@@ -1421,7 +1423,8 @@ public class CPathfindingProcessor {
 			this.segmentRect.set(Math.min(x0, x1) - half, Math.min(y0, y1) - half, Math.abs(dx) + (2 * half),
 					Math.abs(dy) + (2 * half));
 			if (!this.worldCollision.intersectsStandingUnitOtherThan(this.segmentRect,
-					job.ignoreIntersectionsWithThisUnit, job.ignoreIntersectionsWithThisSecondUnit,
+					job.ignoreIntersectionsWithThisUnit,
+					(job.besideBlocker != null) ? null : job.ignoreIntersectionsWithThisSecondUnit,
 					job.movementType, this.gameTurnTick)) {
 				return true;
 			}
@@ -1429,12 +1432,21 @@ public class CPathfindingProcessor {
 		for (int step = 1; step <= steps; step++) {
 			final float x = x0 + ((dx * step) / steps);
 			final float y = y0 + ((dy * step) / steps);
-			if (!isPathableDynamically(x, y, job.ignoreIntersectionsWithThisUnit,
-					job.ignoreIntersectionsWithThisSecondUnit, job.movementType)) {
+			if (!isPathableDynamically(x, y, job.ignoreIntersectionsWithThisUnit, secondUnitAt(job, x, y),
+					job.movementType)) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/** The unit to the side of which a goal was set stops blocking only close to that goal, so paths lead around it. */
+	private static CUnit secondUnitAt(final PathfindingJob job, final float x, final float y) {
+		if ((job.besideBlocker != null) && (job.ignoreIntersectionsWithThisSecondUnit == job.besideBlocker)
+				&& (StrictMath.hypot(x - job.goalX, y - job.goalY) > BESIDE_GOAL_REACH)) {
+			return null;
+		}
+		return job.ignoreIntersectionsWithThisSecondUnit;
 	}
 
 	/**
@@ -1607,30 +1619,61 @@ public class CPathfindingProcessor {
 		float bestY = 0;
 		final int startCellX = (int) Math.floor(job.startX / BESIDE_UNIT_CELL);
 		final int startCellY = (int) Math.floor(job.startY / BESIDE_UNIT_CELL);
+		final boolean moverAligned = isCellAligned(job.collisionSize);
+		final boolean blockerAligned = isCellAligned(blocker[0].getUnitType().getCollisionSize());
+		// Measured: a mover whose size is a whole number of cells goes north of a target that is not one, whatever its
+		// start; between two such sizes, or when the sum reaches an odd number of cells, the side by the east / west
+		// wins ties; a whole-cell target seen by a smaller mover is never approached from north or east (measured for
+		// units that are not heroes only).
+		final boolean northFirst = moverAligned && !blockerAligned;
+		final boolean oddRing = (((int) (distance / BESIDE_UNIT_CELL)) & 1) == 1;
+		final boolean noNorthEast = blockerAligned && !moverAligned && !oddRing && !blocker[0].isHero()
+				&& ((job.ignoreIntersectionsWithThisUnit == null) || !job.ignoreIntersectionsWithThisUnit.isHero());
+		// measured only up to nine cells out; from twelve cells out the nearer side by cell centres still wins
+		final boolean startSouth = (job.startY < cellY)
+				&& (Math.max(Math.abs(startCellX - (int) Math.floor(cellX / BESIDE_UNIT_CELL)),
+						Math.abs(startCellY - (int) Math.floor(cellY / BESIDE_UNIT_CELL))) <= 10);
+		final boolean startEast = job.startX > cellX;
+		final boolean ignoreRoundTie = oddRing || noNorthEast || startSouth;
+		int bestPriority = Integer.MAX_VALUE;
 		int bestStartCells = Integer.MAX_VALUE;
 		double bestTieDistance = Double.MAX_VALUE;
-		// north, west, east, south
-		for (int side = 0; side < 4; side++) {
-			final float x = cellX + ((side == 1 ? -1 : side == 2 ? 1 : 0) * distance);
-			final float y = cellY + ((side == 0 ? 1 : side == 3 ? -1 : 0) * distance);
-			final int startCells = Math.abs((int) Math.floor(x / BESIDE_UNIT_CELL) - startCellX)
-					+ Math.abs((int) Math.floor(y / BESIDE_UNIT_CELL) - startCellY);
-			if ((startCells > bestStartCells) || !this.pathingGrid.contains(x, y)
-					|| !this.pathingGrid.isPathable(x, y, job.movementType, job.collisionSize)
-					|| !isFreeBeside(x, y, job, blocker[0])) {
-				continue;
-			}
-			// equal cell counts: the side nearer by whole-cell centres, a side behind blocked ground counts as farther
-			double tieDistance = StrictMath.hypot(x - ((startCellX * BESIDE_UNIT_CELL) + (BESIDE_UNIT_CELL / 2)),
-					y - ((startCellY * BESIDE_UNIT_CELL) + (BESIDE_UNIT_CELL / 2)));
-			if (!straightLineWalkable(job, x, y)) {
-				tieDistance += 1e6;
-			}
-			if ((startCells < bestStartCells) || (tieDistance < (bestTieDistance - 1e-3))) {
-				bestStartCells = startCells;
-				bestTieDistance = tieDistance;
-				bestX = x;
-				bestY = y;
+		int bestRank = Integer.MAX_VALUE;
+		for (int pass = 0; (pass < 2) && (bestStartCells == Integer.MAX_VALUE); pass++) {
+			// north, west, east, south
+			for (int side = 0; side < 4; side++) {
+				if (noNorthEast && (pass == 0) && ((side == 0) || (side == 2))) {
+					continue;
+				}
+				final float x = cellX + ((side == 1 ? -1 : side == 2 ? 1 : 0) * distance);
+				final float y = cellY + ((side == 0 ? 1 : side == 3 ? -1 : 0) * distance);
+				final int priority = (northFirst && (side == 0)) ? 0 : 1;
+				final int startCells = Math.abs((int) Math.floor(x / BESIDE_UNIT_CELL) - startCellX)
+						+ Math.abs((int) Math.floor(y / BESIDE_UNIT_CELL) - startCellY);
+				if ((priority > bestPriority) || ((priority == bestPriority) && (startCells > bestStartCells))
+						|| !this.pathingGrid.contains(x, y)
+						|| !this.pathingGrid.isPathable(x, y, job.movementType, job.collisionSize)
+						|| !isFreeBeside(x, y, job, blocker[0])) {
+					continue;
+				}
+				// equal cell counts: the side nearer by whole-cell centres, a side behind blocked ground counts as farther
+				double tieDistance = ignoreRoundTie ? 0
+						: StrictMath.hypot(x - ((startCellX * BESIDE_UNIT_CELL) + (BESIDE_UNIT_CELL / 2)),
+								y - ((startCellY * BESIDE_UNIT_CELL) + (BESIDE_UNIT_CELL / 2)));
+				if (!straightLineWalkable(job, x, y)) {
+					tieDistance += 1e6;
+				}
+				final int rank = besideSideRank(side, oddRing, noNorthEast, startSouth, startEast);
+				if ((priority < bestPriority) || (startCells < bestStartCells)
+						|| (tieDistance < (bestTieDistance - 1e-3))
+						|| ((tieDistance <= (bestTieDistance + 1e-3)) && (rank < bestRank))) {
+					bestPriority = priority;
+					bestStartCells = startCells;
+					bestTieDistance = tieDistance;
+					bestRank = rank;
+					bestX = x;
+					bestY = y;
+				}
 			}
 		}
 		if (bestStartCells == Integer.MAX_VALUE) {
@@ -1643,8 +1686,25 @@ public class CPathfindingProcessor {
 		if (job.ignoreIntersectionsWithThisSecondUnit == null) {
 			// its square reaches over the side cells the original counts as free
 			job.ignoreIntersectionsWithThisSecondUnit = blocker[0];
+			job.besideBlocker = blocker[0];
 		}
 		return true;
+	}
+
+	private static boolean isCellAligned(final float collisionSize) {
+		return (collisionSize > 0) && ((collisionSize % BESIDE_UNIT_CELL) == 0);
+	}
+
+	/** Order among sides tied on cells and distance: lower wins. Sides are north, west, east, south. */
+	private static int besideSideRank(final int side, final boolean oddRing, final boolean noNorthEast,
+			final boolean startSouth, final boolean startEast) {
+		if (noNorthEast) {
+			return startEast ? (side == 3 ? 0 : 1) : (side == 1 ? 0 : 1);
+		}
+		if (oddRing || startSouth) {
+			return (side == 1) || (side == 2) ? side : 4 + side;
+		}
+		return side;
 	}
 
 	private boolean straightLineWalkable(final PathfindingJob job, final float x, final float y) {
@@ -1701,6 +1761,7 @@ public class CPathfindingProcessor {
 		float bestEndY;
 		boolean goalMoved;
 		boolean goalBesideUnit;
+		CUnit besideBlocker;
 		boolean goalOutOfReach;
 		boolean goalOnBlockedGround;
 		boolean goalNodesBlocked;

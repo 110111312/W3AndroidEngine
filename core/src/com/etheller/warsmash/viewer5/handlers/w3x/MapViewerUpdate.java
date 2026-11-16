@@ -4,6 +4,7 @@ import java.util.Iterator;
 import java.util.List;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
 import com.etheller.warsmash.util.PerfStats;
 import com.etheller.warsmash.util.WarsmashConstants;
@@ -106,6 +107,31 @@ final class MapViewerUpdate {
 		}
 	}
 
+	/**
+	 * Points the world's scenes at the render scale's smaller target; the interface scenes keep the screen.
+	 *
+	 * @return the scale the world is drawn at, 1 when it is drawn on the screen
+	 */
+	private static float beginScaledWorld(final War3MapViewer viewer, final boolean allowed) {
+		float scale = 1f;
+		if (allowed && (viewer.renderScale < 1f)) {
+			final Rectangle rect = viewer.worldScene.camera.rect;
+			final int width = Math.max(Gdx.graphics.getBackBufferWidth(), (int) Math.ceil(rect.x + rect.width));
+			final int height = Math.max(Gdx.graphics.getBackBufferHeight(), (int) Math.ceil(rect.y + rect.height));
+			if (viewer.renderScaler.begin(width, height, viewer.renderScale)) {
+				scale = viewer.renderScale;
+			}
+		}
+		else if (viewer.renderScale >= 1f) {
+			viewer.renderScaler.dispose();
+		}
+		viewer.worldScene.setRenderScale(scale);
+		if (viewer.skyScene != null) {
+			viewer.skyScene.setRenderScale(scale);
+		}
+		return scale;
+	}
+
 	static void renderSky(final War3MapViewer viewer) {
 		final Camera camera = viewer.worldScene.camera;
 		final Camera skyCamera = viewer.skyScene.camera;
@@ -174,6 +200,7 @@ final class MapViewerUpdate {
 				}
 			}
 			viewer.startFrame();
+			final float scale = beginScaledWorld(viewer, !fullScreenCinematic);
 			worldScene.startFrame();
 			if (fullScreenCinematic && (viewer.modelCinematic != null)) {
 				viewer.modelCinematic.render();
@@ -215,6 +242,9 @@ final class MapViewerUpdate {
 				viewer.terrain.renderUberSplats(true);
 			}
 			PerfStats.end(PerfStats.Section.SPLATS);
+			if (scale < 1f) {
+				viewer.renderScaler.end(worldScene.camera.rect, scale);
+			}
 
 			final List<Scene> scenes = viewer.scenes;
 			for (final Scene scene : scenes) {

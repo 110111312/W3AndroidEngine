@@ -6,6 +6,7 @@ import java.util.Map;
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import com.etheller.warsmash.util.FrameLimiter;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.util.WarsmashConstants;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CSaveStorage;
@@ -77,6 +78,7 @@ public final class GameOptions {
 		CSoundMixer.setOptionScales(sound, music, isAmbientSounds() ? 1 : 0, isMovementSounds() ? 1 : 0,
 				isUnitSounds() ? 1 : 0);
 		WarsmashConstants.MODEL_DETAIL_PARTICLE_FACTOR = PARTICLE_FACTORS[getParticles()];
+		FrameLimiter.setMaxFps(getFrameCap());
 		if (isVSyncAdjustable()) {
 			try {
 				Gdx.graphics.setVSync(isVSync());
@@ -308,5 +310,14 @@ public final class GameOptions {
 
 	public void setVSync(final boolean value) {
 		setFlag("vsync", value);
+	}
+
+	/** The most frames a second to draw, 0 for no cap: on a device that cannot turn vertical sync off, the way to spare it. */
+	public int getFrameCap() {
+		return number("frameCap", 0, 240);
+	}
+
+	public void setFrameCap(final int framesPerSecond) {
+		this.values.put("frameCap", framesPerSecond);
 	}
 }

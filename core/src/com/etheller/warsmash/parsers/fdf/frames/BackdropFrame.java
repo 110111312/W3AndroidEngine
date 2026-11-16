@@ -226,6 +226,10 @@ public class BackdropFrame extends AbstractUIFrame {
 		return this.cornerSize;
 	}
 
+	public boolean hasCornerFlag(final BackdropCornerFlags flag) {
+		return this.cornerFlags.contains(flag);
+	}
+
 	public Texture getBackground() {
 		return this.background;
 	}

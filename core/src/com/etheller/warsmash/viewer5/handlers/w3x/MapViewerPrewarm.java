@@ -24,6 +24,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CPlayerSlotState;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CRaceManagerEntry;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.sound.CSoundFromLabel;
 
 /**
  * Loads the models of the units a map starts with while its loading screen is still up, one type for each step of the
@@ -196,6 +197,10 @@ final class MapViewerPrewarm {
 			final UnitSound sound = viewer.uiSounds.getSound(label);
 			if (sound.getSoundCount() <= MAX_PREFETCHED_FILES) {
 				sound.prefetch();
+			}
+			else if (sound.getSoundCount() > 0) {
+				// The script starts the day ambience in the first step, whose file is known from the step and the count.
+				sound.prefetch(CSoundFromLabel.variant(0, 0, sound.getSoundCount()));
 			}
 		}
 	}

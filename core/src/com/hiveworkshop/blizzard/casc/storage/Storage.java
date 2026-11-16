@@ -3,6 +3,7 @@ package com.hiveworkshop.blizzard.casc.storage;
 import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.ClosedChannelException;
@@ -48,6 +49,11 @@ public class Storage implements AutoCloseable {
 	 * Size of the header in front of each file's data in a data file.
 	 */
 	private static final int CONTAINER_HEADER_SIZE = 30;
+
+	/**
+	 * Size of the BLTE identifier and header size in front of a BLTE header.
+	 */
+	private static final int BLTE_PREAMBLE_SIZE = 8;
 
 	private static final int READ_CHUNK = 1 << 16;
 
@@ -261,6 +267,62 @@ public class Storage implements AutoCloseable {
 				}
 			}
 			throw e;
+		}
+	}
+
+	/**
+	 * Opens the data of a key as a stream that decodes it while it is read, holding only the BLTE header in memory.
+	 * Only data stored the usual way can be streamed: behind a container header of its key and size, with a block
+	 * table whose banks fit the container and decode to the expected size. Anything else gives null, and is read
+	 * with {@link #getBanks}, which knows how to find such data.
+	 *
+	 * @param decodedSize the size the data must decode to
+	 * @return the stream, or null when the data are not stored the usual way
+	 */
+	public InputStream openBankStream(final Key encodingKey, final long decodedSize) throws IOException {
+		final int bucketIndex = getBucketIndex(encodingKey.getKey(), encodingKeyLength);
+		final IndexEntry indexEntry = indicies[bucketIndex].getEntry(encodingKey);
+		if (indexEntry == null) {
+			throw new FileNotFoundException("encoding key not in store indicies");
+		}
+		final IndexFile index = indicies[bucketIndex];
+		final long dataOffset = indexEntry.getDataOffset();
+		final int storeIndex = index.getStoreIndex(dataOffset);
+		final long storeOffset = index.getStoreOffset(dataOffset);
+		final long fileSize = indexEntry.getFileSize();
+		final int preambleSize = CONTAINER_HEADER_SIZE + BLTE_PREAMBLE_SIZE;
+		if (fileSize < preambleSize) {
+			return null;
+		}
+		try {
+			final ByteBuffer preamble = getStorageBuffer(storeIndex, storeOffset, preambleSize);
+			if (BLTEContent.hasIdentifier(preamble)) {
+				return null;
+			}
+			final StorageContainer container = new StorageContainer(preamble);
+			if (!container.getKey().equals(encodingKey) || (container.getSize() != fileSize)
+					|| !BLTEContent.hasIdentifier(preamble)) {
+				return null;
+			}
+			final long headerSize = Integer.toUnsignedLong(preamble.getInt(preamble.position() + 4));
+			if ((headerSize <= BLTE_PREAMBLE_SIZE) || (headerSize > (fileSize - CONTAINER_HEADER_SIZE))) {
+				return null;
+			}
+			final ByteBuffer header = getStorageBuffer(storeIndex, storeOffset + CONTAINER_HEADER_SIZE, headerSize);
+			final BLTEContent[] banks = BLTEContent.decodeContent(header);
+			long encoded = CONTAINER_HEADER_SIZE + headerSize;
+			long decoded = 0;
+			for (final BLTEContent bank : banks) {
+				encoded += bank.getCompressedSize();
+				decoded += bank.getDecompressedSize();
+			}
+			if ((encoded > fileSize) || (decoded != decodedSize)) {
+				return null;
+			}
+			return new BankInputStream(() -> getDataFileChannel(storeIndex),
+					storeOffset + CONTAINER_HEADER_SIZE + headerSize, banks);
+		} catch (final MalformedCASCStructureException | EOFException e) {
+			return null;
 		}
 	}
 

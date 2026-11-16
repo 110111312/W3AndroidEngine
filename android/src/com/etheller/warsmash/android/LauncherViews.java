@@ -1,5 +1,6 @@
 package com.etheller.warsmash.android;
 
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
@@ -17,8 +18,11 @@ import android.graphics.drawable.shapes.RectShape;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -33,6 +37,7 @@ import android.widget.TextView;
 
 import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.SkinArt;
+import com.etheller.warsmash.launcher.SmallCaps;
 
 /**
  * The views the launcher's pages are made of: placed in the design's pixels of the activity's board and drawn
@@ -90,6 +95,32 @@ abstract class LauncherViews {
 		view.setEllipsize(TextUtils.TruncateAt.END);
 		view.setShadowLayer(1, size * this.activity.scale * 0.07f, size * this.activity.scale * 0.07f, Color.BLACK);
 		return view;
+	}
+
+	/** The text in MasterFontBold, as the Reforged interface sets its headings and names. */
+	TextView boldText(final CharSequence value, final float size, final int color) {
+		final TextView view = text(value, size, color);
+		view.setTypeface(this.activity.art != null ? this.activity.art.fontBold() : null);
+		return view;
+	}
+
+	/** The text in small capitals: every small letter a capital of {@link SmallCaps#SCALE} of the size. */
+	static CharSequence smallCaps(final CharSequence value) {
+		final StringBuilder capitals = new StringBuilder();
+		final List<SmallCaps.Run> runs = SmallCaps.runs(value.toString());
+		for (final SmallCaps.Run run : runs) {
+			capitals.append(run.text);
+		}
+		final SpannableString spanned = new SpannableString(capitals);
+		int at = 0;
+		for (final SmallCaps.Run run : runs) {
+			if (run.small) {
+				spanned.setSpan(new RelativeSizeSpan(SmallCaps.SCALE), at, at + run.text.length(),
+						Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			}
+			at += run.text.length();
+		}
+		return spanned;
 	}
 
 	/** A few lines of text that wrap within their width. */
@@ -325,8 +356,12 @@ abstract class LauncherViews {
 			box.addView(swatch, swatchParams);
 		}
 		else {
-			final ImageView arrow = image(SkinArt.PULLDOWN_ARROW, ImageView.ScaleType.FIT_CENTER);
-			arrow.setAlpha(enabled ? 1f : 0.4f);
+			// The Reforged menu has its own gold chevron, with a disabled picture instead of a faded one.
+			final boolean chevron = this.activity.art.reforged() && this.activity.art.has(SkinArt.CHEVRON_DOWN);
+			final ImageView arrow = image(!chevron ? SkinArt.PULLDOWN_ARROW
+					: enabled || !this.activity.art.has(SkinArt.CHEVRON_DOWN_DISABLED) ? SkinArt.CHEVRON_DOWN
+						: SkinArt.CHEVRON_DOWN_DISABLED, ImageView.ScaleType.FIT_CENTER);
+			arrow.setAlpha(enabled || chevron ? 1f : 0.4f);
 			final FrameLayout.LayoutParams arrowParams = new FrameLayout.LayoutParams(px(arrowSize), px(arrowSize),
 					Gravity.END | Gravity.CENTER_VERTICAL);
 			arrowParams.rightMargin = px((arrowBox * 0.75f) - arrowSize);

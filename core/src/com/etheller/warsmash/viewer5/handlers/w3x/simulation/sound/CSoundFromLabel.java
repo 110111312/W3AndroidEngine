@@ -82,7 +82,7 @@ public class CSoundFromLabel extends AbstractCSound {
 		setFileDuration(this.sound.getDuration(this.variant));
 	}
 
-	static int variant(final int gameTurnTick, final int starts, final int count) {
+	public static int variant(final int gameTurnTick, final int starts, final int count) {
 		int hash = (gameTurnTick * 0x9E3779B1) + starts;
 		hash ^= hash >>> 16;
 		hash *= 0x85EBCA6B;

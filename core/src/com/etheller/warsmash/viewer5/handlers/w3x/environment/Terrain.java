@@ -1273,9 +1273,9 @@ public class Terrain {
 		gl.glActiveTexture(GL30.GL_TEXTURE1);
 		gl.glBindTexture(GL30.GL_TEXTURE_2D, this.groundHeight);
 //		gl.glActiveTexture(GL30.GL_TEXTURE2);
+		gl.glUniform1f(this.cliffShader.getUniformLocation("centerOffsetX"), this.centerOffset[0]);
+		gl.glUniform1f(this.cliffShader.getUniformLocation("centerOffsetY"), this.centerOffset[1]);
 		for (final CliffMesh i : this.cliffMeshes) {
-			gl.glUniform1f(this.cliffShader.getUniformLocation("centerOffsetX"), this.centerOffset[0]);
-			gl.glUniform1f(this.cliffShader.getUniformLocation("centerOffsetY"), this.centerOffset[1]);
 			i.render(this.cliffShader);
 		}
 	}

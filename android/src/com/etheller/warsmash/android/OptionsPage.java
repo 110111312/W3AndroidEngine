@@ -1,6 +1,7 @@
 package com.etheller.warsmash.android;
 
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_ANIMATED;
+import static com.etheller.warsmash.launcher.LauncherKeys.KEY_CRASH_LOGS;
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_MUSIC;
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_SKIN;
 import static com.etheller.warsmash.launcher.LauncherKeys.KEY_UPDATE_CHECK;
@@ -10,6 +11,7 @@ import java.io.File;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import java.util.function.Predicate;
 
 import android.graphics.Color;
 import android.text.TextUtils;
@@ -139,6 +141,30 @@ final class OptionsPage extends LauncherViews {
 		radioRow(rows, R.string.options_texture_size, sizeNames, null, LauncherOptions.textureSizeChoice(textureSize),
 				choice -> engine.setGraphics(GraphicsSettings.KEY_TEXTURE_SIZE,
 						Integer.toString(GraphicsSettings.TEXTURE_SIZES[choice])));
+		final String[] scaleNames = new String[LauncherOptions.RENDER_SCALES.length];
+		for (int i = 0; i < scaleNames.length; i++) {
+			scaleNames[i] = getString(stringId(LauncherOptions.RENDER_SCALES[i]));
+		}
+		int scalePercent;
+		try {
+			scalePercent = Integer
+					.parseInt(engine.graphics(GraphicsSettings.KEY_RENDER_SCALE, "100").replace("%", "").trim());
+		}
+		catch (final NumberFormatException e) {
+			scalePercent = 100;
+		}
+		radioRow(rows, R.string.options_render_scale, scaleNames, null,
+				GraphicsSettings.renderScaleChoice(scalePercent),
+				choice -> engine.setGraphics(GraphicsSettings.KEY_RENDER_SCALE,
+						Integer.toString(GraphicsSettings.RENDER_SCALES[choice])));
+		// Android always syncs to the screen, so the way to spare the device is to draw fewer frames.
+		final String[] capNames = new String[LauncherOptions.FRAME_CAP_NAMES.length];
+		for (int i = 0; i < capNames.length; i++) {
+			capNames[i] = getString(stringId(LauncherOptions.FRAME_CAP_NAMES[i]));
+		}
+		radioRow(rows, R.string.options_frame_cap, capNames, null,
+				LauncherOptions.frameCapChoice(engine.number(LauncherOptions.KEY_FRAME_CAP, 0)),
+				choice -> engine.setNumber(LauncherOptions.KEY_FRAME_CAP, LauncherOptions.FRAME_CAPS[choice]));
 		checkRow(rows, R.string.options_animated, this.activity.preferences.getBoolean(KEY_ANIMATED, true),
 				on -> this.activity.preferences.edit().putBoolean(KEY_ANIMATED, on).apply());
 		engineRows(rows, engine, LauncherOptions.GRAPHICS);
@@ -368,6 +394,50 @@ final class OptionsPage extends LauncherViews {
 			});
 			skippedRow.setContentDescription(getString(R.string.options_skipped_update));
 		}
+		debuggingRows(rows);
+	}
+
+	/** Crash logs stay on the phone unless the player attaches one to a bug report; the first turn-on asks. */
+	private void debuggingRows(final LinearLayout rows) {
+		final LauncherBoard b = this.activity.board;
+		final FrameLayout heading = row(rows);
+		final TextView title = text(getString(R.string.options_debugging), b.body, this.activity.art.text2());
+		title.setGravity(Gravity.CENTER_VERTICAL);
+		place(heading, title, b.labelX, 0, b.contentW - (2 * b.pageFrame) - (2 * b.labelX), b.rowH);
+		askedCheckRow(rows, R.string.options_crash_logs, CrashLogs.enabled(this.activity), on -> {
+			if (!on) {
+				this.activity.preferences.edit().putBoolean(KEY_CRASH_LOGS, false).apply();
+				return true;
+			}
+			this.activity.dialogs.showQuestion(getString(R.string.crash_logs_title),
+					getString(R.string.crash_logs_line, CrashLogs.location(this.activity)),
+					new CharSequence[] { glueLabel("CANCEL", getString(R.string.crash_logs_cancel)),
+						getString(R.string.crash_logs_turn_on) },
+					new Runnable[] { () -> showOptions(TAB_ABOUT), () -> {
+						this.activity.preferences.edit().putBoolean(KEY_CRASH_LOGS, true).apply();
+						showOptions(TAB_ABOUT);
+					} }, null, 12, true);
+			return false;
+		});
+		final File last = CrashLogs.latest(this.activity);
+		infoRow(rows, R.string.options_crash_share,
+				last == null ? getString(R.string.options_crash_none) : last.getName(), false);
+		final View shareRow = rows.getChildAt(rows.getChildCount() - 1);
+		shareRow.setContentDescription(getString(R.string.options_crash_share));
+		if (last != null) {
+			onTap(shareRow, false, v -> {
+				try {
+					CrashLogs.share(this.activity);
+				}
+				catch (final RuntimeException e) {
+					this.activity.dialogs.showMessage(getString(R.string.options_crash_share),
+							getString(R.string.options_crash_cannot_share));
+				}
+			});
+		}
+		else {
+			shareRow.setAlpha(0.5f);
+		}
 	}
 
 	/** An option row: the gold label on the left, a line above every row but the first. */
@@ -399,6 +469,15 @@ final class OptionsPage extends LauncherViews {
 
 	private void checkRow(final LinearLayout rows, final int label, final boolean value,
 			final Consumer<Boolean> changed) {
+		askedCheckRow(rows, label, value, on -> {
+			changed.accept(on);
+			return true;
+		});
+	}
+
+	/** @param changed gets the new value; false leaves the box as it was, for a change that waits for an answer */
+	private void askedCheckRow(final LinearLayout rows, final int label, final boolean value,
+			final Predicate<Boolean> changed) {
 		final LauncherBoard b = this.activity.board;
 		final FrameLayout row = labelledRow(rows, label);
 		final LauncherKit.CheckDrawable check = new LauncherKit.CheckDrawable(this.activity.art);
@@ -409,9 +488,10 @@ final class OptionsPage extends LauncherViews {
 		final boolean[] on = { value };
 		// The whole row is the touch target.
 		onTap(row, false, v -> {
-			on[0] = !on[0];
-			check.setChecked(on[0]);
-			changed.accept(on[0]);
+			if (changed.test(!on[0])) {
+				on[0] = !on[0];
+				check.setChecked(on[0]);
+			}
 		});
 		row.setContentDescription(getString(label));
 	}

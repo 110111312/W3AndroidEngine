@@ -64,6 +64,7 @@ import com.etheller.warsmash.launcher.LauncherStore;
 import com.etheller.warsmash.launcher.LauncherStrings;
 import com.etheller.warsmash.launcher.Profiles;
 import com.etheller.warsmash.launcher.SharedDataSource;
+import com.etheller.warsmash.launcher.ResultMotion;
 import com.etheller.warsmash.launcher.SkinArt;
 import com.etheller.warsmash.launcher.UpdateCheck;
 import com.etheller.warsmash.movie.Movies;
@@ -144,6 +145,9 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	final Gui gui = new Gui();
 	/** The campaign mission's result the Missions page shows instead of the chapters, until Continue or Back. */
 	private GameResult campaignResult;
+	/** The result whose coming in is being drawn, and when it began (nanoseconds). */
+	private GameResult resultShown;
+	private long resultSince;
 	private final Preferences launcherPreferences;
 	final DesktopStore preferences;
 	private final DesktopStore engineStore;
@@ -368,7 +372,12 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			});
 		}
 		Gdx.graphics.setContinuousRendering(true);
-		Gdx.graphics.setVSync(this.preferences.getBoolean(KEY_VSYNC, true));
+		Gdx.graphics.setVSync(vsyncOn(new EngineSettings(this.saves, this.profiles.current(), this.iniFile)));
+	}
+
+	/** The engine's Options.dat decides; a launcher that kept the choice in its own store before is still obeyed. */
+	private boolean vsyncOn(final EngineSettings engine) {
+		return engine.flag(LauncherOptions.KEY_VSYNC, this.preferences.getBoolean(KEY_VSYNC, true));
 	}
 
 	@Override
@@ -1479,45 +1488,61 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		campaignBlock(entry, result);
 		final CampaignResult.Layout l = new CampaignResult.Layout(listX() + ((t ? 924 : 600) / 2f), b.width,
 				b.height);
-		g.image(CampaignResult.banner(entry.getSection()), l.x, 0, l.w, l.h);
+		// The banner falls in with its title; the numbers, the mission and the difficulty fade in after it.
+		if (this.resultShown != result) {
+			this.resultShown = result;
+			this.resultSince = System.nanoTime();
+		}
+		final long elapsed = animated() ? (System.nanoTime() - this.resultSince) / 1_000_000L
+				: ResultMotion.totalMillis();
+		final float fall = ResultMotion.bannerOffset(elapsed) * l.h;
+		final float shown = ResultMotion.contentAlpha(elapsed);
+		g.image(CampaignResult.banner(entry.getSection()), l.x, fall, l.w, l.h);
 		final String[] title = CampaignResult.title(result);
-		g.text(glue(title[0], title[1]), l.contentX, l.titleY, l.contentW, l.titleH, l.titleSize, 0xFFFFFFFF,
-				Align.center);
+		g.bold(true);
+		g.text(upper(glue(title[0], title[1])), l.contentX, l.titleY + fall, l.contentW, l.titleH, l.titleSize,
+				0xFFFFFFFF, Align.center);
 		for (final float dividerY : l.dividerY) {
-			g.image(SkinArt.RESULT_DIVIDER, l.dividerX, dividerY, l.dividerW, l.dividerH);
+			g.image(SkinArt.RESULT_DIVIDER, l.dividerX, dividerY, l.dividerW, l.dividerH, shown);
 		}
 		for (int i = 0; i < CampaignResult.ROWS.length; i++) {
 			final String[] row = CampaignResult.ROWS[i];
 			final int[] numbers = CampaignResult.numbers(result.score, i);
 			final float y = l.rowY[i];
-			g.image(row[0], l.iconX, y, l.icon, l.icon);
+			g.image(row[0], l.iconX, y, l.icon, l.icon, shown);
 			g.text(upper(glue(row[1], row[2])), l.detailsX, y + l.headingY, l.columnW * 2, l.headingH, l.headingSize,
-					CampaignResult.HEADING_GOLD, Align.left);
+					faded(CampaignResult.HEADING_GOLD, shown), Align.left);
 			final String[] labels = { glue("SCORE", "Score"), glue(row[3], row[4]) };
 			for (int c = 0; c < 2; c++) {
 				final float x = l.detailsX + (c * l.columnW);
-				g.text(labels[c], x, y + l.labelY, l.columnW, l.labelH, l.labelSize, CampaignResult.LABEL_GREY,
-						Align.left);
-				g.text(Integer.toString(numbers[c]), x, y + l.valueY, l.columnW, l.valueH, l.valueSize, 0xFFFFFFFF,
-						Align.left);
+				g.smallCaps(labels[c], x, y + l.labelY, l.columnW, l.labelH, l.labelSize,
+						faded(CampaignResult.LABEL_GREY, shown), Align.left);
+				g.text(Integer.toString(numbers[c]), x, y + l.valueY, l.columnW, l.valueH, l.valueSize,
+						faded(0xFFFFFFFF, shown), Align.left);
 			}
 		}
 		final String name = missionName(entry, result);
-		g.text(name, l.contentX, l.nameY, l.contentW, l.nameH, fitted(GlueText.plain(name), l.nameSize, l.contentW),
-				0xFFFFFFFF, Align.center);
+		g.smallCaps(name, l.contentX, l.nameY, l.contentW, l.nameH, fitted(GlueText.plain(name), l.nameSize, l.contentW),
+				faded(0xFFFFFFFF, shown), Align.center);
 		g.text(result.playTime(), l.contentX, l.durationY, l.contentW, l.durationH, l.durationSize,
-				CampaignResult.HEADING_GOLD, Align.center);
+				faded(CampaignResult.HEADING_GOLD, shown), Align.center);
 		final String[] difficulty = CampaignResult.difficulty(result.difficulty);
 		if (difficulty != null) {
-			g.text(glue(difficulty[1], difficulty[2]), l.contentX, l.difficultyY, l.contentW, l.difficultyH,
-					l.difficultySize, CampaignResult.LABEL_GREY, Align.center);
-			g.image(difficulty[0], l.difficultyIconX, l.difficultyIconY, l.difficultyIcon, l.difficultyIcon);
+			g.smallCaps(glue(difficulty[1], difficulty[2]), l.contentX, l.difficultyY, l.contentW, l.difficultyH,
+					l.difficultySize, faded(CampaignResult.LABEL_GREY, shown), Align.center);
+			g.image(difficulty[0], l.difficultyIconX, l.difficultyIconY, l.difficultyIcon, l.difficultyIcon, shown);
 		}
+		g.bold(false);
 		if (g.button("back", glue("BACK", s("launcher_back")), b.backX, b.backY, b.backW, b.backH, t ? 36 : 30,
 				Gui.TONE_NORMAL)) {
 			playClick();
 			this.campaignResult = null;
 		}
+	}
+
+	/** A colour with its opacity scaled. */
+	private static int faded(final int argb, final float alpha) {
+		return (Math.round(((argb >>> 24) & 0xFF) * alpha) << 24) | (argb & 0xFFFFFF);
 	}
 
 	/**
@@ -2787,11 +2812,18 @@ public final class LauncherScreen implements Screen, InputProcessor {
 				choice -> setFullscreen(choice == 1)));
 		final int at = index[0]++;
 		rows.add(() -> uiScaleRow(rowY, at, x, w, controlX));
-		rows.add(checkRow(rowY, index, x, w, controlX, s("options_vsync"),
-				this.preferences.getBoolean(KEY_VSYNC, true), on -> {
-					this.preferences.edit().putBoolean(KEY_VSYNC, on).apply();
-					Gdx.graphics.setVSync(on);
-				}));
+		final String[] scaleNames = new String[LauncherOptions.RENDER_SCALES.length];
+		for (int i = 0; i < scaleNames.length; i++) {
+			scaleNames[i] = s(LauncherOptions.RENDER_SCALES[i]);
+		}
+		rows.add(radioRow(rowY, index, x, w, controlX, s("options_render_scale"), scaleNames, null,
+				GraphicsSettings.renderScaleChoice(renderScalePercent()), choice -> this.preferences.edit()
+						.putInt(LauncherKeys.KEY_RENDER_SCALE, GraphicsSettings.RENDER_SCALES[choice]).apply()));
+		// The game's own Options dialog reads the same value, so one choice holds in both.
+		rows.add(checkRow(rowY, index, x, w, controlX, s("options_vsync"), vsyncOn(engine), on -> {
+			engine.setFlag(LauncherOptions.KEY_VSYNC, on);
+			Gdx.graphics.setVSync(on);
+		}));
 		rows.add(checkRow(rowY, index, x, w, controlX, s("options_animated"),
 				this.preferences.getBoolean(LauncherKeys.KEY_ANIMATED, true), on -> {
 					this.preferences.edit().putBoolean(LauncherKeys.KEY_ANIMATED, on).apply();
@@ -3207,6 +3239,11 @@ public final class LauncherScreen implements Screen, InputProcessor {
 	/** The desktop has the memory for every texture at its full size unless the player sets a limit. */
 	private int textureSize() {
 		return this.preferences.getInt(LauncherKeys.KEY_TEXTURE_SIZE, 0);
+	}
+
+	/** The desktop draws the world at the full size of its window unless the player lowers it. */
+	private int renderScalePercent() {
+		return this.preferences.getInt(LauncherKeys.KEY_RENDER_SCALE, 100);
 	}
 
 	private void chooseSkin(final boolean reforged) {
@@ -4334,7 +4371,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		stopRenderer();
 		disposeCursor();
 		this.launched = request;
-		GraphicsSettings.apply(this.ini, graphicsSet(), textureSize());
+		GraphicsSettings.apply(this.ini, graphicsSet(), textureSize(), renderScalePercent());
 		this.menuScreen = new WarsmashGdxMenuScreen(this.ini, this.game);
 		// The game reads the data the launcher has open rather than opening it again beside it.
 		this.menuScreen.setGameData(this.data);

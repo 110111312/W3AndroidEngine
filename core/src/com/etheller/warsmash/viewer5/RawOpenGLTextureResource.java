@@ -32,6 +32,8 @@ public abstract class RawOpenGLTextureResource extends Texture {
 	private int height;
 	private int wrapS = GL20.GL_CLAMP_TO_EDGE;
 	private int wrapT = GL20.GL_CLAMP_TO_EDGE;
+	private int appliedWrapS = -1;
+	private int appliedWrapT = -1;
 	private final int magFilter = GL20.GL_LINEAR;
 	private final int minFilter = GL20.GL_LINEAR;
 	private ByteBuffer data;
@@ -68,8 +70,15 @@ public abstract class RawOpenGLTextureResource extends Texture {
 	@Override
 	public void internalBind() {
 		this.viewer.gl.glBindTexture(this.target, this.handle);
-		this.viewer.gl.glTexParameteri(this.target, GL20.GL_TEXTURE_WRAP_S, this.wrapS);
-		this.viewer.gl.glTexParameteri(this.target, GL20.GL_TEXTURE_WRAP_T, this.wrapT);
+		// A texture keeps its wrap modes, and setting them again makes some drivers rebuild the texture's state.
+		if (this.appliedWrapS != this.wrapS) {
+			this.viewer.gl.glTexParameteri(this.target, GL20.GL_TEXTURE_WRAP_S, this.wrapS);
+			this.appliedWrapS = this.wrapS;
+		}
+		if (this.appliedWrapT != this.wrapT) {
+			this.viewer.gl.glTexParameteri(this.target, GL20.GL_TEXTURE_WRAP_T, this.wrapT);
+			this.appliedWrapT = this.wrapT;
+		}
 	}
 
 	@Override

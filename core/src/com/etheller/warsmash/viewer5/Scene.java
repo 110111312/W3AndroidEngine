@@ -68,6 +68,8 @@ public abstract class Scene {
 	public boolean show = true;
 	/** Where the scene may draw, when that is less than its camera's viewport (a cropped view of the scene). */
 	public Rectangle clip;
+	/** The part of its camera's viewport the scene is drawn at, into a render target of that part of the screen. */
+	private float renderScale = 1f;
 
 	public Scene(final ModelViewer viewer, final SceneLightManager lightManager) {
 		final CanvasProvider canvas = viewer.canvas;
@@ -189,6 +191,11 @@ public abstract class Scene {
 	}
 
 	public void addToBatch(final ModelInstance instance) {
+		// Removed after this frame's update: its batch would be made for no scene and kept for the scene's lifetime.
+		if (instance.scene != this) {
+			return;
+		}
+
 		final TextureMapper textureMapper = instance.textureMapper;
 		RenderBatch batch = this.batches.get(textureMapper);
 
@@ -253,16 +260,32 @@ public abstract class Scene {
 
 	protected abstract void innerUpdate(float dt, int frame);
 
+	public void setRenderScale(final float renderScale) {
+		this.renderScale = renderScale;
+	}
+
+	/** A screen coordinate or length at a render scale; at 1 it is the plain truncation. */
+	public static int scaled(final float value, final float scale) {
+		return (int) (value * scale);
+	}
+
+	private void applyViewport(final GL20 gl) {
+		final Rectangle viewport = this.camera.rect;
+		gl.glViewport(scaled(viewport.x, this.renderScale), scaled(viewport.y, this.renderScale),
+				scaled(viewport.width, this.renderScale), scaled(viewport.height, this.renderScale));
+	}
+
 	public void startFrame() {
 		final GL20 gl = this.viewer.gl;
 		final Rectangle viewport = this.camera.rect;
 
 		// Set the viewport
-		gl.glViewport((int) viewport.x, (int) viewport.y, (int) viewport.width, (int) viewport.height);
+		applyViewport(gl);
 
 		// Allow to render only in the viewport
 		final Rectangle drawn = this.clip != null ? this.clip : viewport;
-		gl.glScissor((int) drawn.x, (int) drawn.y, (int) drawn.width, (int) drawn.height);
+		gl.glScissor(scaled(drawn.x, this.renderScale), scaled(drawn.y, this.renderScale),
+				scaled(drawn.width, this.renderScale), scaled(drawn.height, this.renderScale));
 
 		// The interface drawing leaves the depth test off.
 		gl.glEnable(GL20.GL_DEPTH_TEST);
@@ -283,8 +306,7 @@ public abstract class Scene {
 		if (!this.show) {
 			return;
 		}
-		final Rectangle viewport = this.camera.rect;
-		this.viewer.gl.glViewport((int) viewport.x, (int) viewport.y, (int) viewport.width, (int) viewport.height);
+		applyViewport(this.viewer.gl);
 
 		// Clear all of the batches.
 		for (final RenderBatch batch : this.batches.values()) {
@@ -320,8 +342,7 @@ public abstract class Scene {
 		Gdx.gl30.glDisable(GL30.GL_SCISSOR_TEST);
 
 		dynamicShadowManager.endShadowMap();
-		final Rectangle viewport = this.camera.rect;
-		this.viewer.gl.glViewport((int) viewport.x, (int) viewport.y, (int) viewport.width, (int) viewport.height);
+		applyViewport(this.viewer.gl);
 		Gdx.gl30.glEnable(GL30.GL_SCISSOR_TEST);
 	}
 
@@ -333,9 +354,7 @@ public abstract class Scene {
 		if (!this.show) {
 			return;
 		}
-		final Rectangle viewport = this.camera.rect;
-
-		this.viewer.gl.glViewport((int) viewport.x, (int) viewport.y, (int) viewport.width, (int) viewport.height);
+		applyViewport(this.viewer.gl);
 
 		// Render all of the batches.
 		for (final RenderBatch batch : this.batches.values()) {

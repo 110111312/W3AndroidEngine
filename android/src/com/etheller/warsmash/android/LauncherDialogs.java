@@ -172,9 +172,15 @@ final class LauncherDialogs extends LauncherViews {
 	/** With an icon, the question stands beside it, as the glue dialogs that ask about a profile have it. */
 	void showQuestion(final String title, final String line, final CharSequence[] labels,
 			final Runnable[] actions, final Bitmap icon) {
+		showQuestion(title, line, labels, actions, icon, 3, false);
+	}
+
+	/** A question with a long explanation: the box is taller and the lines of the explanation are not cut at three. */
+	void showQuestion(final String title, final String line, final CharSequence[] labels,
+			final Runnable[] actions, final Bitmap icon, final int detailLines, final boolean tall) {
 		final LauncherBoard b = this.activity.board;
 		final float w = b.tablet ? 1200 : 900;
-		final float h = b.tablet ? 620 : 440;
+		final float h = tall ? (b.tablet ? 860 : 640) : (b.tablet ? 620 : 440);
 		final FrameLayout box = dialogBox(w, h);
 		if (box == null) {
 			return;
@@ -197,7 +203,7 @@ final class LauncherDialogs extends LauncherViews {
 		question.setGravity(gravity);
 		texts.addView(question, new LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
 		if ((line != null) && !line.isEmpty()) {
-			final TextView detail = lines(line, b.body, this.activity.art.text2(), 3);
+			final TextView detail = lines(line, b.body, this.activity.art.text2(), detailLines);
 			detail.setGravity(gravity);
 			final LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(MATCH,
 					ViewGroup.LayoutParams.WRAP_CONTENT);

@@ -65,7 +65,7 @@ public class W3xScenePortraitLightManager implements SceneLightManager, W3xScene
 			this.unitLightCount++;
 		}
 		this.lightDataCopyHeap.limit(offset);
-		this.unitLightsTexture.bindAndUpdate(this.lightDataCopyHeap, 4, this.unitLightCount);
+		this.unitLightsTexture.bindAndUpdateIfChanged(this.lightDataCopyHeap, 4, this.unitLightCount);
 	}
 
 	@Override

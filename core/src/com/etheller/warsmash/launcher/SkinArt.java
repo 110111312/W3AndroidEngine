@@ -79,6 +79,12 @@ public final class SkinArt {
 	public static final String CHAPTER_WON = "chapter-won.png";
 	public static final String CHAPTER_OPEN = "chapter-open.png";
 	public static final String CHEVRON_RIGHT = "chevron-right.png";
+	/** The Reforged drop-down menu's gold arrow, at rest and disabled. */
+	public static final String CHEVRON_DOWN = "chevron-down.png";
+	public static final String CHEVRON_DOWN_DISABLED = "chevron-down-disabled.png";
+	/** The Reforged interface's own fonts: MasterFont (text) and MasterFontBold (headings, names) of its war3skins. */
+	public static final String FONT_MASTER = "master.ttf";
+	public static final String FONT_BOLD = "master-bold.ttf";
 	/** The Reforged ornament beside a gold heading; the one on the right is its mirror. */
 	public static final String HEADER_ORNAMENT = "header-ornament.png";
 	public static final String ICON_FOLDER_GOLD = "icon-folder-gold.png";
@@ -269,6 +275,22 @@ public final class SkinArt {
 		return new Item(name, shown, kind, path, 0, false);
 	}
 
+	/**
+	 * A number that changes whenever a piece of art is added, removed or taken from another path, so a cache of
+	 * prepared art made for an older set is made again (the prepared files are named by the items).
+	 */
+	public static int revision(final boolean reforged) {
+		int hash = 17;
+		for (final Item item : items(reforged)) {
+			hash = (31 * hash) + item.name.hashCode();
+			hash = (31 * hash) + item.kind.ordinal();
+			hash = (31 * hash) + (item.path == null ? 0 : item.path.hashCode());
+			hash = (31 * hash) + item.slice;
+			hash = (31 * hash) + (item.centre ? 1 : 0);
+		}
+		return hash;
+	}
+
 	/** Every piece of a skin's art, the ones the preparation screen draws with first. */
 	public static List<Item> items(final boolean reforged) {
 		final List<Item> items = new ArrayList<>();
@@ -362,6 +384,8 @@ public final class SkinArt {
 	 * the slice the game's own style sheets use.
 	 */
 	private static void reforgedItems(final List<Item> items) {
+		items.add(item(FONT_MASTER, "blq55web.ttf", Kind.COPY, "Fonts\\BLQ55Web.ttf"));
+		items.add(item(FONT_BOLD, "blq85web.ttf", Kind.COPY, "Fonts\\BLQ85Web.ttf"));
 		final String buttons = "webui\\widgets\\buttons\\";
 		items.add(web(BUTTON_BORDER, buttons + "wc3_btn_blue_normal_4k.png", 30, true));
 		items.add(web(BUTTON_BORDER_DOWN, buttons + "wc3_btn_blue_down_4k.png", 30, true));
@@ -395,6 +419,8 @@ public final class SkinArt {
 		items.add(web(CHAPTER_OPEN, campaign + "wc3_victoryscreen_difficulty_unplayed.png", 0, false));
 		final String icons = "webui\\icons\\";
 		items.add(web(CHEVRON_RIGHT, icons + "chevron-right-icon-resting.png", 0, false));
+		items.add(web(CHEVRON_DOWN, icons + "chevron-down-icon-resting.png", 0, false));
+		items.add(web(CHEVRON_DOWN_DISABLED, icons + "chevron-down-icon-disabled.png", 0, false));
 		items.add(web(ICON_FOLDER_GOLD, icons + "folder-icon-resting.png", 0, false));
 		items.add(web(ICON_SEARCH, icons + "search-icon-resting.png", 0, false));
 		for (final String banner : new String[] { "human", "horde", "undead", "nightelf", "fk", "random" }) {

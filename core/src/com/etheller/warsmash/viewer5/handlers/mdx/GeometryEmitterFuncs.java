@@ -524,7 +524,7 @@ public class GeometryEmitterFuncs {
 				break;
 			}
 
-			buffer.bindAndUpdate(size);
+			buffer.bindAndReplace(size);
 
 			shader.setUniformf("u_emitter", emitterType);
 

@@ -581,15 +581,13 @@ class SmashJassLexer {
 	}
 
 	/*
-	 * Warcraft III reads a string literal in two passes: every "\\" pair becomes one backslash first, then the
-	 * escapes \n \t \r \b \f \" and \\ are read over that result, so "a\\nb" holds a line feed and "a\\\"b" holds a
-	 * backslash and a quote. Any other backslash stays as it is.
+	 * Warcraft III reads the escapes \n \t \r \b \f \" and \\ in one pass from left to right, so "a\\nb" is a
+	 * backslash, n and b, and a path like "Maps\\new.txt" keeps its backslash. Any other backslash stays as it is.
 	 */
-	static String unescapeStringLiteral(final String literalContent) {
-		if (literalContent.indexOf('\\') == -1) {
-			return literalContent;
+	static String unescapeStringLiteral(final String content) {
+		if (content.indexOf('\\') == -1) {
+			return content;
 		}
-		final String content = literalContent.replace("\\\\", "\\");
 		final StringBuilder result = new StringBuilder(content.length());
 		for (int i = 0; i < content.length(); i++) {
 			final char c = content.charAt(i);

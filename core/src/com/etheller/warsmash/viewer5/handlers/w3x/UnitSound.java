@@ -144,9 +144,14 @@ public final class UnitSound {
 	 */
 	public void prefetch() {
 		for (int i = 0; i < this.sounds.size(); i++) {
-			if ((this.sounds.get(i) == null) && (this.handles.get(i) == null)) {
-				Extensions.audio.prefetchSound(handle(i));
-			}
+			prefetch(i);
+		}
+	}
+
+	/** Starts decoding one file of this sound, as {@link #prefetch()} does for all of them. */
+	public void prefetch(final int index) {
+		if ((this.sounds.get(index) == null) && (this.handles.get(index) == null)) {
+			Extensions.audio.prefetchSound(handle(index));
 		}
 	}
 

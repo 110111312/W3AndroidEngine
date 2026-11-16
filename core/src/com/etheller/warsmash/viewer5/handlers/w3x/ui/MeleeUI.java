@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -44,7 +45,9 @@ import com.etheller.warsmash.input.touch.PointKind;
 import com.etheller.warsmash.input.touch.VirtualCursor;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.parsers.fdf.GameUI;
+import com.etheller.warsmash.parsers.fdf.datamodel.BackdropCornerFlags;
 import com.etheller.warsmash.parsers.fdf.datamodel.FramePoint;
+import com.etheller.warsmash.parsers.fdf.datamodel.Vector4Definition;
 import com.etheller.warsmash.parsers.fdf.frames.BackdropFrame;
 import com.etheller.warsmash.parsers.fdf.frames.ColorCodedText;
 import com.etheller.warsmash.parsers.fdf.frames.FadingSpriteBatch;
@@ -114,6 +117,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		QueueIconListener, CommandErrorListener, CPlayerStateListener, WarsmashUI, WarsmashToggleableUI,
 		War3MapViewer.InterfaceStateKeeper {
 	private static final float PANEL_TIP_REFRESH_PERIOD = 0.25f;
+	private static final float CLASSIC_CONSOLE_BACKDROP_HEIGHT = 0.13f;
 	/**
 	 * Floating text: the font size and the line spacing for a text tag height of 1, and the width lines wrap at. The
 	 * glyphs are drawn smaller than the lines are apart.
@@ -539,9 +543,10 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.consoleUI.setSetAllPoints(true);
 		// The console tiles leave their openings transparent for this black backdrop; the world is drawn a little
 		// lower than the openings begin, so without it thin bands of the world show in the command card and info panel.
-		if ((this.rootFrame.getTemplates().getFrame("ConsoleUIBackdrop") != null)
-				&& (this.consoleUI instanceof SimpleFrame)) {
-			final UIFrame consoleBackdrop = this.rootFrame.createFrame("ConsoleUIBackdrop", this.consoleUI, 0, 0);
+		if (this.consoleUI instanceof SimpleFrame) {
+			final UIFrame consoleBackdrop = this.rootFrame.getTemplates().getFrame("ConsoleUIBackdrop") != null
+					? this.rootFrame.createFrame("ConsoleUIBackdrop", this.consoleUI, 0, 0)
+					: createClassicConsoleBackdrop();
 			((SimpleFrame) this.consoleUI).add(0,
 					consoleBackdrop instanceof BackdropFrame
 							? new ConsoleBackdrop((BackdropFrame) consoleBackdrop, this.infoPanel, this.consoleUI)
@@ -1237,6 +1242,21 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.smoothedY = y;
 		this.smoothedHeight = sum / weights;
 		return this.smoothedHeight;
+	}
+
+	/**
+	 * The Classic console definitions (1.29 to 1.31) have no backdrop, yet their tiles are transparent in the lower part
+	 * of the openings too, from about 0.117 down, where the world is still drawn to 0.111; the same black backdrop as
+	 * the later definitions' fills that strip.
+	 */
+	private BackdropFrame createClassicConsoleBackdrop() {
+		final BackdropFrame backdrop = new BackdropFrame("ConsoleUIBackdrop", this.consoleUI, false, false,
+				this.rootFrame.loadTexture("Textures\\Black32.blp"), EnumSet.noneOf(BackdropCornerFlags.class), 0, 0,
+				new Vector4Definition(0, 0, 0, 0), null, false);
+		backdrop.setHeight(GameUI.convertY(this.uiViewport, CLASSIC_CONSOLE_BACKDROP_HEIGHT));
+		backdrop.addSetPoint(new SetPoint(FramePoint.BOTTOMLEFT, this.consoleUI, FramePoint.BOTTOMLEFT, 0, 0));
+		backdrop.addSetPoint(new SetPoint(FramePoint.BOTTOMRIGHT, this.consoleUI, FramePoint.BOTTOMRIGHT, 0, 0));
+		return backdrop;
 	}
 
 	private Rectangle setupWorldFrameViewport(final int width, final int height) {

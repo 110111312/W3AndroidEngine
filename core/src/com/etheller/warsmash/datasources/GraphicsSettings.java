@@ -20,6 +20,11 @@ public final class GraphicsSettings {
 	public static final String KEY_TEXTURE_SIZE = "TextureSize";
 	/** "Auto" (the default: compressed on phones and tablets), "On" or "Off"; see {@link #textureCompression}. */
 	public static final String KEY_TEXTURE_COMPRESSION = "TextureCompression";
+	/** The part of the screen's resolution the world is drawn at, in percent; the interface is always at full size. */
+	public static final String KEY_RENDER_SCALE = "RenderScale";
+	/** The render scales offered, in the order the launchers list them. */
+	public static final int[] RENDER_SCALES = { 100, 85, 70, 50 };
+	public static final int MIN_RENDER_SCALE = 50;
 	/** The texture size limits offered, in the order the launchers list them; 0 is no limit. */
 	public static final int[] TEXTURE_SIZES = { 512, 1024, 0 };
 	/** Below this much memory a tablet is treated as a phone. */
@@ -89,6 +94,30 @@ public final class GraphicsSettings {
 		return mobile;
 	}
 
+	/** The render scale of the configuration in percent, 100 (full size) when it sets none or something unreadable. */
+	public static int renderScalePercent(final DataTable ini) {
+		final Element section = ini == null ? null : ini.get(SECTION);
+		final String value = section == null ? "" : section.getField(KEY_RENDER_SCALE).trim();
+		if (value.endsWith("%")) {
+			return parseRenderScale(value.substring(0, value.length() - 1));
+		}
+		return parseRenderScale(value);
+	}
+
+	private static int parseRenderScale(final String text) {
+		try {
+			return Math.max(MIN_RENDER_SCALE, Math.min(100, Integer.parseInt(text.trim())));
+		}
+		catch (final NumberFormatException e) {
+			return 100;
+		}
+	}
+
+	/** The part of the screen's resolution the world is drawn at, from 0.5 to 1. */
+	public static float renderScale(final DataTable ini) {
+		return renderScalePercent(ini) / 100f;
+	}
+
 	/** Puts a default texture size limit into a configuration that sets none, for this run only. */
 	public static void applyDefaultTextureSize(final DataTable ini, final int textureSize) {
 		if ((ini == null) || (configuredTextureSize(ini) >= 0)) {
@@ -102,6 +131,25 @@ public final class GraphicsSettings {
 		final Element section = section(ini);
 		section.setField(KEY_SET, graphics.getIniName());
 		section.setField(KEY_TEXTURE_SIZE, Integer.toString(Math.max(0, textureSize)));
+	}
+
+	/** Sets the graphics and the render scale (percent) of a configuration, for this run only. */
+	public static void apply(final DataTable ini, final GraphicsSet graphics, final int textureSize,
+			final int renderScalePercent) {
+		apply(ini, graphics, textureSize);
+		section(ini).setField(KEY_RENDER_SCALE,
+				Integer.toString(Math.max(MIN_RENDER_SCALE, Math.min(100, renderScalePercent))));
+	}
+
+	/** The choice of a render scale in {@link #RENDER_SCALES}, the nearest one for a value the launcher does not offer. */
+	public static int renderScaleChoice(final int percent) {
+		int best = 0;
+		for (int i = 1; i < RENDER_SCALES.length; i++) {
+			if (Math.abs(RENDER_SCALES[i] - percent) < Math.abs(RENDER_SCALES[best] - percent)) {
+				best = i;
+			}
+		}
+		return best;
 	}
 
 	private static Element section(final DataTable ini) {

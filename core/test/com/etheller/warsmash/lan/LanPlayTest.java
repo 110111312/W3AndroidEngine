@@ -68,10 +68,12 @@ class LanPlayTest {
 		assertFalse(play.usesKeyboardAndMouse(0));
 		assertTrue(play.usesKeyboardAndMouse(1));
 		assertFalse(play.usesKeyboardAndMouse(2), "a computer plays with neither");
+		assertEquals(1 << 1, play.keyboardAndMouseSlots());
 		play.onControlScheme(1, LanProtocol.CONTROL_KBM);
 		play.onControlScheme(2, LanProtocol.CONTROL_TOUCH);
 		assertTrue(play.usesKeyboardAndMouse(0));
 		assertFalse(play.usesKeyboardAndMouse(1));
+		assertEquals(1, play.keyboardAndMouseSlots());
 	}
 
 	@Test

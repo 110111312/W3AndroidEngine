@@ -208,6 +208,7 @@ final class MenuMapStart {
 		final War3MapViewer viewer = new War3MapViewer(codebase, this.menu.screenManager, this.menu.currentMapConfig,
 				turnManager);
 		viewer.setTextureSizeLimit(GraphicsSettings.textureSize(this.menu.warsmashIni));
+		viewer.setRenderScale(GraphicsSettings.renderScale(this.menu.warsmashIni));
 		viewer.setTextureCompression(GraphicsSettings.textureCompression(this.menu.warsmashIni,
 				gameGraphics(mapFilename), Gdx.app.getType() == ApplicationType.Android,
 				Gdx.graphics.isGL30Available()));
@@ -229,7 +230,7 @@ final class MenuMapStart {
 			try {
 				this.loadingReplayHeader = lan != null
 						? GameReplays.header(codebase, mapFilename, viewer, this.menu.currentMapConfig,
-								localPlayerIndex, lan.recordedAt())
+								localPlayerIndex, lan.recordedAt(), lan.play().keyboardAndMouseSlots())
 						: GameReplays.header(codebase, mapFilename, viewer, this.menu.currentMapConfig,
 								localPlayerIndex);
 			}

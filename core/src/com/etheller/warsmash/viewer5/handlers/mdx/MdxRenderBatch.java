@@ -55,7 +55,7 @@ public class MdxRenderBatch extends RenderBatch {
 		}
 
 		// Update the buffer.
-		buffer.bindAndUpdate(count * 48);
+		buffer.bindAndReplace(count * 48);
 	}
 
 	@Override

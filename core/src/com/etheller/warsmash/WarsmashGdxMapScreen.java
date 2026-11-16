@@ -52,6 +52,7 @@ import com.etheller.warsmash.parsers.jass.Jass2.RootFrameListener;
 import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.units.Element;
 import com.etheller.warsmash.util.DataErrors;
+import com.etheller.warsmash.util.FrameLimiter;
 import com.etheller.warsmash.util.ImageUtils;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.util.PerfStats;
@@ -456,6 +457,7 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 
 		Gdx.gl30.glActiveTexture(GL30.GL_TEXTURE0);
 		GammaOverlay.render(this.batch);
+		FrameLimiter.limit();
 	}
 
 	private void renderLibGDXContent(final boolean modal) {

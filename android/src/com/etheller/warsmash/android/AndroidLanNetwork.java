@@ -19,6 +19,7 @@ import android.os.PowerManager;
 import android.util.Log;
 
 import net.warsmash.lan.transport.DefaultLanNetwork;
+import net.warsmash.lan.transport.LanLog;
 
 /**
  * LAN play on Android: the multicast lock for the game search, the Wi-Fi and CPU locks and the foreground service for
@@ -39,6 +40,14 @@ public final class AndroidLanNetwork extends DefaultLanNetwork {
 
 	public AndroidLanNetwork(final Context context) {
 		this.context = context.getApplicationContext();
+		LanLog.setSink((warning, message, error) -> {
+			if (warning) {
+				Log.w(TAG, message, error);
+			}
+			else {
+				Log.i(TAG, message);
+			}
+		});
 	}
 
 	@Override

@@ -42,13 +42,19 @@ class SmashJassLexerStringTest {
 	}
 
 	@Test
-	void doubledBackslashIsReadBeforeTheEscapes() throws Exception {
-		// 1.29: "a\\b" is a and a backspace, "a\\nb" is a, a line feed and b, "ab\\" ends with one backslash.
-		assertEquals("a\b", literal("a\\\\b"));
-		assertEquals("a\nb", literal("a\\\\nb"));
+	void escapesAreReadInOnePass() throws Exception {
+		// 1.29: "a\\nb" is a, a backslash, n and b; "a\\\nb" is a, a backslash, a line feed and b.
+		assertEquals("a\\b", literal("a\\\\b"));
+		assertEquals("a\\nb", literal("a\\\\nb"));
+		assertEquals("a\\fb", literal("a\\\\fb"));
+		assertEquals("a\\qb", literal("a\\\\qb"));
+		assertEquals("a\\\nb", literal("a\\\\\\nb"));
+		assertEquals("a\\\\nb", literal("a\\\\\\\\nb"));
+		assertEquals("a\\\\", literal("a\\\\\\\\"));
 		assertEquals("a\\\"b", literal("a\\\\\\\"b"));
-		assertEquals("a\"\b", literal("a\\\"\\\\b"));
+		assertEquals("a\"\\b", literal("a\\\"\\\\b"));
 		assertEquals("ab\\", literal("ab\\\\"));
+		assertEquals("WC3Probes\\fog.txt", literal("WC3Probes\\\\fog.txt"));
 	}
 
 	@Test

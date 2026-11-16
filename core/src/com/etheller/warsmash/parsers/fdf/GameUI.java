@@ -1527,11 +1527,12 @@ public final class GameUI extends AbstractUIFrame implements UIFrame {
 				final Float backgroundSizeNullable = frameDefinition.getFloat("BackdropBackgroundSize");
 				final float backgroundSize = GameUI.convertX(viewport2,
 						backgroundSizeNullable == null ? 0.0f : backgroundSizeNullable);
+				// FDF order is left, top, bottom, right; the frame takes left, bottom, right, top
 				Vector4Definition backgroundInsets = frameDefinition.getVector4("BackdropBackgroundInsets");
 				if (backgroundInsets != null) {
 					backgroundInsets = new Vector4Definition(GameUI.convertX(viewport2, backgroundInsets.getX()),
-							GameUI.convertY(viewport2, backgroundInsets.getW()),
-							GameUI.convertX(viewport2, backgroundInsets.getZ()),
+							GameUI.convertY(viewport2, backgroundInsets.getZ()),
+							GameUI.convertX(viewport2, backgroundInsets.getW()),
 							GameUI.convertY(viewport2, backgroundInsets.getY()));
 				}
 				else {

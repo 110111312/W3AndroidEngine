@@ -390,6 +390,13 @@ public class DesktopLauncher {
 			}
 
 			@Override
+			public void finishLoading(final long maxMillis) {
+				if (Gdx.audio instanceof OpenALAudio) {
+					((OpenALAudio) Gdx.audio).dropPrefetchedWav();
+				}
+			}
+
+			@Override
 			public long play(final Sound buffer, final float volume, final float pitch, final float x, final float y,
 					final float z, final boolean is3dSound, final float maxDistance, final float refDistance,
 					final boolean looping) {

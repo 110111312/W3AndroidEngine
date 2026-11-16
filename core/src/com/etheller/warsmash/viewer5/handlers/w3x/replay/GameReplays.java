@@ -130,6 +130,14 @@ public final class GameReplays {
 				CHECKSUM_INTERVAL, CGameCache.snapshot());
 	}
 
+	/** The same, with the players that play with a keyboard and mouse marked (bit i: player slot i). */
+	public static CReplayHeader header(final DataSource dataSource, final String mapFile, final War3MapViewer viewer,
+			final War3MapConfig config, final int localPlayerIndex, final long recordedAt,
+			final int keyboardAndMouseSlots) throws IOException {
+		return header(dataSource, mapFile, viewer, config, localPlayerIndex, recordedAt)
+				.withKeyboardAndMouseSlots(keyboardAndMouseSlots);
+	}
+
 	public static ReplayRecording startRecording(final War3MapViewer viewer, final CReplayHeader header)
 			throws IOException {
 		return startRecording(viewer, header, SimulationChecksum::compute);

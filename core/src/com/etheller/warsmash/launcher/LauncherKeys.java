@@ -10,9 +10,12 @@ public final class LauncherKeys {
 	/** Whether the launcher looks for a newer engine release when it starts (on by default), and the one skipped. */
 	public static final String KEY_UPDATE_CHECK = "updateCheck";
 	public static final String KEY_UPDATE_SKIPPED = "updateSkipped";
+	/** Whether a crash leaves a log file on the phone (off by default; the player turns it on knowing what it holds). */
+	public static final String KEY_CRASH_LOGS = "crashLogs";
 	/** The desktop's in-game graphics and texture size limit; Android keeps them in the engine configuration. */
 	public static final String KEY_GRAPHICS = "graphics";
 	public static final String KEY_TEXTURE_SIZE = "textureSize";
+	public static final String KEY_RENDER_SCALE = "renderScale";
 	public static final String KEY_CAMPAIGN = "campaign";
 	public static final String KEY_MISSION = "mission";
 	public static final String KEY_DIFFICULTY = "difficulty";

@@ -9,7 +9,9 @@ import static com.etheller.warsmash.launcher.LauncherKeys.KEY_MISSION;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.LongConsumer;
 
+import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
@@ -20,6 +22,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -30,6 +33,7 @@ import com.etheller.warsmash.launcher.CampaignResult;
 import com.etheller.warsmash.launcher.GameResult;
 import com.etheller.warsmash.launcher.LaunchRequest;
 import com.etheller.warsmash.launcher.LauncherBoard;
+import com.etheller.warsmash.launcher.ResultMotion;
 import com.etheller.warsmash.launcher.SkinArt;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CCampaignProgress;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.menu.CampaignCatalog;
@@ -477,6 +481,51 @@ final class CampaignPage extends LauncherViews {
 		return text.toString().toUpperCase(Locale.ROOT);
 	}
 
+	/** A line set in MasterFontBold, as the Reforged result is. */
+	private TextView bold(final TextView line) {
+		line.setTypeface(this.activity.art.fontBold());
+		return line;
+	}
+
+	/**
+	 * Plays {@link ResultMotion}: the banner and its title fall from above the screen, the other views fade in. The
+	 * views start in their first frame; with the system's animations off they are shown as they end.
+	 */
+	private void animateResult(final View page, final View banner, final View title, final int bannerHeight,
+			final List<View> fading) {
+		if (!ValueAnimator.areAnimatorsEnabled()) {
+			return;
+		}
+		final ValueAnimator clock = ValueAnimator.ofInt(0, (int) ResultMotion.totalMillis());
+		clock.setInterpolator(new LinearInterpolator());
+		clock.setDuration(ResultMotion.totalMillis());
+		final LongConsumer frame = elapsed -> {
+			final float fall = ResultMotion.bannerOffset(elapsed) * bannerHeight;
+			banner.setTranslationY(fall);
+			title.setTranslationY(fall);
+			final float alpha = ResultMotion.contentAlpha(elapsed);
+			for (final View view : fading) {
+				view.setAlpha(alpha);
+			}
+		};
+		frame.accept(0);
+		clock.addUpdateListener(animation -> frame.accept(animation.getCurrentPlayTime()));
+		page.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(final View v) {
+				clock.start();
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(final View v) {
+				clock.cancel();
+			}
+		});
+		if (page.isAttachedToWindow()) {
+			clock.start();
+		}
+	}
+
 	/**
 	 * The Reforged campaign screen's left side: the shield of the campaign version, the campaign's header and name,
 	 * and under the name one bar with the version and difficulty menus and the button to the saved games. Gives the
@@ -568,39 +617,49 @@ final class CampaignPage extends LauncherViews {
 		addCampaignBlock(content, entry, result);
 		final CampaignResult.Layout l = new CampaignResult.Layout(
 				b.contentX + campaignListX() + (campaignListW() / 2), b.width, b.height);
-		place(view, image(CampaignResult.banner(entry.getSection()), ImageView.ScaleType.FIT_XY), l.x, 0, l.w, l.h);
+		// The banner falls in with its title; the numbers, the mission and the difficulty fade in after it.
+		final List<View> fading = new ArrayList<>();
+		final ImageView banner = image(CampaignResult.banner(entry.getSection()), ImageView.ScaleType.FIT_XY);
+		place(view, banner, l.x, 0, l.w, l.h);
 		final String[] title = CampaignResult.title(result);
-		centred(view, glueLabel(title[0], title[1]), l.titleSize, Color.WHITE, l.contentX, l.titleY, l.contentW, l.titleH);
+		final TextView titleView = bold(centred(view, upper(glueLabel(title[0], title[1])), l.titleSize, Color.WHITE,
+				l.contentX, l.titleY, l.contentW, l.titleH));
 		for (final float dividerY : l.dividerY) {
-			place(view, image(SkinArt.RESULT_DIVIDER, ImageView.ScaleType.FIT_XY), l.dividerX, dividerY, l.dividerW,
-					l.dividerH);
+			final ImageView divider = image(SkinArt.RESULT_DIVIDER, ImageView.ScaleType.FIT_XY);
+			place(view, divider, l.dividerX, dividerY, l.dividerW, l.dividerH);
+			fading.add(divider);
 		}
 		for (int i = 0; i < CampaignResult.ROWS.length; i++) {
 			final String[] row = CampaignResult.ROWS[i];
 			final int[] numbers = CampaignResult.numbers(result.score, i);
 			final float y = l.rowY[i];
-			place(view, image(row[0], ImageView.ScaleType.FIT_CENTER), l.iconX, y, l.icon, l.icon);
-			line(view, upper(glueLabel(row[1], row[2])), l.headingSize, CampaignResult.HEADING_GOLD, l.detailsX,
-					y + l.headingY, l.columnW * 2, l.headingH);
+			final ImageView icon = image(row[0], ImageView.ScaleType.FIT_CENTER);
+			place(view, icon, l.iconX, y, l.icon, l.icon);
+			fading.add(icon);
+			fading.add(bold(line(view, upper(glueLabel(row[1], row[2])), l.headingSize, CampaignResult.HEADING_GOLD,
+					l.detailsX, y + l.headingY, l.columnW * 2, l.headingH)));
 			final CharSequence[] labels = { glueLabel("SCORE", "Score"), glueLabel(row[3], row[4]) };
 			for (int c = 0; c < 2; c++) {
 				final float x = l.detailsX + (c * l.columnW);
-				line(view, labels[c], l.labelSize, CampaignResult.LABEL_GREY, x, y + l.labelY, l.columnW, l.labelH);
-				line(view, Integer.toString(numbers[c]), l.valueSize, Color.WHITE, x, y + l.valueY, l.columnW,
-						l.valueH);
+				fading.add(bold(line(view, smallCaps(labels[c]), l.labelSize, CampaignResult.LABEL_GREY, x,
+						y + l.labelY, l.columnW, l.labelH)));
+				fading.add(bold(line(view, Integer.toString(numbers[c]), l.valueSize, Color.WHITE, x, y + l.valueY,
+						l.columnW, l.valueH)));
 			}
 		}
-		fitted(centred(view, missionName(entry, result), l.nameSize, Color.WHITE, l.contentX, l.nameY, l.contentW, l.nameH), l.nameSize,
-				l.contentW);
-		centred(view, result.playTime(), l.durationSize, CampaignResult.HEADING_GOLD, l.contentX, l.durationY,
-				l.contentW, l.durationH);
+		fading.add(fitted(bold(centred(view, smallCaps(missionName(entry, result)), l.nameSize, Color.WHITE, l.contentX,
+				l.nameY, l.contentW, l.nameH)), l.nameSize, l.contentW));
+		fading.add(bold(centred(view, result.playTime(), l.durationSize, CampaignResult.HEADING_GOLD, l.contentX,
+				l.durationY, l.contentW, l.durationH)));
 		final String[] difficulty = CampaignResult.difficulty(result.difficulty);
 		if (difficulty != null) {
-			centred(view, glueLabel(difficulty[1], difficulty[2]), l.difficultySize, CampaignResult.LABEL_GREY,
-					l.contentX, l.difficultyY, l.contentW, l.difficultyH);
-			place(view, image(difficulty[0], ImageView.ScaleType.FIT_CENTER), l.difficultyIconX, l.difficultyIconY,
-					l.difficultyIcon, l.difficultyIcon);
+			fading.add(bold(centred(view, smallCaps(glueLabel(difficulty[1], difficulty[2])), l.difficultySize,
+					CampaignResult.LABEL_GREY, l.contentX, l.difficultyY, l.contentW, l.difficultyH)));
+			final ImageView mark = image(difficulty[0], ImageView.ScaleType.FIT_CENTER);
+			place(view, mark, l.difficultyIconX, l.difficultyIconY, l.difficultyIcon, l.difficultyIcon);
+			fading.add(mark);
 		}
+		animateResult(view, banner, titleView, px(l.h), fading);
 		action(view, 0, glueLabel("BACK", getString(R.string.launcher_back)), v -> {
 			this.activity.campaignResult = null;
 			showMissions();

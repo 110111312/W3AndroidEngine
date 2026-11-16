@@ -1294,8 +1294,6 @@ final class CampaignNatives {
 			}
 			return null;
 		});
-		// The unit field table is Reforged data the classic game has no counterpart of: nothing was applied.
-		add("BlzSetUnitRealField", (arguments, globalScope, triggerScope) -> BooleanJassValue.FALSE);
 		// Hero and unit overrides the classic data has no field for in the interface yet.
 		ignored("BlzShowUnitTeamGlow");
 		add("SetPlayerHandicapDamage", (arguments, globalScope, triggerScope) -> {
