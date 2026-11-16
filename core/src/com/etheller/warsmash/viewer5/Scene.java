@@ -264,6 +264,8 @@ public abstract class Scene {
 		final Rectangle drawn = this.clip != null ? this.clip : viewport;
 		gl.glScissor((int) drawn.x, (int) drawn.y, (int) drawn.width, (int) drawn.height);
 
+		// The interface drawing leaves the depth test off.
+		gl.glEnable(GL20.GL_DEPTH_TEST);
 		// If this scene doesn't want alpha, clear it.
 		gl.glDepthMask(true);
 		if (!this.alpha) {

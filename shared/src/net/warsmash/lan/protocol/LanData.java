@@ -362,6 +362,8 @@ public final class LanData {
 		public int hostId;
 		public int tcpPort;
 		public int speed;
+		/** The host's profile portrait as it names it; not part of the announcement itself (see GamePortrait), empty until learnt. */
+		public String portrait = "";
 
 		public void write(final ByteWriter w) throws LanProtocolException {
 			w.i64(this.gameId).u16(this.protocolVersion).string(this.engineVersion, 32).string(this.buildCommit, 48)

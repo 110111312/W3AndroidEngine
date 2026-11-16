@@ -11,7 +11,9 @@ import com.etheller.warsmash.input.touch.ControlScheme;
 import com.etheller.warsmash.lan.LanGameStart;
 import com.etheller.warsmash.lan.LanSessions;
 import com.etheller.warsmash.launcher.LaunchRequest;
+import com.etheller.warsmash.launcher.SkinArt;
 import com.etheller.warsmash.launcher.lan.LanLauncherModel;
+import com.etheller.warsmash.launcher.lan.LanPortraitId;
 
 import net.warsmash.lan.FileRejoinStore;
 import net.warsmash.lan.RejoinStore;
@@ -65,9 +67,18 @@ final class AndroidLanEnv implements LanLauncherModel.Env {
 
 	@Override
 	public String portrait() {
-		return Integer.toString(new Profiles(this.context,
+		return LanPortraitId.encode(new Profiles(this.context,
 				this.context.getSharedPreferences(com.etheller.warsmash.launcher.LauncherKeys.PREFERENCES, Context.MODE_PRIVATE))
-						.portrait(playerName()));
+						.portrait(playerName()), reforgedSkin());
+	}
+
+	/** The skin the launcher shows, chosen as {@code LauncherActivity.chosenSkin} does. */
+	@Override
+	public boolean reforgedSkin() {
+		final String skin = this.context.getSharedPreferences(com.etheller.warsmash.launcher.LauncherKeys.PREFERENCES,
+				Context.MODE_PRIVATE).getString(com.etheller.warsmash.launcher.LauncherKeys.KEY_SKIN,
+						SkinArt.CLASSIC_SKIN);
+		return SkinArt.REFORGED_SKIN.equals(skin) && SkinCache.hasReforged(this.context);
 	}
 
 	@Override

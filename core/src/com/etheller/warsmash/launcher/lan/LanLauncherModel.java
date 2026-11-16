@@ -69,7 +69,13 @@ public final class LanLauncherModel {
 
 		String playerName();
 
+		/** The identity the local profile's portrait travels under; see {@link LanPortraitId}. */
 		String portrait();
+
+		/** Whether this device shows the Reforged skin's portraits (else the classic skin's). */
+		default boolean reforgedSkin() {
+			return false;
+		}
 
 		/** {@link LanProtocol#CONTROL_TOUCH} or {@link LanProtocol#CONTROL_KBM}. */
 		int controlScheme();
@@ -122,6 +128,8 @@ public final class LanLauncherModel {
 		public final boolean mapFromHost;
 		/** The map's own name, else its file name. */
 		public final String mapLabel;
+		/** The host's portrait in this device's skin, or -1 when it is unknown or the other skin's. */
+		public int portrait = -1;
 
 		GameRow(final LanDiscovery.Found found, final String mapLabel, final String line, final String tag,
 				final boolean otherVersion, final boolean rejoin, final boolean mapFromHost) {
@@ -483,8 +491,10 @@ public final class LanLauncherModel {
 			}
 			final boolean fromHost = !other && !haveMap(info);
 			final String label = info.mapTitle.isEmpty() ? info.mapName : info.mapTitle;
-			rows.add(new GameRow(found, label, LanText.gameLine(label, info.players, info.maxPlayers),
-					LanText.tag(rejoin, fromHost, other, other ? info.engineVersion : null), other, rejoin, fromHost));
+			final GameRow row = new GameRow(found, label, LanText.gameLine(label, info.players, info.maxPlayers),
+					LanText.tag(rejoin, fromHost, other, other ? info.engineVersion : null), other, rejoin, fromHost);
+			row.portrait = LanPortraitId.decode(info.portrait, this.env.reforgedSkin());
+			rows.add(row);
 		}
 		Collections.sort(rows, new Comparator<GameRow>() {
 			@Override
@@ -495,7 +505,7 @@ public final class LanLauncherModel {
 		final StringBuilder signature = new StringBuilder();
 		for (final GameRow row : rows) {
 			signature.append(row.id()).append('|').append(row.name).append('|').append(row.line).append('|')
-					.append(row.tag).append(';');
+					.append(row.tag).append('|').append(row.portrait).append(';');
 		}
 		if (!signature.toString().equals(this.gamesSignature)) {
 			this.gamesSignature = signature.toString();
@@ -957,7 +967,7 @@ public final class LanLauncherModel {
 		touch();
 		if (this.lobbyState != null) {
 			this.lobby = LanLobbyView.of(this.lobbyState, myId(), this.hosting ? this.sending : null,
-					mapPercent());
+					mapPercent(), this.env.reforgedSkin());
 		}
 	}
 

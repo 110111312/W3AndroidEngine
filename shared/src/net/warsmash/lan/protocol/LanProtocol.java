@@ -92,6 +92,8 @@ public final class LanProtocol {
 	public static final int UDP_SEARCH = 1;
 	public static final int UDP_GAME_INFO = 2;
 	public static final int UDP_GAME_GONE = 3;
+	/** Follows a GAME_INFO; builds that do not know it drop it, so they still see the game. */
+	public static final int UDP_GAME_PORTRAIT = 4;
 
 	// reject reasons
 	public static final int REJECT_VERSION = 1;

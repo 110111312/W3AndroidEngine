@@ -14,6 +14,7 @@ public final class WarsmashGdxGame {
 	/** The state the model viewer draws in, which the interface drawing in between leaves. */
 	public static void enterViewerState() {
 		Gdx.gl30.glEnable(GL30.GL_SCISSOR_TEST);
+		Gdx.gl30.glEnable(GL30.GL_DEPTH_TEST);
 		Gdx.gl30.glBindVertexArray(VAO);
 	}
 
@@ -21,6 +22,9 @@ public final class WarsmashGdxGame {
 	public static void leaveViewerState(final WebGL webGL) {
 		Gdx.gl30.glDisable(GL30.GL_SCISSOR_TEST);
 		Gdx.gl30.glDisable(GL30.GL_CULL_FACE);
+		// Interface quads all sit at the same depth; a depth buffer that was not fully cleared (the clear before this
+		// runs inside the scissor of the last scene, and tiled GPUs leave the rest undefined) would hide them.
+		Gdx.gl30.glDisable(GL30.GL_DEPTH_TEST);
 		webGL.useShaderProgram(null);
 	}
 }

@@ -543,8 +543,19 @@ public final class LanLoop {
 		this.timers.clear();
 	}
 
+	/** How long a caller that must stay responsive (a screen's thread) waits for the loop to close everything. */
+	public static final long RESPONSIVE_WAIT_MS = 400;
+
 	/** Stops the thread after closing everything; blocks (briefly) unless called on the loop thread. */
 	public void shutdown() {
+		shutdown(5000);
+	}
+
+	/**
+	 * As {@link #shutdown()}, but waits at most {@code maxWaitMs} for the thread to end; a loop still closing after
+	 * that finishes on its own, and {@link #call} on it is answered by the caller once it has finished.
+	 */
+	public void shutdown(final long maxWaitMs) {
 		this.running = false;
 		if (!this.started) {
 			cleanup();
@@ -557,9 +568,9 @@ public final class LanLoop {
 		catch (final RuntimeException e) {
 			// selector already closed
 		}
-		if (!isLoopThread() && this.thread.isAlive()) {
+		if ((maxWaitMs > 0) && !isLoopThread() && this.thread.isAlive()) {
 			try {
-				this.thread.join(5000);
+				this.thread.join(maxWaitMs);
 			}
 			catch (final InterruptedException e) {
 				Thread.currentThread().interrupt();

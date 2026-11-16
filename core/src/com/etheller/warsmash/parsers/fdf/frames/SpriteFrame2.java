@@ -97,6 +97,7 @@ public class SpriteFrame2 extends AbstractUIFrame {
 			Gdx.gl30.glDisable(GL30.GL_SCISSOR_TEST);
 
 			Gdx.gl30.glDisable(GL30.GL_CULL_FACE);
+			Gdx.gl30.glDisable(GL30.GL_DEPTH_TEST);
 
 			this.viewer.webGL.useShaderProgram(null);
 

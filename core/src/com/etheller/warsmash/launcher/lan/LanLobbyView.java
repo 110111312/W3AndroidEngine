@@ -84,6 +84,12 @@ public final class LanLobbyView {
 	 */
 	public static LanLobbyView of(final LanMessages.LobbyState state, final int myId,
 			final Map<Integer, Integer> transfers, final int myMapPercent) {
+		return of(state, myId, transfers, myMapPercent, false);
+	}
+
+	/** @param reforgedSkin whether the portraits are shown from the Reforged skin (else the classic one) */
+	public static LanLobbyView of(final LanMessages.LobbyState state, final int myId,
+			final Map<Integer, Integer> transfers, final int myMapPercent, final boolean reforgedSkin) {
 		final LanLobbyView view = new LanLobbyView();
 		view.options = state.options;
 		view.map = state.map;
@@ -110,7 +116,7 @@ public final class LanLobbyView {
 				row.ready = s.ready;
 				row.pingMs = s.pingMs;
 				row.keyboardAndMouse = s.controlScheme == LanProtocol.CONTROL_KBM;
-				row.portrait = portrait(state, s.participantId);
+				row.portrait = portrait(state, s.participantId, reforgedSkin);
 				row.editable = row.you;
 				row.hostMenu = view.iAmHost && !row.you;
 				row.kickable = row.hostMenu;
@@ -158,7 +164,7 @@ public final class LanLobbyView {
 			w.you = o.participantId == myId;
 			w.keyboardAndMouse = o.controlScheme == LanProtocol.CONTROL_KBM;
 			w.pingMs = o.pingMs;
-			w.portrait = portrait(state, o.participantId);
+			w.portrait = portrait(state, o.participantId, reforgedSkin);
 			w.kickable = view.iAmHost && !w.you;
 			view.watchers.add(w);
 			if (w.you) {
@@ -168,17 +174,8 @@ public final class LanLobbyView {
 		return view;
 	}
 
-	private static int portrait(final LanMessages.LobbyState state, final int participantId) {
-		final String chosen = state.portraits.get(participantId);
-		if (chosen != null) {
-			try {
-				return Math.max(-1, Integer.parseInt(chosen.trim()));
-			}
-			catch (final NumberFormatException e) {
-				// another launcher's name for a portrait: none shown
-			}
-		}
-		return -1;
+	private static int portrait(final LanMessages.LobbyState state, final int participantId, final boolean reforgedSkin) {
+		return LanPortraitId.decode(state.portraits.get(participantId), reforgedSkin);
 	}
 
 	/** The host may start: every person who plays is ready (the host's own mark counts), and someone plays. */

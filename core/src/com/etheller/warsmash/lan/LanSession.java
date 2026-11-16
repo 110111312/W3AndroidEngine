@@ -151,7 +151,7 @@ public final class LanSession {
 			this.searching = null;
 		}
 		if (this.searchLoop != null) {
-			this.searchLoop.shutdown();
+			this.searchLoop.shutdown(LanLoop.RESPONSIVE_WAIT_MS);
 			this.searchLoop = null;
 		}
 	}
@@ -361,10 +361,10 @@ public final class LanSession {
 			}
 		}
 		if (this.clientLoop != null) {
-			this.clientLoop.shutdown();
+			this.clientLoop.shutdown(LanLoop.RESPONSIVE_WAIT_MS);
 		}
 		if (this.hostLoop != null) {
-			this.hostLoop.shutdown();
+			this.hostLoop.shutdown(LanLoop.RESPONSIVE_WAIT_MS);
 		}
 		this.closedLatch.countDown();
 	}

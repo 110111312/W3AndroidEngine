@@ -228,6 +228,8 @@ class StaticStateTest {
 			"core.lan.LanHeadless#active", "core.lan.LanHeadless#desyncDone",
 			// Where the launcher's words come from, one for the process.
 			"core.launcher.lan.LanText#source",
+			// The classic portraits' wire names, read from the skin's fixed item list once.
+			"core.launcher.lan.LanPortraitId#classicKeys", "core.launcher.lan.LanPortraitId#classicIndexes",
 			// The launcher's log sink, and what its data folder check remembers of the folder.
 			"core.launcher.LauncherLog#sink", "core.launcher.DataFolderCheck#DESCRIPTIONS",
 			// The platform's folder chooser, installed once at start.

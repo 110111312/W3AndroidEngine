@@ -163,6 +163,31 @@ class LanDiscoveryTest {
 	}
 
 	@Test
+	void theAnnouncementCarriesTheHostsPortrait() throws Exception {
+		final int hostUdp = freeUdpPort();
+		final int searchUdp = freeUdpPort();
+		this.env.startHost();
+		final LanLoop searchLoop = this.env.newLoop("searcher");
+		final LanDiscovery hostDisc = new LanDiscovery(this.env.hostLoop, new LoopbackNetwork(), hostUdp, searchUdp);
+		final LanDiscovery searchDisc = new LanDiscovery(searchLoop, new LoopbackNetwork(), searchUdp, hostUdp);
+		hostDisc.open();
+		searchDisc.open();
+		this.env.host.setDiscovery(hostDisc);
+		final net.warsmash.lan.client.LanClient.Config config = LanTestSupport.clientConfig("Thrall");
+		config.portrait = "c:BTNArthas";
+		final LanTestSupport.Node owner = this.env.join(config);
+		waitFor("welcome", () -> owner.rec.welcome != null);
+		waitFor("the host's portrait", () -> {
+			for (final LanDiscovery.Found g : searchDisc.games()) {
+				if (g.info.hostName.equals("Thrall") && g.info.portrait.equals("c:BTNArthas")) {
+					return true;
+				}
+			}
+			return false;
+		});
+	}
+
+	@Test
 	void foreignAndBrokenDatagramsAreIgnored() throws Exception {
 		final int udp = freeUdpPort();
 		final LanLoop loop = this.env.newLoop("s");

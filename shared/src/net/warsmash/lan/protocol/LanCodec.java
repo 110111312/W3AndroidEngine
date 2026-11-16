@@ -152,6 +152,21 @@ public final class LanCodec {
 		}
 	}
 
+	public static final class GamePortrait extends Datagram {
+		public final long gameId;
+		public final String portrait;
+
+		public GamePortrait(final long gameId, final String portrait) {
+			this.gameId = gameId;
+			this.portrait = portrait;
+		}
+
+		@Override
+		public int type() {
+			return LanProtocol.UDP_GAME_PORTRAIT;
+		}
+	}
+
 	public static byte[] encodeDatagram(final Datagram d) throws LanProtocolException {
 		final ByteWriter w = new ByteWriter(LanProtocol.MAX_DATAGRAM);
 		w.i32(LanProtocol.MAGIC).u8(d.type());
@@ -163,6 +178,9 @@ public final class LanCodec {
 		}
 		else if (d instanceof GameGone) {
 			w.i64(((GameGone) d).gameId);
+		}
+		else if (d instanceof GamePortrait) {
+			w.i64(((GamePortrait) d).gameId).string(((GamePortrait) d).portrait, LanProtocol.MAX_PORTRAIT);
 		}
 		else {
 			throw new LanProtocolException("unknown datagram");
@@ -195,6 +213,9 @@ public final class LanCodec {
 				break;
 			case LanProtocol.UDP_GAME_GONE:
 				d = new GameGone(r.i64());
+				break;
+			case LanProtocol.UDP_GAME_PORTRAIT:
+				d = new GamePortrait(r.i64(), r.name(LanProtocol.MAX_PORTRAIT));
 				break;
 			default:
 				throw new LanProtocolException("unknown datagram type " + type);

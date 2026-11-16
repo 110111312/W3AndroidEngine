@@ -119,15 +119,21 @@ final class LobbyPage extends LauncherViews {
 		this.syncNote.setPadding(px(8), px(4), px(8), px(4));
 		this.syncNote.setVisibility(View.GONE);
 		place(chat, this.syncNote, frame + 6, ch - frame - eh - (t ? 100 : 56), rightW - (2 * frame) - 12, -1);
-		this.hostTip = lines(LanText.hostNotFoundTip(), (t ? 26 : 15) * 0.9f, this.activity.art.text2(), 4);
+		// The tip stands above the chat lines in the same column, so it takes its own room instead of covering them.
+		this.hostTip = lines(this.activity.getString(R.string.lan_host_tip_wifi), (t ? 26 : 15) * 0.9f,
+				this.activity.art.text2(), 4);
 		this.hostTip.setVisibility(View.GONE);
-		place(chat, this.hostTip, frame + 10, frame, rightW - (2 * frame) - 20, -1);
+		this.hostTip.setPadding(px(4), 0, px(4), px(t ? 10 : 4));
 		this.chatScroll = new ScrollView(this.activity);
 		this.chatScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
 		this.chatLines = new LinearLayout(this.activity);
 		this.chatLines.setOrientation(LinearLayout.VERTICAL);
 		this.chatScroll.addView(this.chatLines, new FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
-		place(chat, this.chatScroll, frame + 6, frame + (t ? 10 : 4), rightW - (2 * frame) - 12,
+		final LinearLayout chatColumn = new LinearLayout(this.activity);
+		chatColumn.setOrientation(LinearLayout.VERTICAL);
+		chatColumn.addView(this.hostTip, new LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
+		chatColumn.addView(this.chatScroll, new LinearLayout.LayoutParams(MATCH, 0, 1));
+		place(chat, chatColumn, frame + 6, frame + (t ? 10 : 4), rightW - (2 * frame) - 12,
 				ch - (2 * frame) - eh - (t ? 120 : 70));
 		action(view, 0, "Leave", v -> leave());
 		this.secondary = action(view, 1, "Ready", v -> readyOrCancel());
@@ -145,7 +151,8 @@ final class LobbyPage extends LauncherViews {
 			this.activity.lanPage.showLan();
 			return;
 		}
-		if (this.shownVersion != model.version()) {
+		if ((this.shownVersion != model.version())
+				|| (model.showHostTip() != (this.hostTip.getVisibility() == View.VISIBLE))) {
 			refresh();
 		}
 		else if (model.mode() == LanLauncherModel.Mode.COUNTDOWN) {
@@ -363,12 +370,13 @@ final class LobbyPage extends LauncherViews {
 		final float gp = t ? 12 : 6;
 		final float ph = t ? 84 : 72;
 		final float pp = t ? 84 : 66;
-		final float raceW = t ? 300 : 150;
-		final float teamW = t ? 130 : 76;
+		final float raceW = t ? 300 : 136;
+		// The drop-down keeps its rim and arrow clear of the text; a narrower box leaves the number no room.
+		final float teamW = t ? 130 : 104;
 		final float colW = t ? 100 : 62;
 		final float hcW = t ? 180 : 0;
 		final float x1 = 8 + pp + (t ? 20 : 8);
-		final float nameW = t ? 260 : 150;
+		final float nameW = t ? 260 : 136;
 		final float xr = x1 + nameW;
 		final float py = (rowH - ph) / 2;
 		final float size = t ? 30 : 17;

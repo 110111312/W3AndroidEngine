@@ -99,7 +99,9 @@ public class WebGL {
 	 */
 	private static String adaptToGLES(final String source) {
 		final Matcher versionMatcher = DESKTOP_VERSION.matcher(source);
-		String header = "precision highp float;\nprecision highp int;\n";
+		// Without this a sampler is lowp, which a driver such as Mali's may honour for the float data textures (bone
+		// matrices, lights, heights) by returning reduced precision values.
+		String header = "precision highp float;\nprecision highp int;\nprecision highp sampler2D;\n";
 		String body = source;
 		if (versionMatcher.find()) {
 			if (Integer.parseInt(versionMatcher.group(1)) >= 300) {

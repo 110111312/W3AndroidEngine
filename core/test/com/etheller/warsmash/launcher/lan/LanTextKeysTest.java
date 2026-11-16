@@ -61,14 +61,18 @@ class LanTextKeysTest {
 		final Set<String> used = namesUsed(root);
 		assertTrue(used.size() > 20, "the LAN names were not found in the code: " + used);
 		final Set<String> defined = new TreeSet<>();
-		final Matcher m = NAME_IN_STRINGS.matcher(new String(
-				Files.readAllBytes(root.resolve("android/res/values/strings.xml")), StandardCharsets.UTF_8));
-		while (m.find()) {
-			defined.add(m.group(1));
+		try (Stream<Path> files = Files.list(root.resolve("android/res/values"))) {
+			for (final Path file : (Iterable<Path>) files.filter(
+					p -> p.getFileName().toString().startsWith("strings") && p.toString().endsWith(".xml"))::iterator) {
+				final Matcher m = NAME_IN_STRINGS.matcher(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+				while (m.find()) {
+					defined.add(m.group(1));
+				}
+			}
 		}
 		final Set<String> missing = new TreeSet<>(used);
 		missing.removeAll(defined);
-		assertTrue(missing.isEmpty(), "LAN names missing from strings.xml: " + missing);
+		assertTrue(missing.isEmpty(), "LAN names missing from the strings files: " + missing);
 	}
 
 	@Test

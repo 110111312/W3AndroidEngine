@@ -316,8 +316,13 @@ abstract class LauncherViews {
 			label.setVisibility(View.GONE);
 			swatch.setBackgroundColor(colors[selected]);
 			swatch.setAlpha(enabled ? 1f : 0.5f);
-			box.addView(swatch, new FrameLayout.LayoutParams(px(height * 0.9f),
-					px(Math.max(8, (height - (2 * rim)) * 0.55f)), Gravity.CENTER));
+			// Sized from the button, not its height: a narrow column (the LAN lobby's) keeps the colour inside the rim.
+			final FrameLayout.LayoutParams swatchParams = new FrameLayout.LayoutParams(MATCH,
+					px(Math.max(8, (height - (2 * rim)) * 0.55f)), Gravity.CENTER);
+			final float inset = Math.max(4, rim * 0.6f);
+			swatchParams.leftMargin = px(inset);
+			swatchParams.rightMargin = px(inset);
+			box.addView(swatch, swatchParams);
 		}
 		else {
 			final ImageView arrow = image(SkinArt.PULLDOWN_ARROW, ImageView.ScaleType.FIT_CENTER);

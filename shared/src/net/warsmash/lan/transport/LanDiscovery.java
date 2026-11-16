@@ -169,7 +169,7 @@ public final class LanDiscovery implements LanLoop.Handler {
 					announceTick();
 				}
 				else {
-					broadcast(new LanCodec.GameAnnounce(info));
+					broadcastAnnouncement(info);
 				}
 			}
 		});
@@ -200,13 +200,18 @@ public final class LanDiscovery implements LanLoop.Handler {
 		if (this.announced == null || this.channel == null) {
 			return;
 		}
-		broadcast(new LanCodec.GameAnnounce(this.announced));
+		broadcastAnnouncement(this.announced);
 		this.announceTimer = this.loop.schedule(this.loop.timings().announceMs, new Runnable() {
 			@Override
 			public void run() {
 				announceTick();
 			}
 		});
+	}
+
+	private void broadcastAnnouncement(final GameInfo info) {
+		broadcast(new LanCodec.GameAnnounce(info));
+		broadcast(new LanCodec.GamePortrait(info.gameId, info.portrait));
 	}
 
 	/** Snapshot of the known games. */
@@ -309,6 +314,8 @@ public final class LanDiscovery implements LanLoop.Handler {
 			if (this.announced != null) {
 				try {
 					sendTo(LanCodec.encodeDatagram(new LanCodec.GameAnnounce(this.announced)), from);
+					sendTo(LanCodec.encodeDatagram(
+							new LanCodec.GamePortrait(this.announced.gameId, this.announced.portrait)), from);
 				}
 				catch (final LanProtocolException e) {
 					LanLog.warn("cannot encode announcement", e);
@@ -320,10 +327,25 @@ public final class LanDiscovery implements LanLoop.Handler {
 			if (this.announced != null && info.gameId == this.announced.gameId) {
 				return;
 			}
+			final Found known = this.games.get(info.gameId);
+			if (known != null) {
+				// the portrait travels in its own datagram; keep what it told us between announcements
+				info.portrait = known.info.portrait;
+			}
 			final Found f = new Found(info, from.getAddress(), LanLoop.nowMs());
 			this.games.put(info.gameId, f);
 			if (this.listener != null) {
 				this.listener.onGameFound(f);
+			}
+		}
+		else if (d instanceof LanCodec.GamePortrait) {
+			final LanCodec.GamePortrait p = (LanCodec.GamePortrait) d;
+			final Found f = this.games.get(p.gameId);
+			if (f != null && !p.portrait.equals(f.info.portrait)) {
+				f.info.portrait = p.portrait;
+				if (this.listener != null) {
+					this.listener.onGameFound(f);
+				}
 			}
 		}
 		else if (d instanceof LanCodec.GameGone) {

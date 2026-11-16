@@ -20,6 +20,7 @@ import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.SkinArt;
 import com.etheller.warsmash.launcher.lan.LanLauncherModel;
 import com.etheller.warsmash.launcher.lan.LanLobbyView;
+import com.etheller.warsmash.launcher.lan.LanPortraitId;
 import com.etheller.warsmash.launcher.lan.LanText;
 
 import net.warsmash.lan.FileRejoinStore;
@@ -97,7 +98,13 @@ final class LanPages {
 
 		@Override
 		public String portrait() {
-			return Integer.toString(LanPages.this.s.profiles.portrait(LanPages.this.s.profiles.current()));
+			return LanPortraitId.encode(LanPages.this.s.profiles.portrait(LanPages.this.s.profiles.current()),
+					reforgedSkin());
+		}
+
+		@Override
+		public boolean reforgedSkin() {
+			return (LanPages.this.s.art != null) && LanPages.this.s.art.reforged;
 		}
 
 		@Override
@@ -368,8 +375,13 @@ final class LanPages {
 					g.image(this.s.art.image(SkinArt.ROW_HIGHLIGHT), lx, y, lw, rowH, isChosen ? 1 : 0.5f);
 				}
 				final float p = rowH * 0.74f;
-				portrait(g, lx + 12, y + ((rowH - p) / 2), p, CustomGame.PLAYER_COLORS[(int) Math.floorMod(row.id(), CustomGame.PLAYER_COLORS.length)],
-						row.found.info.hostName, row.otherVersion);
+				final int hostColor = CustomGame.PLAYER_COLORS[(int) Math.floorMod(row.id(), CustomGame.PLAYER_COLORS.length)];
+				if (row.otherVersion) {
+					portrait(g, lx + 12, y + ((rowH - p) / 2), p, hostColor, row.found.info.hostName, true);
+				}
+				else {
+					portrait(g, lx + 12, y + ((rowH - p) / 2), p, row.portrait, hostColor, row.found.info.hostName);
+				}
 				final float tx = lx + 12 + p + (t ? 22 : 10);
 				final float tw = lw - p - (t ? 40 : 24);
 				g.text(row.name, tx, y + (rowH * 0.04f), tw, rowH * 0.34f, rowH * 0.24f,

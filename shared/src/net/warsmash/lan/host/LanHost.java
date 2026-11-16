@@ -2587,6 +2587,7 @@ public final class LanHost {
 		g.buildCommit = this.config.buildCommit;
 		final Participant owner = this.participants.get(this.ownerId);
 		g.hostName = owner == null ? "" : owner.name;
+		g.portrait = (owner == null) || (owner.portrait == null) ? "" : owner.portrait;
 		g.gameName = this.config.options.gameName;
 		g.mapName = this.config.map.name;
 		g.mapTitle = this.config.map.title;

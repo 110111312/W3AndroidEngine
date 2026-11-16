@@ -25,7 +25,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 372
-        versionName = "0.3.72-hotfix2"
+        versionName = "0.3.72-hotfix3"
     }
 
     // Release signing is read from a properties file kept outside the repository; without it the release APK stays unsigned.

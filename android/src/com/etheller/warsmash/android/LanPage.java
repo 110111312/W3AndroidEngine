@@ -273,7 +273,7 @@ final class LanPage extends LauncherViews {
 		view.setGravity(Gravity.CENTER_VERTICAL);
 		view.setPadding(px(12), 0, px(8), 0);
 		final float p = rowH * 0.74f;
-		final View portrait = colorSquare(this.activity,
+		final View portrait = portraitSquare(this.activity, row.portrait,
 				CustomGame.PLAYER_COLORS[(int) Math.floorMod(row.id(), (long) CustomGame.PLAYER_COLORS.length)],
 				row.found.info.hostName, p);
 		portrait.setAlpha(row.otherVersion ? 0.5f : 1);

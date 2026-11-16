@@ -57,17 +57,28 @@ public class FolderDataSource implements DataSource {
 	 */
 	private static final Map<Path, FolderIndex> INDEXES = new HashMap<>();
 
+	private static final long SETTLE_MILLIS = 2500;
+
 	private static final class FolderIndex {
 		private final Set<String> listfile = new HashSet<>();
 		private final Map<String, String> lowerCaseToStoredPath = new HashMap<>();
 		private final Map<Path, FileTime> folderTimes = new HashMap<>();
+		/**
+		 * False when a folder changed so shortly before the listing that a file added right after it would leave the
+		 * modification time as it was (file systems stamp folders coarsely, FAT in two seconds).
+		 */
+		private boolean settled = true;
 
 		private FolderIndex(final Path folderPath) {
+			final long listedAt = System.currentTimeMillis();
 			try {
 				Files.walkFileTree(folderPath, new SimpleFileVisitor<Path>() {
 					@Override
 					public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) {
 						FolderIndex.this.folderTimes.put(dir, attrs.lastModifiedTime());
+						if (listedAt - attrs.lastModifiedTime().toMillis() < SETTLE_MILLIS) {
+							FolderIndex.this.settled = false;
+						}
 						return FileVisitResult.CONTINUE;
 					}
 
@@ -103,6 +114,9 @@ public class FolderDataSource implements DataSource {
 		}
 
 		private boolean isCurrent() {
+			if (!this.settled) {
+				return false;
+			}
 			for (final Map.Entry<Path, FileTime> folder : this.folderTimes.entrySet()) {
 				try {
 					if (!Files.getLastModifiedTime(folder.getKey()).equals(folder.getValue())) {

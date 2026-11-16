@@ -63,7 +63,7 @@ public final class LanBrowser {
 	}
 
 	public void close() {
-		this.loop.shutdown();
+		this.loop.shutdown(LanLoop.RESPONSIVE_WAIT_MS);
 	}
 
 	public LanNetwork network() {
