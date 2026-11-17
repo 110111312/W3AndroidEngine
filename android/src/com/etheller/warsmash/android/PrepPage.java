@@ -83,7 +83,7 @@ final class PrepPage extends LauncherViews {
 		final float buttonW = (inner - (b.tablet ? 32 : 24)) / 2;
 		place(buttons, button(getString(R.string.launcher_other_source), b.buttonH, b.buttonText,
 				view -> this.activity.openGameData()), 0, 0, buttonW, b.buttonH);
-		place(buttons, button(getString(R.string.data_folder_retry), b.buttonH, b.buttonText, view -> startPrep()),
+		place(buttons, button(getString(R.string.launcher_retry), b.buttonH, b.buttonText, view -> startPrep()),
 				inner - buttonW, 0, buttonW, b.buttonH);
 		buttons.setVisibility(View.GONE);
 		place(panel, buttons, b.barInset, b.panelH - b.panelFrame - b.buttonH - (b.tablet ? 8 : 4), inner,

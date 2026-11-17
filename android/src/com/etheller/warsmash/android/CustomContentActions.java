@@ -11,6 +11,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Log;
@@ -20,8 +21,7 @@ import com.etheller.warsmash.launcher.CustomContent;
 /**
  * The player's content folder on Android: it is picked with the system's folder picker, which grants the app a
  * permission that lasts, and the maps picked in the system's file picker are copied into its Maps/Custom folder.
- * The engine reads its files as plain files, so a picked tree is turned back into the path it stands for, as the game
- * data folder is.
+ * The engine reads its files as plain files, so a picked tree is turned back into the path it stands for.
  */
 final class CustomContentActions {
 	static final int REQUEST_FOLDER = 7301;
@@ -61,7 +61,7 @@ final class CustomContentActions {
 		}
 		File folder = null;
 		try {
-			folder = DataFolderActivity.folderOfTree(tree);
+			folder = folderOfTree(tree);
 		}
 		catch (final IllegalArgumentException e) {
 			Log.w(TAG, "Not a folder of the device storage: " + tree, e);
@@ -198,5 +198,22 @@ final class CustomContentActions {
 		final File app = this.activity.getExternalFilesDir(null);
 		final String path = folder.getAbsolutePath();
 		return (app != null) && (path.equals(app.getAbsolutePath()) || path.startsWith(app.getAbsolutePath() + File.separator));
+	}
+
+	/**
+	 * The engine reads its files as plain files, so a picked tree is turned back into the path it stands for:
+	 * "primary:Games/WC3" is internal storage, "1234-ABCD:WC3" a removable card.
+	 */
+	private static File folderOfTree(final Uri treeUri) {
+		final String documentId = DocumentsContract.getTreeDocumentId(treeUri);
+		final int colon = documentId.indexOf(':');
+		if (colon < 0) {
+			return null;
+		}
+		final String volume = documentId.substring(0, colon);
+		final String relative = documentId.substring(colon + 1);
+		final File base = "primary".equalsIgnoreCase(volume) ? Environment.getExternalStorageDirectory()
+				: new File("/storage/" + volume);
+		return relative.isEmpty() ? base : new File(base, relative);
 	}
 }

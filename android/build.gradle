@@ -112,3 +112,35 @@ tasks.register("copyAbilityBehaviors", Sync) {
 }
 
 tasks.named("preBuild") { dependsOn "copyAbilityBehaviors" }
+
+// The game files are not in the repository: the app reads them from its own folder on the device, so this task copies
+// a local copy of the game folder there, once per device. -PgameDataDir=<folder> points at another copy.
+def gameDataDir = file(findProperty("gameDataDir") ?: "${rootProject.projectDir}/wc3/Files_1.29.2/Warcraft III")
+def adbExecutable = {
+    def sdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+            ?: "${System.getProperty("user.home")}/AppData/Local/Android/Sdk"
+    def adb = new File(sdk, "platform-tools/adb.exe")
+    return adb.isFile() ? adb.absolutePath : new File(sdk, "platform-tools/adb").absolutePath
+}
+
+tasks.register("pushGameData", Exec) {
+    description = "Copies the game files into the app's own folder on the connected device."
+    group = "install"
+    doFirst {
+        if (!gameDataDir.isDirectory()) {
+            throw new GradleException("No game files in ${gameDataDir}; set -PgameDataDir=<folder>.")
+        }
+        logger.lifecycle("Copying ${gameDataDir} to the device; the first copy takes a while.")
+    }
+    commandLine adbExecutable(), "push", "${gameDataDir.absolutePath}/.",
+            "/sdcard/Android/data/${android.defaultConfig.applicationId}/files/data/"
+}
+
+// The folder has to exist before the copy, and only an installed app has it.
+tasks.register("installWithGameData") {
+    description = "Installs the debug APK and copies the game files to the device."
+    group = "install"
+    dependsOn "installDebug"
+    dependsOn "pushGameData"
+}
+tasks.named("pushGameData") { mustRunAfter "installDebug" }

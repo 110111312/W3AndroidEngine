@@ -55,7 +55,6 @@ import com.etheller.warsmash.lan.LanProperties;
 import com.etheller.warsmash.lan.LanSession;
 import com.etheller.warsmash.lan.LanSessions;
 import com.etheller.warsmash.launcher.CustomContent;
-import com.etheller.warsmash.launcher.DataFolderCheck;
 import com.etheller.warsmash.launcher.GameResult;
 import com.etheller.warsmash.launcher.LaunchRequest;
 import com.etheller.warsmash.launcher.LauncherKeys;
@@ -170,13 +169,10 @@ public class AndroidLauncher extends AndroidApplication {
 			CrashLogs.crashIfAsked(this);
 		}
 		final File iniFile = new File(getExternalFilesDir(null), INI_FILE_NAME);
-		if (!iniFile.isFile()) {
-			final Intent intent = new Intent(this, DataFolderActivity.class);
-			if (getIntent().getExtras() != null) {
-				intent.putExtras(getIntent().getExtras());
-			}
-			startActivity(intent);
-			finish();
+		// The game data lies at a fixed place in the app's own folder, so the configuration is written from what is
+		// found there instead of being asked for; without game data there is nothing to start.
+		if (!GameData.ensure(this)) {
+			GameData.showFolder(this);
 			return;
 		}
 		final DataTable warsmashIni;
@@ -187,15 +183,6 @@ public class AndroidLauncher extends AndroidApplication {
 		}
 		catch (final IOException e) {
 			Log.e(TAG, "Unable to read " + iniFile, e);
-			finish();
-			return;
-		}
-		// A data folder that was removed or lost its access would fail deep inside the engine start.
-		if (!DataFolderCheck.hasGameData(warsmashIni.get("DataSources"))) {
-			Log.e(TAG, "No game data in the configured data folder");
-			final Intent intent = new Intent(this, DataFolderActivity.class);
-			intent.putExtra(DataFolderActivity.EXTRA_OPEN, true);
-			startActivity(intent);
 			finish();
 			return;
 		}

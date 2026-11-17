@@ -210,6 +210,42 @@ public final class DataFolderCheck {
 		return section.toString();
 	}
 
+	/**
+	 * The data sources of an install that ships MPQ archives (1.29 and earlier): the archives in load order, the maps
+	 * that lie beside them as loose files, and the folders whose files override the game's. The later source wins, so
+	 * the locale archives come after the others and the engine's own folders last.
+	 */
+	public static String mpqDataSourcesSection(final File folder, final List<File> archives,
+			final File... extraFolders) {
+		final List<String> lines = new ArrayList<>();
+		int index = 0;
+		for (final File archive : archives) {
+			lines.add("Type" + id(index) + "=MPQ");
+			lines.add("Path" + id(index) + "=\"" + archive.getAbsolutePath() + "\"");
+			index++;
+		}
+		lines.add("Type" + id(index) + "=Maps");
+		lines.add("Path" + id(index) + "=\"" + folder.getAbsolutePath() + "\"");
+		index++;
+		for (final File extraFolder : extraFolders) {
+			if ((extraFolder != null) && extraFolder.isDirectory()) {
+				lines.add("Type" + id(index) + "=Folder");
+				lines.add("Path" + id(index) + "=\"" + extraFolder.getAbsolutePath() + "\"");
+				index++;
+			}
+		}
+		final StringBuilder section = new StringBuilder("[DataSources]\n");
+		section.append("Count=").append(index).append('\n');
+		for (final String line : lines) {
+			section.append(line).append('\n');
+		}
+		return section.toString();
+	}
+
+	private static String id(final int index) {
+		return String.format(Locale.ROOT, "%02d", index);
+	}
+
 	/** A short line for the launcher: the CASC build version, or how many files an extracted folder holds. */
 	public static synchronized String describe(final Kind kind, final File folder) {
 		final String key = kind + ":" + folder.getAbsolutePath();

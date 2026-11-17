@@ -46,7 +46,6 @@ import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import com.badlogic.gdx.math.Rectangle;
 import com.etheller.warsmash.GlueBackdropRenderer;
 import com.etheller.warsmash.launcher.CampaignChoice;
-import com.etheller.warsmash.launcher.DataFolderCheck;
 import com.etheller.warsmash.launcher.CampaignResult;
 import com.etheller.warsmash.launcher.GameResult;
 import com.etheller.warsmash.launcher.LaunchGuard;
@@ -68,6 +67,8 @@ import com.etheller.warsmash.viewer5.FogSettings;
 public class LauncherActivity extends AndroidApplication {
 	static final String TAG = "Warsmash";
 	private static final long PAGE_FADE_MILLIS = 150;
+	/** Set when the launcher starts itself over, so that missing game data does not start it over again. */
+	private static final String EXTRA_GAME_DATA_RESTARTED = "gameDataRestarted";
 
 	/** Home rail in its original order: the glue string and the text used when the game data lacks it. */
 	static final String[][] RAIL = { { "KEY_CAMPAIGN", "Campaign" },
@@ -233,6 +234,9 @@ public class LauncherActivity extends AndroidApplication {
 		this.preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE);
 		this.profiles = new Profiles(this, this.preferences);
 		final File iniFile = SkinCache.iniFile(this);
+		// The game data lies at a fixed place in the app's own folder, so the configuration is written from what is
+		// found there rather than asked for.
+		GameData.ensure(this);
 		try {
 			this.ini = iniFile.isFile() ? AndroidLauncher.loadWarsmashIni(iniFile) : null;
 		}
@@ -241,7 +245,8 @@ public class LauncherActivity extends AndroidApplication {
 			this.ini = null;
 		}
 		this.cache = this.ini == null ? null : SkinCache.forConfiguration(this, this.ini, chosenSkin());
-		if ((this.cache == null) || !DataFolderCheck.hasGameData(this.ini.get("DataSources"))) {
+		if (this.cache == null) {
+			// The launcher's art is made from the game data, so without it there is nothing to show.
 			openGameData();
 			return;
 		}
@@ -843,9 +848,17 @@ public class LauncherActivity extends AndroidApplication {
 		this.customPage.forget();
 	}
 
+	/**
+	 * Starts the launcher over when the game data appeared just now, and says where it is read from otherwise: the
+	 * folder is fixed, so there is nothing to choose.
+	 */
 	void openGameData() {
-		final Intent intent = new Intent(this, DataFolderActivity.class);
-		intent.putExtra(DataFolderActivity.EXTRA_OPEN, true);
+		if (!GameData.ensure(this) || getIntent().getBooleanExtra(EXTRA_GAME_DATA_RESTARTED, false)) {
+			GameData.showFolder(this);
+			return;
+		}
+		final Intent intent = new Intent(this, LauncherActivity.class);
+		intent.putExtra(EXTRA_GAME_DATA_RESTARTED, true);
 		startActivity(intent);
 		finish();
 	}
