@@ -48,24 +48,6 @@ project(":server") {
     }
 }
 
-project(":desktop") {
-    apply plugin: "java-library"
-
-    dependencies {
-        implementation project(":core")
-        api "com.badlogicgames.gdx:gdx-backend-lwjgl:$gdxVersion"
-        api "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
-        api "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
-        api "com.google.guava:guava:$guavaVersion"
-        api "org.apache.commons:commons-compress:$commonsCompressVersion"
-        api "commons-io:commons-io:$commonsIoVersion"
-        implementation "org.bytedeco:ffmpeg:8.1.2-1.5.14"
-        // The decoder's native libraries only for Windows x64; elsewhere the movies are skipped.
-        runtimeOnly "org.bytedeco:ffmpeg:8.1.2-1.5.14:windows-x86_64"
-        runtimeOnly "org.bytedeco:javacpp:1.5.14:windows-x86_64"
-    }
-}
-
 project(":core") {
     apply plugin: "java-library"
 
