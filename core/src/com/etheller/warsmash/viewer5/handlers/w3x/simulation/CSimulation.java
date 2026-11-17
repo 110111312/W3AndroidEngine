@@ -23,6 +23,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.etheller.interpreter.ast.scope.GlobalScope;
+import com.etheller.interpreter.ast.scope.HandleIdSource;
 import com.etheller.interpreter.ast.scope.TriggerExecutionScope;
 import com.etheller.interpreter.ast.scope.trigger.RemovableTriggerEvent;
 import com.etheller.interpreter.ast.scope.trigger.Trigger;
@@ -91,6 +92,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerColor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerJass;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerState;
+import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedTransient;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CFrameEventHandler;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerCommandHost;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerCommandLog;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderExecutor;
@@ -121,7 +124,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRend
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.TextTagConfigType;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.command.CommandErrorListener;
 
-public class CSimulation implements CPlayerAPI, CSightWorld {
+public class CSimulation implements CPlayerAPI, CSightWorld, HandleIdSource {
 	private boolean scriptOrder;
 	private boolean scriptTargetOrder;
 	private final War3MapConfig mapConfig;
@@ -186,6 +189,8 @@ public class CSimulation implements CPlayerAPI, CSightWorld {
 	private transient CommandErrorListener commandErrorListener;
 	private transient CPlayerCommandLog playerCommandLog;
 	private transient CPlayerCommandHost playerCommandHost;
+	@SavedTransient
+	private transient CFrameEventHandler frameEventHandler;
 	private final CRegionManager regionManager;
 	private final List<com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.CUnitInRangeEvent> unitInRangeEvents = new ArrayList<>();
 	private final Map<Long, com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.vision.CUnitVisionFogModifier> sharedVisions = new HashMap<>();
@@ -891,6 +896,67 @@ public class CSimulation implements CPlayerAPI, CSightWorld {
 
 	public CUnit getUnit(final int handleId) {
 		return this.handleIdToUnit.get(handleId);
+	}
+
+	@Override
+	public int handleIdOf(final Object handle) {
+		return this.handleIdAllocator.handleIdOf(handle);
+	}
+
+	/**
+	 * An integer a script reads as a handle names whatever holds that id now, as in the original game, also when the
+	 * script got the number from an earlier holder of the id.
+	 */
+	@Override
+	public Object handleOfId(final int handleId, final String typeName) {
+		final Object handle = holderOfId(handleId, typeName);
+		// Natives take a handle of another kind than they expect as none at all.
+		return isOfType(handle, typeName) ? handle : null;
+	}
+
+	private static boolean isOfType(final Object handle, final String typeName) {
+		if (typeName == null) {
+			return true;
+		}
+		switch (typeName) {
+		case "unit":
+			return handle instanceof CUnit;
+		case "item":
+			return handle instanceof CItem;
+		case "destructable":
+			return handle instanceof CDestructable;
+		case "widget":
+			return handle instanceof CWidget;
+		case "player":
+			return handle instanceof CPlayer;
+		default:
+			return true;
+		}
+	}
+
+	private Object holderOfId(final int handleId, final String typeName) {
+		final Object handle = this.handleIdAllocator.handleOfId(handleId, typeName);
+		if ((handle != null) || (handleId < HandleIdAllocator.FIRST_HANDLE_ID)) {
+			return handle;
+		}
+		final CUnit unit = this.handleIdToUnit.get(handleId);
+		if (unit != null) {
+			return unit;
+		}
+		final CItem item = this.handleIdToItem.get(handleId);
+		if (item != null) {
+			return item;
+		}
+		final CDestructable destructable = this.handleIdToDestructable.get(handleId);
+		if (destructable != null) {
+			return destructable;
+		}
+		for (final CPlayer player : this.players) {
+			if (player.getHandleId() == handleId) {
+				return player;
+			}
+		}
+		return null;
 	}
 
 	public CAbility getAbility(final int handleId) {
@@ -1714,6 +1780,15 @@ public class CSimulation implements CPlayerAPI, CSightWorld {
 		this.playerCommandHost = playerCommandHost;
 	}
 
+	/** The script frames of the game's interface, which turn a frame command back into the triggers of its event. */
+	public void setFrameEventHandler(final CFrameEventHandler frameEventHandler) {
+		this.frameEventHandler = frameEventHandler;
+	}
+
+	public CFrameEventHandler getFrameEventHandler() {
+		return this.frameEventHandler;
+	}
+
 	public CommandErrorListener getCommandErrorListener() {
 		return this.commandErrorListener;
 	}
@@ -1780,9 +1855,13 @@ public class CSimulation implements CPlayerAPI, CSightWorld {
 	}
 
 	public void heroReviveEvent(final CUnit trainingUnit, final CUnit trainedUnit) {
-		this.simulationRenderController.heroRevived(trainedUnit);
+		this.simulationRenderController.heroRevived(trainedUnit, true);
 		this.simulationRenderController.spawnUnitReadySound(trainedUnit);
 		noteAlertPosition(trainedUnit);
+	}
+
+	public void heroScriptReviveEvent(final CUnit hero, final boolean doEyecandy) {
+		this.simulationRenderController.heroRevived(hero, doEyecandy);
 	}
 
 	public void unitRepositioned(final CUnit cUnit) {

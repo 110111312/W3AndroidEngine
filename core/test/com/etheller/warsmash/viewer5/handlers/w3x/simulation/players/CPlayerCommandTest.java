@@ -35,7 +35,10 @@ public class CPlayerCommandTest {
 			l -> l.minimapSignal(-1024f, 2048.25f), l -> l.trackableEvent(1048600, true),
 			l -> l.trackableEvent(7, false),
 			l -> l.mouseEvent(JassGameEventsWar3.EVENT_PLAYER_MOUSE_DOWN.getEventId(), -512.5f, 1e-3f, 3),
-			l -> l.mouseEvent(JassGameEventsWar3.EVENT_PLAYER_MOUSE_MOVE.getEventId(), 7f, -7f, 0));
+			l -> l.mouseEvent(JassGameEventsWar3.EVENT_PLAYER_MOUSE_MOVE.getEventId(), 7f, -7f, 0),
+			l -> l.syncData("PREFIX", "data äö 1,2,3"), l -> l.keyEvent(0x41, 2, true),
+			l -> l.keyEvent(0x70, 0, false), l -> l.frameEvent(3, 9, 0.5f, "text"),
+			l -> l.frameEvent(7, 1, 0f, ""));
 
 	private static byte[] encode(final Consumer<CPlayerUnitOrderListener> command) {
 		final CPlayerCommandCodec.Encoder encoder = new CPlayerCommandCodec.Encoder();

@@ -135,7 +135,7 @@ public class CAbilityKaboom extends CAbilityUnitOrPointTargetSpellBase implement
 	private void explode(final CSimulation simulation, final CUnit caster) {
 		final float radius = StrictMath.max(this.partialDamageRadius, this.fullDamageRadius);
 		simulation.getWorldCollision().enumUnitsInRange(caster.getX(), caster.getY(), radius, (enumUnit) -> {
-			if (enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.NOT_INVISIBLE,
+			if (enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.ANY,
 					getTargetsAllowed(),
 					BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())) {
 				float damageAmount;

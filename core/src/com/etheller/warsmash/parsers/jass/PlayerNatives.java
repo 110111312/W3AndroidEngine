@@ -301,6 +301,7 @@ final class PlayerNatives extends CommonNatives {
 						return null;
 					}
 					player.setRemovedResult(result);
+					player.setPlayerState(this.simulation, CPlayerState.GAME_RESULT, result.ordinal());
 					// Measured: a victory leaves the slot playing; a defeat or tie makes it left.
 					if (result != CPlayerGameResult.VICTORY) {
 						player.setSlotState(CPlayerSlotState.LEFT);

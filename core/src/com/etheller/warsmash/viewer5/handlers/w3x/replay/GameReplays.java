@@ -13,6 +13,10 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import com.etheller.warsmash.BuildInfo;
 import com.etheller.warsmash.datasources.DataSource;
+import com.etheller.warsmash.datasources.GraphicsSet;
+import com.etheller.warsmash.datasources.GraphicsSettings;
+import com.etheller.warsmash.launcher.StorageRoot;
+import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.viewer5.handlers.w3x.CampaignMaps;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
@@ -89,7 +93,7 @@ public final class GameReplays {
 	}
 
 	public static FileHandle folder() {
-		return Gdx.files.local(FOLDER);
+		return StorageRoot.local(FOLDER);
 	}
 
 	public static FileHandle lastReplay() {
@@ -124,7 +128,7 @@ public final class GameReplays {
 	public static CReplayHeader header(final DataSource dataSource, final String mapFile, final War3MapViewer viewer,
 			final War3MapConfig config, final int localPlayerIndex, final long recordedAt) throws IOException {
 		final long[] map = mapChecksum(dataSource, mapFile);
-		return CReplayHeader.of(engineVersion(), BuildInfo.current().getCommit(),
+		return CReplayHeader.of(engineVersion(), BuildInfo.current().getBuildId(),
 				BuildInfo.current().isOfficial(), mapFile, (int) map[0], map[1], dataChecksum(dataSource),
 				recordedAt, viewer.getGameSeed(), localPlayerIndex, viewer.getTimeScale(), config,
 				CHECKSUM_INTERVAL, CGameCache.snapshot());
@@ -164,6 +168,30 @@ public final class GameReplays {
 		}
 	}
 
+	/**
+	 * The graphics a replay of this map is played with: the ones a game of it is recorded with, which is where its data
+	 * checksum comes from. A replay is never of a campaign version, so only the map's own Reforged mark and the
+	 * options count.
+	 */
+	public static GraphicsSet playbackGraphics(final DataSource base, final DataTable ini, final String mapFile) {
+		boolean reforgedMap = false;
+		try {
+			reforgedMap = War3MapViewer
+					.isReforgedGraphicsMap(War3MapViewer.beginLoadingMap(base, mapFile).readMapInformation());
+		}
+		catch (final IOException | RuntimeException e) {
+			// the map check names a map that cannot be read
+		}
+		return GraphicsSettings.gameGraphics(ini, mapFile, false, reforgedMap);
+	}
+
+	/** Why this engine cannot play the replay on the game data as the options set the graphics, or null. */
+	public static String unplayableReason(final CReplay replay, final DataSource base, final DataTable ini) {
+		final DataSource data = GraphicsSettings.gameData(base, ini,
+				playbackGraphics(base, ini, replay.getHeader().getMapPath()));
+		return unplayableReason(replay.getHeader(), data, null);
+	}
+
 	/** Why this engine cannot play the replay, or null. */
 	public static String unplayableReason(final CReplay replay, final DataSource dataSource) {
 		return unplayableReason(replay.getHeader(), dataSource, null);
@@ -179,7 +207,7 @@ public final class GameReplays {
 			return "recorded with engine version " + header.getEngineVersion() + ", this is " + engineVersion();
 		}
 		if (!isThisCommit(header)) {
-			return "recorded with build " + header.getBuildCommit() + ", this is " + BuildInfo.current().getCommit();
+			return "recorded with build " + header.getBuildCommit() + ", this is " + BuildInfo.current().getBuildId();
 		}
 		final long[] map;
 		try {
@@ -233,7 +261,7 @@ public final class GameReplays {
 	 * cannot be told apart, so it is let through.
 	 */
 	private static boolean isThisCommit(final CReplayHeader header) {
-		final String mine = BuildInfo.current().getCommit();
+		final String mine = BuildInfo.current().getBuildId();
 		final String recorded = header.getBuildCommit();
 		return BuildInfo.UNKNOWN_COMMIT.equals(mine) || BuildInfo.UNKNOWN_COMMIT.equals(recorded)
 				|| mine.equals(recorded);

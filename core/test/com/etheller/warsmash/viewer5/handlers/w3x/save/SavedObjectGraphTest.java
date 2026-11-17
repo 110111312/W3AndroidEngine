@@ -455,6 +455,45 @@ class SavedObjectGraphTest {
 	}
 
 	@Test
+	void chunkedBytesKeepEveryByteAcrossChunkEnds() throws IOException {
+		final ByteArrayOutputStream plain = new ByteArrayOutputStream();
+		final SavedObjectGraph.Bytes chunked = new SavedObjectGraph.Bytes(1);
+		final java.util.Random random = new java.util.Random(7);
+		try (DataOutputStream a = new DataOutputStream(plain)) {
+			final SavedObjectGraph.BytesData b = new SavedObjectGraph.BytesData(chunked);
+			for (int i = 0; i < 20000; i++) {
+				final int kind = random.nextInt(5);
+				final int value = random.nextInt();
+				for (final java.io.DataOutput out : new java.io.DataOutput[] { a, b }) {
+					switch (kind) {
+					case 0:
+						out.writeInt(value);
+						break;
+					case 1:
+						out.writeShort(value);
+						break;
+					case 2:
+						out.writeByte(value);
+						break;
+					case 3:
+						out.writeLong(((long) value << 32) | (value & 0xFFFFFFFFL));
+						break;
+					default:
+						out.write(new byte[(value & 0x7FFFFFFF) % 3000]);
+						break;
+					}
+				}
+			}
+			a.flush();
+		}
+		assertArrayEquals(plain.toByteArray(), chunked.toByteArray());
+		assertEquals(plain.size(), chunked.size());
+		final ByteArrayOutputStream copied = new ByteArrayOutputStream();
+		chunked.writeTo(copied);
+		assertArrayEquals(plain.toByteArray(), copied.toByteArray());
+	}
+
+	@Test
 	void savedBytesDoNotDependOnTheBodyStream() throws IOException {
 		final External external = new External("player0");
 		final Thing thing = sample(external);

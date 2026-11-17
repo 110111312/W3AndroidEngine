@@ -703,10 +703,6 @@ public final class GameCameraManager extends CameraManager {
 		this.panRate = null;
 	}
 
-	public void updateTargetZ(final float groundHeight) {
-		this.target.z = groundHeight + this.presets[this.currentPreset].getHeight() + this.targetZOffset;
-	}
-
 	public void scrolled(final int amount) {
 		this.currentPreset -= amount;
 		if (this.currentPreset < 0) {

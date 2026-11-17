@@ -59,4 +59,26 @@ class PalmFilterTest {
 		assertEquals(PalmFilter.SizeRejection.AUTO,
 				TouchSettings.sizeRejection("", PalmFilter.SizeRejection.AUTO));
 	}
+
+	@Test
+	void fingersAcceptedAgainWhenPenEventsStop() {
+		final PalmFilter filter = new PalmFilter(0, PalmFilter.PenFingerPolicy.IGNORE, PalmFilter.SizeRejection.OFF);
+		filter.accept(new PointerEvent(1, PointerEvent.Tool.STYLUS, PointerEvent.Action.HOVER_MOVE, 5, 5, 0, 0, 0, 0,
+				1000));
+		assertFalse(filter.accept(down(PointerEvent.Tool.FINGER, 10, 3000)));
+		filter.accept(up(PointerEvent.Tool.FINGER, 3010));
+		assertFalse(filter.accept(down(PointerEvent.Tool.FINGER, 10, 5999)));
+		filter.accept(up(PointerEvent.Tool.FINGER, 6000));
+		assertTrue(filter.accept(down(PointerEvent.Tool.FINGER, 10, 6000)));
+	}
+
+	@Test
+	void penEventsKeepFingersIgnored() {
+		final PalmFilter filter = new PalmFilter(0, PalmFilter.PenFingerPolicy.IGNORE, PalmFilter.SizeRejection.OFF);
+		for (long t = 0; t <= 20000; t += 1000) {
+			filter.accept(new PointerEvent(1, PointerEvent.Tool.STYLUS, PointerEvent.Action.HOVER_MOVE, 5, 5, 0, 0, 0, 0,
+					t));
+		}
+		assertFalse(filter.accept(down(PointerEvent.Tool.FINGER, 10, 20500)));
+	}
 }

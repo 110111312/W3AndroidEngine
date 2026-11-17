@@ -31,6 +31,10 @@ public abstract class AbstractCAbilityRaceBuild extends AbstractCAbilityBuild {
 	@Override
 	public CBehavior begin(final CSimulation game, final CUnit caster, final int playerIndex, final int orderId,
 			final boolean autoOrder, final CWidget target) {
+		if (target instanceof CUnit) {
+			return begin(game, caster, playerIndex, orderId, autoOrder,
+					new AbilityPointTarget(target.getX(), target.getY()));
+		}
 		return caster.pollNextOrderBehavior(game);
 	}
 

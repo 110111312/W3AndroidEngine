@@ -166,7 +166,7 @@ final class AIDefense {
 		for (final Map.Entry<CUnit, float[]> entry : ai.guardPositions.entrySet()) {
 			final CUnit unit = entry.getKey();
 			final float[] position = entry.getValue();
-			if (unit.isDead() || unit.isHidden() || ai.attackCaptain.getMembers().contains(unit)
+			if (unit.isDead() || unit.isHidden() || unit.isGuardPositionRemoved() || ai.attackCaptain.getMembers().contains(unit)
 					|| ai.defenseCaptain.getMembers().contains(unit)
 					|| (unit.getCurrentBehavior() instanceof CBehaviorAttack)
 					|| (distance(unit.getX(), unit.getY(), position[0], position[1]) < GUARD_RETURN_DISTANCE)) {

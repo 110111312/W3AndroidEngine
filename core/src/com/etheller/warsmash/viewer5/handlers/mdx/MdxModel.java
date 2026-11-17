@@ -41,6 +41,31 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 	public String name = "";
 	public long blendTime;
 	public List<Sequence> sequences = new ArrayList<>();
+	/** Only while the model loads. */
+	ArrayPool arrayPool;
+	private byte[] noVariants = new byte[0];
+
+	synchronized byte[] noVariants(final int length) {
+		if (this.noVariants.length != length) {
+			this.noVariants = new byte[length];
+		}
+		return this.noVariants;
+	}
+
+	private SdSequence<?>[] defaultSdSequences = new SdSequence<?>[0];
+
+	/** The sequence every timeline of this model shows its default value in, for the sequence of this index. */
+	synchronized SdSequence<?> defaultSdSequence(final int index, final long start, final long end) {
+		if (this.defaultSdSequences.length <= index) {
+			this.defaultSdSequences = java.util.Arrays.copyOf(this.defaultSdSequences, Math.max(index + 1, this.sequences.size()));
+		}
+		SdSequence<?> sequence = this.defaultSdSequences[index];
+		if (sequence == null) {
+			sequence = new SdSequence<Object>(start, end);
+			this.defaultSdSequences[index] = sequence;
+		}
+		return sequence;
+	}
 	public List<Long> globalSequences = new ArrayList<>();
 	public List<Material> materials = new ArrayList<>();
 	public List<Layer> layers = new ArrayList<>();
@@ -95,6 +120,16 @@ public class MdxModel extends com.etheller.warsmash.viewer5.Model<MdxHandler> {
 	private static boolean reportedStreamConversion = false;
 
 	public void load(final Object bufferOrParser) throws IOException {
+		this.arrayPool = new ArrayPool();
+		try {
+			loadModel(bufferOrParser);
+		}
+		finally {
+			this.arrayPool = null;
+		}
+	}
+
+	private void loadModel(final Object bufferOrParser) throws IOException {
 		MdlxModel parser;
 
 		if (bufferOrParser instanceof MdlxModel) {

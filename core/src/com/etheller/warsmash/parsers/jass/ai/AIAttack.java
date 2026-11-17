@@ -492,9 +492,10 @@ final class AIAttack {
 			goHome(ai, OrderIds.move);
 		}
 		// Measured: a group that took on enemies on its way and has finished them does not go on to its goal; it
-		// retreats home at once.
+		// retreats home at once. Enemies it has not fought do not hold it back: a member that already walks up to
+		// one would keep the whole group out of the retreat.
 		if (attack.hasGoal() && !attack.getMembers().isEmpty() && (ai.fightGeneration == attack.getGeneration())
-				&& !isEngaged(ai) && !isCaptainInCombat(ai, true)) {
+				&& !isEngaged(ai)) {
 			retreat(ai);
 		}
 		if (attack.hasGoal()) {
@@ -519,8 +520,13 @@ final class AIAttack {
 		}
 		if (attack.hasGoal()) {
 			ai.gatherOrdered.clear();
+			// Measured: with SetTargetHeroes the group splits between the enemy in front and the hero, so the
+			// shared target applies only without it.
 			if (ai.targetHeroes) {
 				targetHeroes(ai);
+			}
+			else {
+				focusFire(ai);
 			}
 		}
 		for (final CUnit unit : ai.injured) {
@@ -662,6 +668,45 @@ final class AIAttack {
 			toGoal.removeAll(taken);
 			for (final CUnit unit : orderGroup(ai, toGoal, OrderIds.AImove, goal.x, goal.y)) {
 				attack.markOrdered(unit);
+			}
+		}
+	}
+
+	/**
+	 * Measured: once a member of the group strikes an enemy, every member that is still on its way, whatever it would
+	 * have found itself, attacks that same enemy; members that already fight, or stand idle after a kill, choose
+	 * their own. Only members that have the enemy within their acquisition range are taken so far: a member far behind
+	 * that left its place in the formation to run at an enemy it cannot see made the group's way drift from the
+	 * original's (D-1329 first try), and the reach of the rule is not measured.
+	 */
+	private static void focusFire(final AIController ai) {
+		CUnit lead = null;
+		for (final CUnit unit : ai.attackCaptain.getMembers()) {
+			final CBehavior behavior = unit.getCurrentBehavior();
+			if (!(behavior instanceof CBehaviorAttack) || !((CBehaviorAttack) behavior).isWithinRange(ai.simulation)) {
+				continue;
+			}
+			final CUnit target = ((CBehaviorAttack) behavior).getTarget().visit(AbilityTargetVisitor.UNIT);
+			if ((target != null) && !target.isDead() && ai.isEnemy(target)
+					&& !ai.simulation.isNeutralAggressive(target.getPlayerIndex())) {
+				lead = target;
+				break;
+			}
+		}
+		if (lead == null) {
+			return;
+		}
+		for (final CUnit unit : ai.attackCaptain.getMembers()) {
+			if (isAboard(ai, unit) || unit.getUnitType().getAttacks().isEmpty()
+					|| (unit.getCurrentBehavior() instanceof CBehaviorAttack) || isIdle(unit)
+					|| (unit.getCurrentOrder() == null)) {
+				continue;
+			}
+			final int order = unit.getCurrentOrder().getOrderId();
+			if (((order == OrderIds.AImove) || (order == OrderIds.attack))
+					&& (distance(unit.getX(), unit.getY(), lead.getX(), lead.getY()) <= unit.getAcquisitionRange())
+					&& unit.order(ai.simulation, OrderIds.attack, lead)) {
+				ai.attackCaptain.markOrdered(unit);
 			}
 		}
 	}

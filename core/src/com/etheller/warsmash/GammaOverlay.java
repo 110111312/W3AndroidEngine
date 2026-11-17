@@ -27,6 +27,19 @@ final class GammaOverlay {
 	private GammaOverlay() {
 	}
 
+	/**
+	 * Runs inside {@link GraphicsContext#disposeLost}, where the new context leaves the delete of a name it did not
+	 * make alone.
+	 */
+	static void disposeLost() {
+		final Texture lost = white;
+		white = null;
+		whiteContext = null;
+		if (lost != null) {
+			lost.dispose();
+		}
+	}
+
 	static void render(final SpriteBatch batch) {
 		final int gamma = GameOptions.get().getGamma();
 		if (gamma == GameOptions.NEUTRAL_GAMMA) {

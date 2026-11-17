@@ -35,9 +35,9 @@ class LauncherBoardTest {
 
 	@Test
 	void lockedGraphicsSetsFitTheTablet() {
-		// "Classic", "Reforged HD 🔒", "Reforged DE 🔒" in the 32 px body font.
+		// "SD", "HD 🔒", "DE 🔒" in the 32 px body font.
 		final LauncherBoard tablet = new LauncherBoard(true);
-		final float[] names = { 110, 250, 250 };
+		final float[] names = { 40, 100, 100 };
 		final LauncherBoard.RadioPlaces places = tablet.radioPlaces(names, rowWidth(tablet));
 		assertFalse(places.ownLine);
 		for (int i = 0; i < names.length; i++) {
@@ -47,8 +47,36 @@ class LauncherBoardTest {
 	}
 
 	@Test
-	void lockedGraphicsSetsMoveUnderTheLabelOnAPhone() {
-		// The same names in the 28 px body font of the 1600 x 720 phone board.
+	void shortGraphicsSetsStayInTheControlColumnOnAPhone() {
+		final LauncherBoard phone = new LauncherBoard(false);
+		final float[] names = { 36, 90, 90 };
+		final LauncherBoard.RadioPlaces places = phone.radioPlaces(names, rowWidth(phone));
+		assertFalse(places.ownLine);
+		assertEquals(phone.controlX - phone.pageFrame, places.x[0], 0.01f);
+		assertInside(phone, places, names);
+	}
+
+	@Test
+	void penButtonChoicesStartInTheControlColumnWithAnEvenStep() {
+		// "Shift", "Ctrl", "Drag", "Right" in the 32 px and the 28 px body font.
+		final LauncherBoard tablet = new LauncherBoard(true);
+		final float[] tabletNames = { 70, 55, 62, 72 };
+		final LauncherBoard.RadioPlaces tabletPlaces = tablet.radioPlaces(tabletNames, rowWidth(tablet));
+		assertFalse(tabletPlaces.ownLine);
+		assertEquals(tablet.controlX - tablet.pageFrame, tabletPlaces.x[0], 0.01f);
+		assertEquals(tabletPlaces.x[1] - tabletPlaces.x[0], tabletPlaces.x[3] - tabletPlaces.x[2], 0.01f);
+		assertInside(tablet, tabletPlaces, tabletNames);
+		final LauncherBoard phone = new LauncherBoard(false);
+		final float[] phoneNames = { 62, 48, 55, 63 };
+		final LauncherBoard.RadioPlaces phonePlaces = phone.radioPlaces(phoneNames, rowWidth(phone));
+		assertFalse(phonePlaces.ownLine);
+		assertEquals(phone.controlX - phone.pageFrame, phonePlaces.x[0], 0.01f);
+		assertInside(phone, phonePlaces, phoneNames);
+	}
+
+	@Test
+	void longGraphicsSetsMoveUnderTheLabelOnAPhone() {
+		// Names of that length (a long translation, say) in the 28 px body font of the 1600 x 720 phone board.
 		final LauncherBoard phone = new LauncherBoard(false);
 		final float[] names = { 96, 218, 218 };
 		final LauncherBoard.RadioPlaces places = phone.radioPlaces(names, rowWidth(phone));

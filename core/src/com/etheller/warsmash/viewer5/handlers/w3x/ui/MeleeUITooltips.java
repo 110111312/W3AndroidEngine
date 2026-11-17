@@ -236,7 +236,8 @@ final class MeleeUITooltips {
 			final RenderItem renderItem = (RenderItem) whichUnit;
 			final ItemUI itemUI = this.ui.war3MapViewer.getAbilityDataUI()
 					.getItemUI(renderItem.getSimulationItem().getTypeId());
-			return itemUI.getName();
+			final String nameOverride = renderItem.getSimulationItem().getNameOverride();
+			return nameOverride != null ? nameOverride : itemUI.getName();
 		}
 		else if (whichUnit instanceof RenderDestructable) {
 			final RenderDestructable renderDest = (RenderDestructable) whichUnit;

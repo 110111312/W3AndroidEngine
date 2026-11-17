@@ -14,7 +14,7 @@ public class ABConditionIntegerGt0 extends ABCondition {
 	@Override
 	public Boolean callback(CSimulation game, CUnit caster, Map<String, Object> localStore, final int castId) {
 		Integer v1 = value.callback(game, caster, localStore, castId);
-		return v1 > 0;
+		return intValue(v1) > 0;
 	}
 
 }

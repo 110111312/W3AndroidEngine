@@ -200,7 +200,7 @@ public class CPathfindingProcessor {
 				if ((entry.movementType == ground) && (entry.collisionSize == collisionSize)
 						&& (entry.corners == corners)) {
 					entry.lastUse = this.lastJobId;
-					entry.validate(pathingGrid);
+					entry.validate(this, pathingGrid);
 					return entry;
 				}
 				if (entry.lastUse < this.reachability[slot].lastUse) {
@@ -224,7 +224,7 @@ public class CPathfindingProcessor {
 	 * another part than the unit's walked every point the unit could reach before it gave up, and a few such searches
 	 * at once held up the paths of all other units for many seconds.
 	 */
-	private static final class Reachability {
+	static final class Reachability {
 		private static final byte UNKNOWN = 0;
 		private static final byte OPEN = 1;
 		private static final byte BLOCKED = 2;
@@ -245,8 +245,10 @@ public class CPathfindingProcessor {
 		private int parts;
 		private int version;
 		private int lastUse;
+		/** The cells changed since the version, as the grid hands them out; a longer list finds everything again. */
+		private final int[] changes = new int[MAX_CHANGES * 4];
 
-		private Reachability(final PathingGrid grid, final MovementType movementType, final float collisionSize,
+		Reachability(final PathingGrid grid, final MovementType movementType, final float collisionSize,
 				final boolean corners) {
 			this.movementType = movementType;
 			this.collisionSize = collisionSize;
@@ -301,13 +303,317 @@ public class CPathfindingProcessor {
 			return true;
 		}
 
-		private void validate(final PathingGrid grid) {
-			if (this.version != grid.getOverlayVersion()) {
-				this.version = grid.getOverlayVersion();
+		void validate(final SharedGraph graph, final PathingGrid grid) {
+			final int current = grid.getOverlayVersion();
+			if (this.version == current) {
+				return;
+			}
+			final int count = grid.collectOverlayChanges(this.version, this.changes);
+			this.version = current;
+			if ((count < 0) || !repair(graph, grid, count)) {
 				Arrays.fill(this.pathable, UNKNOWN);
 				Arrays.fill(this.part, 0);
 				this.parts = 0;
 			}
+		}
+
+		private static final int MAX_CHANGES = 8;
+		/** Rectangles of changed points this close (in points) are repaired as one. */
+		private static final int MERGE_GAP = 3;
+		/** Repairs only look this far past the changed points, and no larger a patch than this. */
+		private static final int WINDOW = 6;
+		private static final int MAX_PATCH_POINTS = 4096;
+
+		/**
+		 * Brings the points near changed cells up to date and keeps the parts found so far where the change cannot have
+		 * altered them, instead of finding every part again: a part (every point of one is labelled at once) that no
+		 * changed point is next to is the same part as before. Returns false when the change is not one of the cases
+		 * handled below, and everything is to be found again.
+		 */
+		private boolean repair(final SharedGraph graph, final PathingGrid grid, final int count) {
+			// the points whose test reads a changed cell, as rectangles merged into patches
+			int patches = 0;
+			final int[] patch = new int[MAX_CHANGES * 4];
+			for (int i = 0; i < count; i++) {
+				final int minCellX = this.changes[i * 4];
+				final int minCellY = this.changes[(i * 4) + 1];
+				final int maxCellX = this.changes[(i * 4) + 2];
+				final int maxCellY = this.changes[(i * 4) + 3];
+				final int firstX = firstPoint(this.firstColumns, minCellX, maxCellX);
+				final int firstY = firstPoint(this.firstRows, minCellY, maxCellY);
+				if ((firstX < 0) || (firstY < 0)) {
+					continue;
+				}
+				patch[patches * 4] = firstX;
+				patch[(patches * 4) + 1] = firstY;
+				patch[(patches * 4) + 2] = lastPoint(this.firstColumns, minCellX, maxCellX);
+				patch[(patches * 4) + 3] = lastPoint(this.firstRows, minCellY, maxCellY);
+				patches++;
+			}
+			boolean merged = true;
+			while (merged && (patches > 1)) {
+				merged = false;
+				for (int a = 0; (a < patches) && !merged; a++) {
+					for (int b = a + 1; (b < patches) && !merged; b++) {
+						if ((patch[a * 4] <= (patch[(b * 4) + 2] + MERGE_GAP))
+								&& (patch[b * 4] <= (patch[(a * 4) + 2] + MERGE_GAP))
+								&& (patch[(a * 4) + 1] <= (patch[(b * 4) + 3] + MERGE_GAP))
+								&& (patch[(b * 4) + 1] <= (patch[(a * 4) + 3] + MERGE_GAP))) {
+							patch[a * 4] = Math.min(patch[a * 4], patch[b * 4]);
+							patch[(a * 4) + 1] = Math.min(patch[(a * 4) + 1], patch[(b * 4) + 1]);
+							patch[(a * 4) + 2] = Math.max(patch[(a * 4) + 2], patch[(b * 4) + 2]);
+							patch[(a * 4) + 3] = Math.max(patch[(a * 4) + 3], patch[(b * 4) + 3]);
+							System.arraycopy(patch, (patches - 1) * 4, patch, b * 4, 4);
+							patches--;
+							merged = true;
+						}
+					}
+				}
+			}
+			int labelled = -1;
+			for (int i = 0; i < patches; i++) {
+				if (touchesLabelled(patch, i)) {
+					if (labelled >= 0) {
+						return false;
+					}
+					labelled = i;
+				}
+				else {
+					// no part found is next to it: its points are tested again when asked for
+					for (int y = patch[(i * 4) + 1]; y <= patch[(i * 4) + 3]; y++) {
+						Arrays.fill(this.pathable, (y * this.width) + patch[i * 4],
+								(y * this.width) + patch[(i * 4) + 2] + 1, UNKNOWN);
+					}
+				}
+			}
+			if (labelled >= 0) {
+				repairPatch(grid, patch[labelled * 4], patch[(labelled * 4) + 1], patch[(labelled * 4) + 2],
+						patch[(labelled * 4) + 3]);
+			}
+			return true;
+		}
+
+		/** The lowest point whose footprint reaches cells minCell..maxCell, or -1; firsts rise with the point. */
+		private int firstPoint(final int[] firsts, final int minCell, final int maxCell) {
+			for (int i = 0; i < firsts.length; i++) {
+				if (((firsts[i] + this.footprintCells) > minCell) && (firsts[i] <= maxCell)) {
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		private int lastPoint(final int[] firsts, final int minCell, final int maxCell) {
+			for (int i = firsts.length - 1; i >= 0; i--) {
+				if (((firsts[i] + this.footprintCells) > minCell) && (firsts[i] <= maxCell)) {
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		/** Whether a point of the patch or next to it has a part found. */
+		private boolean touchesLabelled(final int[] patch, final int index) {
+			final int minX = Math.max(patch[index * 4] - 1, 0);
+			final int maxX = Math.min(patch[(index * 4) + 2] + 1, this.width - 1);
+			final int minY = Math.max(patch[(index * 4) + 1] - 1, 0);
+			final int maxY = Math.min(patch[(index * 4) + 3] + 1, this.height - 1);
+			for (int y = minY; y <= maxY; y++) {
+				for (int x = minX; x <= maxX; x++) {
+					if (this.part[(y * this.width) + x] != 0) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		private boolean step(final PathingGrid grid, final int cx, final int cy, final int nx, final int ny) {
+			return open(grid, nx, ny) && open(grid, cx, ny) && open(grid, nx, cy);
+		}
+
+		/**
+		 * The one patch with parts found next to it. Points that stop being open are taken out of their part, which
+		 * is still the same part when the points of it next to the patch can still walk to each other through the
+		 * points around the patch; points that become open join the part they are next to when that is the only one
+		 * and no unlabelled point is next to them. Else the parts next to the patch are forgotten, found again when
+		 * asked for.
+		 */
+		private void repairPatch(final PathingGrid grid, final int patchMinX, final int patchMinY,
+				final int patchMaxX, final int patchMaxY) {
+			final int minX = Math.max(patchMinX - 1, 0);
+			final int maxX = Math.min(patchMaxX + 1, this.width - 1);
+			final int minY = Math.max(patchMinY - 1, 0);
+			final int maxY = Math.min(patchMaxY + 1, this.height - 1);
+			// the parts found next to the patch, before anything changes
+			int[] touched = new int[4];
+			int touchedCount = 0;
+			for (int y = minY; y <= maxY; y++) {
+				for (int x = minX; x <= maxX; x++) {
+					final int found = this.part[(y * this.width) + x];
+					if ((found != 0) && !contains(touched, touchedCount, found)) {
+						if (touchedCount == touched.length) {
+							touched = Arrays.copyOf(touched, touchedCount * 2);
+						}
+						touched[touchedCount++] = found;
+					}
+				}
+			}
+			final int patchWidth = (patchMaxX - patchMinX) + 1;
+			final int patchHeight = (patchMaxY - patchMinY) + 1;
+			final boolean[] gained = new boolean[patchWidth * patchHeight];
+			boolean anyLost = false;
+			boolean anyGained = false;
+			for (int y = patchMinY; y <= patchMaxY; y++) {
+				for (int x = patchMinX; x <= patchMaxX; x++) {
+					final int index = (y * this.width) + x;
+					final boolean wasLabelled = this.part[index] != 0;
+					final boolean wasOpen = this.pathable[index] == OPEN;
+					final boolean nowOpen = samplesPathable(grid, x, y);
+					this.pathable[index] = nowOpen ? OPEN : BLOCKED;
+					if (wasLabelled && !nowOpen) {
+						this.part[index] = 0;
+						anyLost = true;
+					}
+					else if (nowOpen && !wasOpen) {
+						gained[((y - patchMinY) * patchWidth) + (x - patchMinX)] = true;
+						anyGained = true;
+					}
+				}
+			}
+			boolean kept = true;
+			if (anyLost && anyGained) {
+				kept = false;
+			}
+			else if (anyLost) {
+				if (((maxX - minX) + 1) * ((maxY - minY) + 1) > MAX_PATCH_POINTS) {
+					kept = false;
+				}
+				else {
+					kept = stillConnected(grid, touched, touchedCount, minX, minY, maxX, maxY);
+				}
+			}
+			else if (anyGained) {
+				kept = growParts(grid, gained, patchMinX, patchMinY, patchWidth, minX, minY, maxX, maxY);
+			}
+			if (!kept) {
+				for (int i = 0; i < this.part.length; i++) {
+					if ((this.part[i] != 0) && contains(touched, touchedCount, this.part[i])) {
+						this.part[i] = 0;
+					}
+				}
+			}
+		}
+
+		/**
+		 * Whether every part that was next to the patch is still one part: its points in the area around the patch
+		 * walk to each other through points of the part within a few points more around. The rest of a part reaches
+		 * that area without crossing the patch, so that is all that has to hold.
+		 */
+		private boolean stillConnected(final PathingGrid grid, final int[] touched, final int touchedCount,
+				final int minX, final int minY, final int maxX, final int maxY) {
+			final int windowMinX = Math.max(minX - WINDOW, 0);
+			final int windowMaxX = Math.min(maxX + WINDOW, this.width - 1);
+			final int windowMinY = Math.max(minY - WINDOW, 0);
+			final int windowMaxY = Math.min(maxY + WINDOW, this.height - 1);
+			final int windowWidth = (windowMaxX - windowMinX) + 1;
+			final int[] queue = new int[windowWidth * ((windowMaxY - windowMinY) + 1)];
+			for (int t = 0; t < touchedCount; t++) {
+				final int label = touched[t];
+				int remaining = 0;
+				int seed = -1;
+				for (int y = minY; y <= maxY; y++) {
+					for (int x = minX; x <= maxX; x++) {
+						if (this.part[(y * this.width) + x] == label) {
+							remaining++;
+							seed = (y * this.width) + x;
+						}
+					}
+				}
+				if (remaining == 0) {
+					continue;
+				}
+				final boolean[] seen = new boolean[queue.length];
+				int head = 0;
+				int tail = 0;
+				queue[tail++] = seed;
+				seen[(((seed / this.width) - windowMinY) * windowWidth) + ((seed % this.width) - windowMinX)] = true;
+				remaining--;
+				while ((head < tail) && (remaining > 0)) {
+					final int index = queue[head++];
+					final int cx = index % this.width;
+					final int cy = index / this.width;
+					for (final Direction direction : Direction.VALUES) {
+						final int nx = cx + direction.xOffset;
+						final int ny = cy + direction.yOffset;
+						if ((nx < windowMinX) || (nx > windowMaxX) || (ny < windowMinY) || (ny > windowMaxY)) {
+							continue;
+						}
+						final int next = (ny * this.width) + nx;
+						final int seenAt = ((ny - windowMinY) * windowWidth) + (nx - windowMinX);
+						if (seen[seenAt] || (this.part[next] != label) || !step(grid, cx, cy, nx, ny)) {
+							continue;
+						}
+						seen[seenAt] = true;
+						queue[tail++] = next;
+						if ((nx >= minX) && (nx <= maxX) && (ny >= minY) && (ny <= maxY)) {
+							remaining--;
+						}
+					}
+				}
+				if (remaining > 0) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/**
+		 * Labels the points that became open with the part they step from, when every point they step to is in that
+		 * one part or became open too.
+		 */
+		private boolean growParts(final PathingGrid grid, final boolean[] gained, final int patchMinX,
+				final int patchMinY, final int patchWidth, final int minX, final int minY, final int maxX,
+				final int maxY) {
+			final int patchHeight = gained.length / patchWidth;
+			final int[] queue = new int[(((maxX - minX) + 1) * ((maxY - minY) + 1)) + gained.length];
+			int head = 0;
+			int tail = 0;
+			for (int y = minY; y <= maxY; y++) {
+				for (int x = minX; x <= maxX; x++) {
+					final int index = (y * this.width) + x;
+					if (this.part[index] != 0) {
+						queue[tail++] = index;
+					}
+				}
+			}
+			while (head < tail) {
+				final int index = queue[head++];
+				final int label = this.part[index];
+				final int cx = index % this.width;
+				final int cy = index / this.width;
+				for (final Direction direction : Direction.VALUES) {
+					final int nx = cx + direction.xOffset;
+					final int ny = cy + direction.yOffset;
+					if (!step(grid, cx, cy, nx, ny)) {
+						continue;
+					}
+					final int next = (ny * this.width) + nx;
+					final int other = this.part[next];
+					if (other == label) {
+						continue;
+					}
+					final int gx = nx - patchMinX;
+					final int gy = ny - patchMinY;
+					if ((other != 0) || (gx < 0) || (gy < 0) || (gx >= patchWidth) || (gy >= patchHeight)
+							|| !gained[(gy * patchWidth) + gx]) {
+						return false;
+					}
+					this.part[next] = label;
+					queue[tail++] = next;
+				}
+			}
+			return true;
 		}
 
 		private float worldX(final PathingGrid grid, final int x) {
@@ -332,7 +638,7 @@ public class CPathfindingProcessor {
 		}
 
 		/** The part already found for a grid point (every point of a part is found at once), else 0. */
-		private int label(final int x, final int y) {
+		int label(final int x, final int y) {
 			if ((x < 0) || (y < 0) || (x >= this.width) || (y >= this.height)) {
 				return 0;
 			}
@@ -340,7 +646,7 @@ public class CPathfindingProcessor {
 		}
 
 		/** The part of the map a grid point is in (by the steps the search takes), 0 for a point no unit fits on. */
-		private int part(final SharedGraph graph, final PathingGrid grid, final int x, final int y) {
+		int part(final SharedGraph graph, final PathingGrid grid, final int x, final int y) {
 			if (!open(grid, x, y)) {
 				return 0;
 			}
@@ -1623,16 +1929,20 @@ public class CPathfindingProcessor {
 		final boolean blockerAligned = isCellAligned(blocker[0].getUnitType().getCollisionSize());
 		// Measured: a mover whose size is a whole number of cells goes north of a target that is not one, whatever its
 		// start; between two such sizes, or when the sum reaches an odd number of cells, the side by the east / west
-		// wins ties; a whole-cell target seen by a smaller mover is never approached from north or east (measured for
-		// units that are not heroes only).
+		// wins ties, but an odd number of cells out from a start south of the target further than eight cells away the
+		// south side does; a whole-cell target seen by a smaller mover is never approached from north or east (a hero
+		// target measured on move orders only).
 		final boolean northFirst = moverAligned && !blockerAligned;
 		final boolean oddRing = (((int) (distance / BESIDE_UNIT_CELL)) & 1) == 1;
-		final boolean noNorthEast = blockerAligned && !moverAligned && !oddRing && !blocker[0].isHero()
+		final boolean noNorthEast = blockerAligned && !moverAligned && !oddRing
+				&& (!blocker[0].isHero() || ((job.queueItem != null) && job.queueItem.isMoveOrder()))
 				&& ((job.ignoreIntersectionsWithThisUnit == null) || !job.ignoreIntersectionsWithThisUnit.isHero());
-		// measured only up to nine cells out; from twelve cells out the nearer side by cell centres still wins
-		final boolean startSouth = (job.startY < cellY)
-				&& (Math.max(Math.abs(startCellX - (int) Math.floor(cellX / BESIDE_UNIT_CELL)),
-						Math.abs(startCellY - (int) Math.floor(cellY / BESIDE_UNIT_CELL))) <= 10);
+		final int startRing = Math.max(Math.abs(startCellX - (int) Math.floor(cellX / BESIDE_UNIT_CELL)),
+				Math.abs(startCellY - (int) Math.floor(cellY / BESIDE_UNIT_CELL)));
+		// up to nine cells out the round tie is ignored for a start south of the target; from twelve cells out the nearer
+		// side by cell centres wins
+		final boolean startSouth = (job.startY < cellY) && (startRing <= 10);
+		final boolean southFirst = oddRing && (job.startY < cellY) && (startRing > 8);
 		final boolean startEast = job.startX > cellX;
 		final boolean ignoreRoundTie = oddRing || noNorthEast || startSouth;
 		int bestPriority = Integer.MAX_VALUE;
@@ -1663,7 +1973,8 @@ public class CPathfindingProcessor {
 				if (!straightLineWalkable(job, x, y)) {
 					tieDistance += 1e6;
 				}
-				final int rank = besideSideRank(side, oddRing, noNorthEast, startSouth, startEast);
+				final int rank = southFirst ? (side == 3 ? 0 : 1 + side)
+						: besideSideRank(side, oddRing, noNorthEast, startSouth, startEast);
 				if ((priority < bestPriority) || (startCells < bestStartCells)
 						|| (tieDistance < (bestTieDistance - 1e-3))
 						|| ((tieDistance <= (bestTieDistance + 1e-3)) && (rank < bestRank))) {

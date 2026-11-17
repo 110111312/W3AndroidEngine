@@ -12,7 +12,8 @@ import net.warsmash.lan.protocol.LanProtocol;
  * numbers it, so the wire carries the skin and the portrait's stable name there: {@code c:BTNArthas} for the classic
  * skin (the command button it shows), {@code r:17} for Reforged (its p017). A plain number is what earlier builds
  * sent; it is read as the number in the receiver's own skin, as before. A portrait the receiver's skin does not have
- * (the other skin's) is not shown: the player's colored initial stands in.
+ * (the other skin's) is shown as the portrait {@link LanPortraitTable} pairs it with, and when it has no pair the
+ * player's colored initial stands in.
  */
 public final class LanPortraitId {
 	public static final int NONE = -1;
@@ -46,17 +47,22 @@ public final class LanPortraitId {
 		}
 		final String s = id.trim();
 		if (s.startsWith(CLASSIC)) {
+			final String key = s.substring(CLASSIC.length());
 			if (reforged) {
-				return NONE;
+				final int number = LanPortraitTable.reforgedFor(key);
+				return (number >= 1) && (number <= SkinArt.portraitCount(true)) ? number - 1 : NONE;
 			}
-			final Integer index = classicIndexes().get(s.substring(CLASSIC.length()));
+			final Integer index = classicIndexes().get(key);
 			return index == null ? NONE : index;
 		}
 		if (s.startsWith(REFORGED)) {
-			if (!reforged) {
-				return NONE;
+			final int number = number(s.substring(REFORGED.length()), 1, SkinArt.portraitCount(true));
+			if (reforged) {
+				return number - 1;
 			}
-			return number(s.substring(REFORGED.length()), 1, SkinArt.portraitCount(true)) - 1;
+			final String key = number < 1 ? null : LanPortraitTable.classicFor(number);
+			final Integer index = key == null ? null : classicIndexes().get(key);
+			return index == null ? NONE : index;
 		}
 		return number(s, 0, Integer.MAX_VALUE);
 	}

@@ -1,7 +1,5 @@
 package com.etheller.warsmash.viewer5;
 
-import java.util.ArrayList;
-
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Quaternion;
 import com.badlogic.gdx.math.Vector3;
@@ -13,7 +11,9 @@ public abstract class SkeletalNode extends GenericNode {
 	protected static final Quaternion rotationHeap = new Quaternion();
 	protected static final Quaternion rotationHeap2 = new Quaternion();
 	protected static final Vector3 scalingHeap = new Vector3();
-	protected static final Vector3 blendLocationHeap = new Vector3();
+	protected static final Quaternion inverseRotationHeap = new Quaternion();
+	protected static final Vector3 inverseScaleHeap = new Vector3();
+	protected static final Matrix4 localMatrixHeap = new Matrix4();
 	protected static final Vector3 blendHeap = new Vector3();
 	protected static final Vector3 blendScaleHeap = new Vector3();
 
@@ -24,7 +24,7 @@ public abstract class SkeletalNode extends GenericNode {
 	public boolean billboardedY;
 	public boolean billboardedZ;
 
-	public Vector3 localBlendLocation;
+	// A node holds a blend pose only after a sequence change blended into it; most nodes of a map never do.
 	public Quaternion localBlendRotation;
 	public Vector3 localBlendScale;
 
@@ -39,18 +39,10 @@ public abstract class SkeletalNode extends GenericNode {
 		this.worldLocation = new Vector3();
 		this.worldRotation = new Quaternion();
 		this.worldScale = new Vector3(1, 1, 1);
-		this.inverseWorldLocation = new Vector3();
-		this.inverseWorldRotation = new Quaternion();
-		this.inverseWorldScale = new Vector3();
-		this.localMatrix = new Matrix4();
-		this.localBlendLocation = new Vector3();
-		this.localBlendRotation = new Quaternion(0, 0, 0, 1);
-		this.localBlendScale = new Vector3(1, 1, 1);
 		this.worldMatrix = new Matrix4();
 		this.dontInheritTranslation = false;
 		this.dontInheritRotation = false;
 		this.dontInheritScaling = false;
-		this.children = new ArrayList<>();
 
 		this.visible = true;
 		this.wasDirty = false;
@@ -65,11 +57,6 @@ public abstract class SkeletalNode extends GenericNode {
 		this.localRotation.w = 1;
 
 		this.localScale.set(1, 1, 1);
-
-		this.localMatrix.val[0] = 1;
-		this.localMatrix.val[5] = 1;
-		this.localMatrix.val[10] = 1;
-		this.localMatrix.val[15] = 1;
 
 		this.dirty = true;
 
@@ -88,7 +75,7 @@ public abstract class SkeletalNode extends GenericNode {
 		if (this.dontInheritScaling) {
 			computedScaling = scalingHeap;
 
-			final Vector3 parentInverseScale = this.parent.inverseWorldScale;
+			final Vector3 parentInverseScale = this.parent.getInverseWorldScale(inverseScaleHeap);
 			computedScaling.x = parentInverseScale.x * this.localScale.x;
 			computedScaling.y = parentInverseScale.y * this.localScale.y;
 			computedScaling.z = parentInverseScale.z * this.localScale.z;
@@ -99,6 +86,9 @@ public abstract class SkeletalNode extends GenericNode {
 		}
 		else {
 			if (!Float.isNaN(blendTimeRatio) && (blendTimeRatio > 0)) {
+				if (this.localBlendScale == null) {
+					this.localBlendScale = new Vector3(1, 1, 1);
+				}
 				blendScaleHeap.set(this.localScale).scl(inverseBlendRatio)
 						.add(blendHeap.set(this.localBlendScale).scl(blendTimeRatio));
 				computedScaling = blendScaleHeap;
@@ -116,7 +106,7 @@ public abstract class SkeletalNode extends GenericNode {
 		if (this.billboarded) {
 			computedRotation = rotationHeap;
 
-			computedRotation.set(this.parent.inverseWorldRotation);
+			this.parent.getInverseWorldRotation(computedRotation);
 			if (scene != null) {
 				// TODO null scene is stupid, and happens rarely
 				computedRotation.mul(scene.camera.inverseRotation);
@@ -128,6 +118,9 @@ public abstract class SkeletalNode extends GenericNode {
 		else {
 			computedRotation = rotationHeap.set(this.localRotation);
 			if (!Float.isNaN(blendTimeRatio) && (blendTimeRatio > 0)) {
+				if (this.localBlendRotation == null) {
+					this.localBlendRotation = new Quaternion(0, 0, 0, 1);
+				}
 				computedRotation.slerp(this.localBlendRotation, blendTimeRatio);
 			}
 
@@ -148,7 +141,7 @@ public abstract class SkeletalNode extends GenericNode {
 				rotationHeap2.y = -rotationHeap2.y;
 				rotationHeap2.z = -rotationHeap2.z;
 
-				rotationHeap2.mul(this.parent.inverseWorldRotation);
+				rotationHeap2.mul(this.parent.getInverseWorldRotation(inverseRotationHeap));
 
 				rotationHeap2.transform(cameraRayHeap);
 
@@ -168,7 +161,7 @@ public abstract class SkeletalNode extends GenericNode {
 				rotationHeap2.y = -rotationHeap2.y;
 				rotationHeap2.z = -rotationHeap2.z;
 
-				rotationHeap2.mul(this.parent.inverseWorldRotation);
+				rotationHeap2.mul(this.parent.getInverseWorldRotation(inverseRotationHeap));
 
 				rotationHeap2.transform(cameraRayHeap);
 
@@ -188,7 +181,7 @@ public abstract class SkeletalNode extends GenericNode {
 				rotationHeap2.y = -rotationHeap2.y;
 				rotationHeap2.z = -rotationHeap2.z;
 
-				rotationHeap2.mul(this.parent.inverseWorldRotation);
+				rotationHeap2.mul(this.parent.getInverseWorldRotation(inverseRotationHeap));
 
 				rotationHeap2.transform(cameraRayHeap);
 
@@ -199,34 +192,17 @@ public abstract class SkeletalNode extends GenericNode {
 				computedRotation.mul(rotationHeap2);
 			}
 			else if (this.dontInheritRotation) {
-				computedRotation.mulLeft(this.parent.inverseWorldRotation);
+				computedRotation.mulLeft(this.parent.getInverseWorldRotation(inverseRotationHeap));
 			}
 		}
 
-		if (!Float.isNaN(blendTimeRatio) && (blendTimeRatio > 0) && false) {
-			computedLocation = blendLocationHeap.set(this.localLocation).scl(inverseBlendRatio)
-					.add(blendHeap.set(this.localBlendLocation).scl(blendTimeRatio));
-		}
-		else {
-			computedLocation = this.localLocation;
-		}
+		computedLocation = this.localLocation;
 		RenderMathUtils.fromRotationTranslationScaleOrigin(computedRotation, computedLocation, computedScaling,
-				this.localMatrix, this.pivot);
+				localMatrixHeap, this.pivot);
 
-		RenderMathUtils.mul(this.worldMatrix, this.parent.worldMatrix, this.localMatrix);
+		RenderMathUtils.mul(this.worldMatrix, this.parent.worldMatrix, localMatrixHeap);
 
 		RenderMathUtils.mul(this.worldRotation, this.parent.worldRotation, computedRotation);
-
-		// Inverse world rotation
-		this.inverseWorldRotation.x = -this.worldRotation.x;
-		this.inverseWorldRotation.y = -this.worldRotation.y;
-		this.inverseWorldRotation.z = -this.worldRotation.z;
-		this.inverseWorldRotation.w = this.worldRotation.w;
-
-		// Inverse world scale
-		this.inverseWorldScale.x = 1 / this.worldScale.x;
-		this.inverseWorldScale.y = 1 / this.worldScale.y;
-		this.inverseWorldScale.z = 1 / this.worldScale.z;
 
 		// World location
 		final float x = this.pivot.x;
@@ -238,15 +214,13 @@ public abstract class SkeletalNode extends GenericNode {
 				+ (this.worldMatrix.val[Matrix4.M12] * z) + this.worldMatrix.val[Matrix4.M13];
 		this.worldLocation.z = (this.worldMatrix.val[Matrix4.M20] * x) + (this.worldMatrix.val[Matrix4.M21] * y)
 				+ (this.worldMatrix.val[Matrix4.M22] * z) + this.worldMatrix.val[Matrix4.M23];
-
-		// Inverse world location
-		this.inverseWorldLocation.x = -this.worldLocation.x;
-		this.inverseWorldLocation.y = -this.worldLocation.y;
-		this.inverseWorldLocation.z = -this.worldLocation.z;
 	}
 
 	public void beginBlending() {
-		this.localBlendLocation.set(this.localLocation);
+		if (this.localBlendRotation == null) {
+			this.localBlendRotation = new Quaternion(0, 0, 0, 1);
+			this.localBlendScale = new Vector3(1, 1, 1);
+		}
 		if (this.preOverrideLocalRotation != null) {
 			this.localBlendRotation.set(this.preOverrideLocalRotation);
 			this.preOverrideLocalRotation = null;
@@ -258,6 +232,9 @@ public abstract class SkeletalNode extends GenericNode {
 	}
 
 	public void updateChildren(final float dt, final Scene scene) {
+		if (this.children == null) {
+			return;
+		}
 		for (int i = 0, l = this.children.size(); i < l; i++) {
 			this.children.get(i).update(dt, scene);
 		}

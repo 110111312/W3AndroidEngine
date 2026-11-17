@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Collection;
+import java.util.function.Predicate;
 
 /** Game data another owner opened, read as it is; closing it here leaves it open for that owner to close. */
 public final class BorrowedDataSource implements DataSource {
@@ -47,6 +48,11 @@ public final class BorrowedDataSource implements DataSource {
 	@Override
 	public Collection<String> getListfile() {
 		return this.data.getListfile();
+	}
+
+	@Override
+	public Collection<String> getListfile(final Predicate<String> accept) {
+		return this.data.getListfile(accept);
 	}
 
 	@Override

@@ -33,6 +33,14 @@ public class CItem extends CWidget {
 	private War3ID dropId;
 	// Set only by SetItemPlayer; -1 is neutral passive, the owner of every map item.
 	private int playerIndex = -1;
+	// What a script set on this one item through the object fields; null reads what the item type says.
+	private War3ID skinId;
+	private String nameOverride;
+	private String descriptionOverride;
+	private Boolean perishableOverride;
+	private Boolean activelyUsedOverride;
+	private Boolean useAutomaticallyOverride;
+	private Boolean includeAsRandomChoiceOverride;
 
 	public CItem(final int handleId, final float x, final float y, final float life, final War3ID typeId,
 			final CItemType itemTypeInstance) {
@@ -57,7 +65,14 @@ public class CItem extends CWidget {
 		this.dropOnDeath = this.itemType.isDroppedWhenCarrierDies();
 		this.droppable = this.itemType.isCanBeDropped();
 		this.pawnable = this.itemType.isPawnable();
-		
+		this.skinId = null;
+		this.nameOverride = null;
+		this.descriptionOverride = null;
+		this.perishableOverride = null;
+		this.activelyUsedOverride = null;
+		this.useAutomaticallyOverride = null;
+		this.includeAsRandomChoiceOverride = null;
+
 		game.updateItemModel(this);
 		if (this.containedInventory != null) {
 			this.containedInventory.giveItem(game, this.containedUnit, this, slot, false);
@@ -246,6 +261,65 @@ public class CItem extends CWidget {
 
 	public void setPlayerIndex(final int playerIndex) {
 		this.playerIndex = playerIndex;
+	}
+
+	/** The skin the item shows (BlzSetItemSkin); its own type until a script gives it another. */
+	public War3ID getSkinId() {
+		return this.skinId == null ? this.typeId : this.skinId;
+	}
+
+	public void setSkinId(final War3ID skinId) {
+		this.skinId = skinId;
+	}
+
+	public String getNameOverride() {
+		return this.nameOverride;
+	}
+
+	public void setNameOverride(final String nameOverride) {
+		this.nameOverride = nameOverride;
+	}
+
+	public String getDescriptionOverride() {
+		return this.descriptionOverride;
+	}
+
+	public void setDescriptionOverride(final String descriptionOverride) {
+		this.descriptionOverride = descriptionOverride;
+	}
+
+	public boolean isPerishable() {
+		return (this.perishableOverride != null) ? this.perishableOverride : this.itemType.isPerishable();
+	}
+
+	public void setPerishable(final boolean perishable) {
+		this.perishableOverride = perishable;
+	}
+
+	public boolean isActivelyUsed() {
+		return (this.activelyUsedOverride != null) ? this.activelyUsedOverride : this.itemType.isActivelyUsed();
+	}
+
+	public void setActivelyUsed(final boolean activelyUsed) {
+		this.activelyUsedOverride = activelyUsed;
+	}
+
+	public boolean isUseAutomaticallyWhenAcquired() {
+		return (this.useAutomaticallyOverride != null) ? this.useAutomaticallyOverride
+				: this.itemType.isUseAutomaticallyWhenAcquired();
+	}
+
+	public void setUseAutomaticallyWhenAcquired(final boolean useAutomatically) {
+		this.useAutomaticallyOverride = useAutomatically;
+	}
+
+	public boolean isIncludeAsRandomChoice() {
+		return (this.includeAsRandomChoiceOverride != null) ? this.includeAsRandomChoiceOverride
+				: this.itemType.isIncludeAsRandomChoice();
+	}
+
+	public void setIncludeAsRandomChoice(final boolean includeAsRandomChoice) {
+		this.includeAsRandomChoiceOverride = includeAsRandomChoice;
 	}
 
 	public boolean isDropOnDeath() {

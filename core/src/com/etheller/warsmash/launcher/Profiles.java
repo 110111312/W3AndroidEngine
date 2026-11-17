@@ -27,6 +27,8 @@ public class Profiles {
 	public static final String ENGINE_DEFAULT = "WorldEdit";
 	public static final int MAX_NAME = 15;
 	private static final String STATS_FILE = "stats";
+	/** What the launcher keeps of a profile in its own preferences, by field. */
+	static final String[] FIELDS = { "id", "portrait", "created", "used", "campaignmaps" };
 
 	/** Why a typed name cannot be used. */
 	public enum NameProblem {
@@ -96,6 +98,7 @@ public class Profiles {
 	public void select(final String name) {
 		this.engine.edit().putString(CURRENT_PROFILE, name).commit();
 		this.launcher.edit().putLong(key(name, "used"), System.currentTimeMillis()).apply();
+		changed();
 	}
 
 	public NameProblem check(final String typed, final String renaming) {
@@ -137,6 +140,7 @@ public class Profiles {
 		if (select) {
 			select(name);
 		}
+		changed();
 	}
 
 	/** Renames the profile and its folder; the folder keeps its saves and progress under the new name. */
@@ -152,7 +156,7 @@ public class Profiles {
 		names.set(names.indexOf(old), name);
 		writeNames(names);
 		final LauncherStore.Edit editor = this.launcher.edit();
-		for (final String field : new String[] { "id", "portrait", "created", "used", "campaignmaps" }) {
+		for (final String field : FIELDS) {
 			final String oldKey = key(old, field);
 			if (!this.launcher.contains(oldKey)) {
 				continue;
@@ -173,6 +177,7 @@ public class Profiles {
 		if (old.equals(this.engine.getString(CURRENT_PROFILE, null))) {
 			this.engine.edit().putString(CURRENT_PROFILE, name).commit();
 		}
+		changed();
 		return true;
 	}
 
@@ -185,13 +190,14 @@ public class Profiles {
 		writeNames(names);
 		deleteTree(folder(name));
 		final LauncherStore.Edit editor = this.launcher.edit();
-		for (final String field : new String[] { "id", "portrait", "created", "used", "campaignmaps" }) {
+		for (final String field : FIELDS) {
 			editor.remove(key(name, field));
 		}
 		editor.apply();
 		if (name.equals(this.engine.getString(CURRENT_PROFILE, null))) {
 			select(names.get(0));
 		}
+		changed();
 	}
 
 	public int portrait(final String name) {
@@ -200,6 +206,7 @@ public class Profiles {
 
 	public void setPortrait(final String name, final int portrait) {
 		this.launcher.edit().putInt(key(name, "portrait"), portrait).apply();
+		changed();
 	}
 
 	/** The version of the campaign maps the profile plays, as {@link LaunchContract#EXTRA_CAMPAIGN_MAPS} names it. */
@@ -209,6 +216,7 @@ public class Profiles {
 
 	public void setCampaignMaps(final String name, final String maps) {
 		this.launcher.edit().putString(key(name, "campaignmaps"), maps).apply();
+		changed();
 	}
 
 	/** When the profile was made; 0 for a profile the engine's menu made. */
@@ -276,7 +284,19 @@ public class Profiles {
 		return counts;
 	}
 
-	private void writeNames(final List<String> names) {
+	/** After every change to the list or to what the launcher keeps of a profile; the platform may copy it elsewhere. */
+	protected void changed() {
+	}
+
+	LauncherStore engineStore() {
+		return this.engine;
+	}
+
+	LauncherStore launcherStore() {
+		return this.launcher;
+	}
+
+	void writeNames(final List<String> names) {
 		final int old = this.engine.getInt(PROFILE_COUNT, 0);
 		final LauncherStore.Edit editor = this.engine.edit();
 		for (int i = 0; i < Math.max(old, names.size()); i++) {
@@ -291,7 +311,7 @@ public class Profiles {
 		editor.commit();
 	}
 
-	private static String key(final String name, final String field) {
+	static String key(final String name, final String field) {
 		return "profile." + field + "." + name;
 	}
 

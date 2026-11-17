@@ -224,9 +224,12 @@ public class CBehaviorMove implements CBehavior {
 	/**
 	 * Moves the waypoints of the path to the group's point over to the unit's lane: the lane is taken up over the first
 	 * thousand units of the way, and the path ends at the unit's own slot. Points the lane would put into terrain stay
-	 * on the shared path. Returns null when the slot itself cannot be walked to.
+	 * on the shared path. A path that stops short of the group's point (a search cut off by its limit, or a point that
+	 * lies in terrain) is shifted the same way and ends on its lane; the unit searches on from there. Returns null when
+	 * the slot itself cannot be walked to.
 	 */
-	private List<CPathPoint> shiftToLane(final List<CPathPoint> waypoints, final CSimulation simulation) {
+	private List<CPathPoint> shiftToLane(final List<CPathPoint> waypoints, final boolean reachesGoal,
+			final CSimulation simulation) {
 		final PathingGrid pathingGrid = simulation.getPathingGrid();
 		MovementType movementType = this.unit.getMovementType();
 		if (movementType == null) {
@@ -241,7 +244,7 @@ public class CBehaviorMove implements CBehavior {
 		float walked = 0;
 		for (int i = 0; i < waypoints.size(); i++) {
 			final CPathPoint point = waypoints.get(i);
-			final boolean last = i == (waypoints.size() - 1);
+			final boolean last = (i == (waypoints.size() - 1)) && reachesGoal;
 			final float segment = (float) StrictMath.hypot(point.x - rawX, point.y - rawY);
 			if (!last && (walked < LANE_FORM_DISTANCE) && ((walked + segment) > LANE_FORM_DISTANCE)) {
 				final float t = (LANE_FORM_DISTANCE - walked) / segment;
@@ -1012,7 +1015,7 @@ public class CBehaviorMove implements CBehavior {
 			return;
 		}
 		if (searchedGoal == this.sharedGoal) {
-			final List<CPathPoint> lanePath = reachesGoal && !waypoints.isEmpty() ? shiftToLane(waypoints, simulation)
+			final List<CPathPoint> lanePath = !waypoints.isEmpty() ? shiftToLane(waypoints, reachesGoal, simulation)
 					: null;
 			if (lanePath == null) {
 				// the slot or the shared way is no good: this unit finds its own way to its slot
@@ -1022,7 +1025,7 @@ public class CBehaviorMove implements CBehavior {
 				this.path = null;
 				return;
 			}
-			pathFound(lanePath, true, simulation);
+			pathFound(lanePath, reachesGoal, simulation);
 			return;
 		}
 		pathFound(waypoints, reachesGoal, simulation);
@@ -1086,26 +1089,43 @@ public class CBehaviorMove implements CBehavior {
 	}
 
 	/**
-	 * Measured: an attack on a standing unit from further away than a short walk goes straight from where the unit
-	 * stands to the centre of a cell on the near side of the target: two cells toward the unit along the axis the target
-	 * lies on (a diagonal one: two on both axes) and one across it, when the unit was ordered to attack that target.
-	 * Returns null when the order does not walk that way.
+	 * Measured: an attack on a standing unit from further away than a short walk, ordered or taken up by an idle unit,
+	 * goes straight from where the unit stands to the centre of a cell on the near side of the target: two cells toward
+	 * the unit along the axis the target lies on (a diagonal one: two on both axes). Across that axis it is the cell next
+	 * to the target's toward the unit, but the unit keeps its own row (or column) while the target is less than two cells
+	 * across toward higher coordinates or less than three toward lower ones. Returns null when the order does not walk
+	 * that way.
 	 */
 	public CPathPoint approachCell(final CSimulation simulation, final float fromX, final float fromY) {
-		if (!walksRowsToStandingTarget(simulation) || !isOrderedAgainstFollowUnit(simulation)) {
+		if (!walksRowsToStandingTarget(simulation)
+				|| (!isOrderedAgainstFollowUnit(simulation) && (this.unit.getCurrentOrder() != null))) {
 			return null;
 		}
 		final float targetX = this.followUnit.getX();
 		final float targetY = this.followUnit.getY();
-		final float dx = targetX - fromX;
-		final float dy = targetY - fromY;
-		final float ax = Math.abs(dx);
-		final float ay = Math.abs(dy);
-		final int alongX = (ax > (1.2f * ay)) ? 2 : (ay > (1.2f * ax)) ? 1 : 2;
-		final int alongY = (ay > (1.2f * ax)) ? 2 : (ax > (1.2f * ay)) ? 1 : 2;
-		return new CPathPoint(
-				(((float) StrictMath.floor(targetX / 32f)) * 32f) + 16f - (32f * alongX * Math.signum(dx)),
-				(((float) StrictMath.floor(targetY / 32f)) * 32f) + 16f - (32f * alongY * Math.signum(dy)));
+		final float ax = Math.abs(targetX - fromX);
+		final float ay = Math.abs(targetY - fromY);
+		final boolean alongX = ay <= (1.2f * ax);
+		final boolean alongY = ax <= (1.2f * ay);
+		return new CPathPoint(approachCoordinate(targetX, fromX, alongX), approachCoordinate(targetY, fromY, alongY));
+	}
+
+	private static float approachCoordinate(final float target, final float from, final boolean along) {
+		final int fromCell = (int) StrictMath.floor(from / 32f);
+		int targetCell = (int) StrictMath.floor(target / 32f);
+		final int cell;
+		if (along) {
+			cell = targetCell - (2 * Integer.signum(targetCell - fromCell));
+		}
+		else {
+			if ((targetCell > fromCell) && ((targetCell * 32f) == target)) {
+				// a target right on a cell line counts in the cell on the unit's side
+				targetCell--;
+			}
+			final int cells = targetCell - fromCell;
+			cell = ((cells >= 2) || (cells <= -3)) ? targetCell - Integer.signum(cells) : fromCell;
+		}
+		return (cell * 32f) + 16f;
 	}
 
 	public void pathFoundToApproachCell(final CPathPoint searchedGoal, final CPathPoint cell,
@@ -1114,6 +1134,13 @@ public class CBehaviorMove implements CBehavior {
 		final List<CPathPoint> waypoints = new ArrayList<>();
 		waypoints.add(cell);
 		pathFound(searchedGoal, waypoints, true, simulation);
+	}
+
+	/** A move order given to the unit itself (not one an AI or a group march issues on its way). */
+	public boolean isMoveOrder() {
+		final COrder order = this.unit.getCurrentOrder();
+		return (this.followUnit == null) && (this.rangedBehavior == null) && (order != null)
+				&& ((order.getOrderId() == OrderIds.move) || (order.getOrderId() == OrderIds.smart));
 	}
 
 	private boolean isPlainMove() {

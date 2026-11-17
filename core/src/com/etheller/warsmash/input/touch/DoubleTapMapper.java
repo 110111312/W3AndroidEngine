@@ -241,6 +241,11 @@ public final class DoubleTapMapper implements GestureListener {
 	}
 
 	@Override
+	public float dragSlopFactor(final float x, final float y) {
+		return this.delegate.dragSlopFactor(x, y);
+	}
+
+	@Override
 	public void panStart(final float x, final float y) {
 		interrupted();
 		this.delegate.panStart(x, y);

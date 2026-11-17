@@ -145,4 +145,8 @@ Thumbs.db
 
 ## The game data folder chosen in the desktop launcher
 /core/assets/warsmash.user.ini
+## Engine configurations that tests and tools write per run; the build id must not depend on them
+/core/assets/warsmash.local*.ini
+## Map data custom maps store while they run
+/core/assets/CustomMapData/
 /core/assets/CustomKeys.txt

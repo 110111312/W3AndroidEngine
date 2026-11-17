@@ -464,19 +464,26 @@ public class War3MapRenderController implements SimulationRenderController {
 	}
 
 	@Override
-	public void heroRevived(final CUnit source) {
-		final AbilityUI reviveUI = this.viewer.abilityDataUI
-				.getUI(War3MapViewer.ABILITY_REVIVE_RAWCODE);
+	public void heroRevived(final CUnit source, final boolean doEyecandy) {
 		final RenderUnit renderUnit = this.viewer.unitToRenderPeer.get(source);
 		renderUnit.instance.additiveOverrideMeshMode = false;
 		renderUnit.instance.setVertexAlpha(1.0f);
-		final CPlayer player = this.viewer.simulation.getPlayer(source.getPlayerIndex());
-		final String heroReviveArt = reviveUI.getTargetArt(player.getRace().ordinal())
-				.getModelPath();
-		// TODO use addSpellEffectTarget, maybe?
-		this.viewer.spawnFxOnOrigin(renderUnit, heroReviveArt);
+		// Otherwise the model keeps the last frame of its death or dissipate animation, which floats out of sight.
+		renderUnit.resetAnimation();
+		if (doEyecandy) {
+			final AbilityUI reviveUI = this.viewer.abilityDataUI
+					.getUI(War3MapViewer.ABILITY_REVIVE_RAWCODE);
+			final CPlayer player = this.viewer.simulation.getPlayer(source.getPlayerIndex());
+			final String heroReviveArt = reviveUI.getTargetArt(player.getRace().ordinal())
+					.getModelPath();
+			// TODO use addSpellEffectTarget, maybe?
+			this.viewer.spawnFxOnOrigin(renderUnit, heroReviveArt);
+		}
 
-		// Recreate unit shadow.... is needed here
+		// A script can revive a hero before the renderer saw it die, while it still has its shadow.
+		if (renderUnit.shadow != null) {
+			renderUnit.shadow.destroy(Gdx.gl30, this.viewer.terrain.centerOffset);
+		}
 		renderUnit.shadow = this.viewer.createUnitShadow(renderUnit.getTypeData().getRenderShadowType(),
 				source.getX(), source.getY());
 	}

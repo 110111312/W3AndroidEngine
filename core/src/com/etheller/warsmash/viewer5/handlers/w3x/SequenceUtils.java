@@ -230,19 +230,6 @@ public class SequenceUtils {
 		}
 	}
 
-	public static void randomPortraitSequence(final MdxComplexInstance target) {
-		final MdxModel model = (MdxModel) target.model;
-		final List<Sequence> sequences = model.getSequences();
-		final IndexedSequence sequence = selectSequence("portrait", sequences);
-
-		if (sequence != null) {
-			target.setSequence(sequence.index);
-		}
-		else {
-			randomStandSequence(target);
-		}
-	}
-
 	public static void randomSequence(final MdxComplexInstance target, final String sequenceName) {
 		final MdxModel model = (MdxModel) target.model;
 		final List<Sequence> sequences = model.getSequences();

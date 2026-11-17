@@ -46,6 +46,31 @@ class LanPortraitIdTest {
 	}
 
 	@Test
+	void everyPairedPortraitShowsOnTheOtherSkinAndBack() {
+		final String[] pairs = LanPortraitTable.pairs();
+		assertEquals(0, pairs.length % 2);
+		final java.util.Set<String> seen = new java.util.HashSet<>();
+		for (int i = 0; i < pairs.length; i += 2) {
+			assertTrue(pairs[i].startsWith("r:"), pairs[i]);
+			assertTrue(seen.add(pairs[i]) && seen.add(pairs[i + 1]), "pair listed twice: " + pairs[i]);
+			final int classic = LanPortraitId.decode("c:" + pairs[i + 1], false);
+			assertNotEquals(-1, classic, pairs[i + 1] + " is not a classic portrait");
+			assertEquals(classic, LanPortraitId.decode(pairs[i], false));
+			final int reforged = LanPortraitId.decode(pairs[i], true);
+			assertNotEquals(-1, reforged, pairs[i] + " is not a Reforged portrait");
+			assertEquals(reforged, LanPortraitId.decode("c:" + pairs[i + 1], true));
+		}
+	}
+
+	@Test
+	void aPortraitWithoutAPairIsNotShownOnTheOtherSkin() {
+		assertEquals(-1, LanPortraitId.decode("c:NoSuchButton", true));
+		assertEquals(-1, LanPortraitId.decode("r:0", false));
+		assertEquals(-1, LanPortraitId.decode("r:x", false));
+		assertEquals(-1, LanPortraitId.decode("r:" + (SkinArt.portraitCount(true) + 1), false));
+	}
+
+	@Test
 	void numbersOfEarlierBuildsStayReadable() {
 		assertEquals(7, LanPortraitId.decode("7", false));
 		assertEquals(7, LanPortraitId.decode(" 7 ", true));

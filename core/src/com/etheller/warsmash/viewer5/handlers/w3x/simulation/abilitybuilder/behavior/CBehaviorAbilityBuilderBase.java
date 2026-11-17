@@ -438,8 +438,9 @@ public class CBehaviorAbilityBuilderBase extends CAbstractRangedBehavior impleme
 		if (!wasEffectDone) {
 			// Instant casts paid already; others pay mana and start the cooldown at the effect, so a cast stopped
 			// before it costs nothing (1.29).
+			final int manaCost = CReleaseCheats.manaCost(game, this.unit, this.ability.getChargedManaCost());
 			if (!this.instant) {
-				if (!this.unit.chargeMana(CReleaseCheats.manaCost(game, this.unit, this.ability.getChargedManaCost()))) {
+				if (this.unit.getMana() < manaCost) {
 					this.doneEffect = true;
 					return this.unit.pollNextOrderBehavior(game);
 				}
@@ -459,12 +460,8 @@ public class CBehaviorAbilityBuilderBase extends CAbstractRangedBehavior impleme
 				return this;
 			}
 
-			this.ability.runEndCastingActions(game, unit, orderId);
-			if (this.unit.getInventoryData() != null) {
-				this.unit.getInventoryData().onItemAbilityEffect(game, this.unit, this.ability);
-			}
-			this.channeling = (boolean) localStore.get(ABLocalStoreKeys.CHANNELING);
-
+			// As for the other spells (1.29): the effect event still sees the mana from before the cast; the cost is
+			// paid after it, before the effect itself.
 			this.unit.fireSpellEvents(game, JassGameEventsWar3.EVENT_UNIT_SPELL_EFFECT, this.ability, this.target);
 			if (this.unit.getCurrentBehavior() != prevBeh) {
 				return this.unit.getCurrentBehavior();
@@ -472,6 +469,15 @@ public class CBehaviorAbilityBuilderBase extends CAbstractRangedBehavior impleme
 			else if (this.unit.isPaused()) {
 				return this;
 			}
+			if (!this.instant) {
+				this.unit.setMana(Math.max(0, this.unit.getMana() - manaCost));
+			}
+
+			this.ability.runEndCastingActions(game, unit, orderId);
+			if (this.unit.getInventoryData() != null) {
+				this.unit.getInventoryData().onItemAbilityEffect(game, this.unit, this.ability);
+			}
+			this.channeling = (boolean) localStore.get(ABLocalStoreKeys.CHANNELING);
 
 		}
 		this.channeling = this.channeling && this.doChannelTick(game, this.unit, this.target);

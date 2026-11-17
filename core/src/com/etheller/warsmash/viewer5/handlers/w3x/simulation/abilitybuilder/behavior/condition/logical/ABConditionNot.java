@@ -13,7 +13,7 @@ public class ABConditionNot extends ABCondition {
 
 	@Override
 	public Boolean callback(CSimulation game, CUnit caster, Map<String, Object> localStore, final int castId) {
-		return !condition.callback(game, caster, localStore, castId);
+		return !Boolean.TRUE.equals(condition.callback(game, caster, localStore, castId));
 	}
 
 	@Override

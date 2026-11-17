@@ -2,12 +2,19 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import com.etheller.interpreter.ast.scope.HandleIdSource;
 import com.etheller.interpreter.ast.util.CAllocatedHandle;
 import com.etheller.interpreter.ast.util.CHandle;
+import com.etheller.warsmash.viewer5.handlers.w3x.TextTag;
 import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedAddedFields;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CImage;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRenderComponentLightning;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.SimulationRenderComponentUbersplat;
 
 /**
  * Numbers game objects. Script handles get ids from a handle table that works like the one of 1.29: one counter for
@@ -19,7 +26,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedAddedFields;
  * Abilities and buffs are not handles in 1.29 and take no ids from the table; they are numbered by a counter of their
  * own.
  */
-public class HandleIdAllocator implements SavedAddedFields {
+public class HandleIdAllocator implements SavedAddedFields, HandleIdSource {
 	public static final int FIRST_HANDLE_ID = 0x100000;
 	/** Where the single counter of saves from before the handle table started. Map destructables were made first. */
 	public static final int LEGACY_FIRST_ID = 3412532;
@@ -29,6 +36,11 @@ public class HandleIdAllocator implements SavedAddedFields {
 	private static final int GIVEN_BACK = Integer.MIN_VALUE / 2;
 	/** A handle of a save from before its kind had numbers of its own: it is numbered in the handle table. */
 	public static final int UNNUMBERED = Integer.MIN_VALUE;
+	private static final int TABLE = 0;
+	private static final int TEXT_TAGS = 1;
+	private static final int LIGHTNINGS = 2;
+	private static final int IMAGES = 3;
+	private static final int UBERSPLATS = 4;
 
 	private int next = LEGACY_FIRST_ID;
 	private int nextHandleId = FIRST_HANDLE_ID;
@@ -46,6 +58,11 @@ public class HandleIdAllocator implements SavedAddedFields {
 	 * first time a script asks, in that order.
 	 */
 	private final List<UntrackedHandle> untrackedHandles = new ArrayList<>();
+	/**
+	 * The handles scripts got the id of, to give them back when a script reads an integer as a handle. An entry goes
+	 * when its id is freed, so it always names the handle that holds the id; keyed by {@link #key}.
+	 */
+	private final Map<Long, Object> scriptHandles = new HashMap<>();
 	private int nextEarlyId;
 	private int earlyIdEnd;
 	private boolean earlyIds;
@@ -156,6 +173,7 @@ public class HandleIdAllocator implements SavedAddedFields {
 	}
 
 	private void pushFreeId(final int handleId) {
+		this.scriptHandles.remove(key(TABLE, handleId));
 		if (this.freeHandleIdCount == this.freeHandleIds.length) {
 			this.freeHandleIds = Arrays.copyOf(this.freeHandleIds, this.freeHandleIds.length * 2);
 		}
@@ -178,6 +196,7 @@ public class HandleIdAllocator implements SavedAddedFields {
 
 	public void freeTextTagId(final int textTagId) {
 		if ((textTagId >= 0) && (textTagId < TEXT_TAG_COUNT)) {
+			this.scriptHandles.remove(key(TEXT_TAGS, textTagId));
 			for (int i = 0; i < this.freeTextTagIdCount; i++) {
 				if (this.freeTextTagIds[i] == textTagId) {
 					return;
@@ -186,6 +205,7 @@ public class HandleIdAllocator implements SavedAddedFields {
 			this.freeTextTagIds[this.freeTextTagIdCount++] = textTagId;
 		}
 		else if (textTagId >= TEXT_TAG_COUNT) {
+			this.scriptHandles.remove(key(TEXT_TAGS, textTagId));
 			freeHandleId(textTagId);
 		}
 	}
@@ -207,6 +227,7 @@ public class HandleIdAllocator implements SavedAddedFields {
 
 	public void freeImageId(final int imageId) {
 		if (imageId >= 0) {
+			this.scriptHandles.remove(key(IMAGES, imageId));
 			this.freeImageIds.add(imageId);
 		}
 	}
@@ -220,12 +241,78 @@ public class HandleIdAllocator implements SavedAddedFields {
 
 	public void freeUbersplatId(final int ubersplatId) {
 		if (ubersplatId >= 0) {
+			this.scriptHandles.remove(key(UBERSPLATS, ubersplatId));
 			this.freeUbersplatIds.add(ubersplatId);
 		}
 	}
 
 	/** The id GetHandleId gives a script. */
+	@Override
 	public int handleIdOf(final Object handle) {
+		final int handleId = numberOf(handle);
+		this.scriptHandles.put(key(poolOf(handle), handleId), handle);
+		return handleId;
+	}
+
+	/**
+	 * The handle a script got the id of that holds it now; null when the id was freed since, or the handle holding it
+	 * was never asked for its id (see {@code CSimulation.handleOfId} for the ones found without).
+	 */
+	@Override
+	public Object handleOfId(final int handleId, final String typeName) {
+		final int pool = poolOf(typeName);
+		final Object handle = this.scriptHandles.get(key(pool, handleId));
+		if ((handle instanceof CHandle) && (((CHandle) handle).getHandleId() != handleId)) {
+			return null;
+		}
+		if ((pool == LIGHTNINGS) && (handle instanceof SimulationRenderComponentLightning)
+				&& ((SimulationRenderComponentLightning) handle).isRemoved()) {
+			// Lightning ids are never given again, so a destroyed one has nothing to free its entry.
+			this.scriptHandles.remove(key(pool, handleId));
+			return null;
+		}
+		return handle;
+	}
+
+	private static long key(final int pool, final int handleId) {
+		return (((long) pool) << 32) | (handleId & 0xFFFFFFFFL);
+	}
+
+	private static int poolOf(final Object handle) {
+		if (handle instanceof TextTag) {
+			return TEXT_TAGS;
+		}
+		if (handle instanceof SimulationRenderComponentLightning) {
+			return LIGHTNINGS;
+		}
+		if (handle instanceof CImage) {
+			return IMAGES;
+		}
+		if (handle instanceof SimulationRenderComponentUbersplat) {
+			return UBERSPLATS;
+		}
+		return TABLE;
+	}
+
+	private static int poolOf(final String typeName) {
+		if (typeName == null) {
+			return TABLE;
+		}
+		switch (typeName) {
+		case "texttag":
+			return TEXT_TAGS;
+		case "lightning":
+			return LIGHTNINGS;
+		case "image":
+			return IMAGES;
+		case "ubersplat":
+			return UBERSPLATS;
+		default:
+			return TABLE;
+		}
+	}
+
+	private int numberOf(final Object handle) {
 		if (handle instanceof CHandle) {
 			if ((handle instanceof CAllocatedHandle) && (((CHandle) handle).getHandleId() == 0)) {
 				((CAllocatedHandle) handle).setHandleId(createHandleId());

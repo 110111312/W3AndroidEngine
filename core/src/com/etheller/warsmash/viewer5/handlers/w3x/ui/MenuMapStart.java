@@ -19,6 +19,7 @@ import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.datasources.GraphicsSet;
+import com.etheller.warsmash.datasources.GpuMemory;
 import com.etheller.warsmash.datasources.GraphicsSettings;
 import com.etheller.warsmash.lan.LanGameStart;
 import com.etheller.warsmash.lan.LockstepTurnManager;
@@ -35,7 +36,6 @@ import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.units.custom.WTS;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.util.WarsmashConstants;
-import com.etheller.warsmash.viewer5.handlers.w3x.CampaignMaps;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer.MapLoader;
 import com.etheller.warsmash.viewer5.handlers.w3x.replay.GameReplays;
@@ -98,6 +98,8 @@ final class MenuMapStart {
 		this.menu = menu;
 	}
 
+	private int mapLoadErrorCount;
+
 	void setMapLoadFailureListener(final Predicate<String> listener) {
 		this.mapLoadFailureListener = listener;
 	}
@@ -127,7 +129,13 @@ final class MenuMapStart {
 		showMapLoadError();
 	}
 
+	/** How many times a map or replay failed to load and the error was shown; a headless run ends on the first. */
+	int mapLoadErrorCount() {
+		return this.mapLoadErrorCount;
+	}
+
 	void showMapLoadError() {
+		this.mapLoadErrorCount++;
 		this.menu.restoreMainMenuBackground();
 		this.menu.campaigns.getFade().setVisible(false);
 		this.menu.glueSpriteLayerTopLeft.setVisible(true);
@@ -180,18 +188,9 @@ final class MenuMapStart {
 		this.menu.campaigns.setStartedCampaign(savedCampaign);
 	}
 
-	/**
-	 * The graphics a game is played with, its models, icons and interface alike; the menu skin has no say in them. A
-	 * campaign mission has those of its campaign version, any other map those the options set for custom games. A map
-	 * made for the Reforged graphics alone is never played in Classic.
-	 */
 	private GraphicsSet gameGraphics(final String mapFilename) {
-		final boolean reforgedMap = mapFilename.equals(this.reforgedGraphicsMap);
-		if (CampaignMaps.isCampaignMap(mapFilename)) {
-			return this.reforgedCampaign || reforgedMap ? GraphicsSet.REFORGED : GraphicsSet.CLASSIC;
-		}
-		final GraphicsSet custom = GraphicsSettings.graphicsSet(this.menu.warsmashIni);
-		return reforgedMap && (custom == GraphicsSet.CLASSIC) ? GraphicsSet.REFORGED : custom;
+		return GraphicsSettings.gameGraphics(this.menu.warsmashIni, mapFilename, this.reforgedCampaign,
+				mapFilename.equals(this.reforgedGraphicsMap));
 	}
 
 	private void internalStartMap(final String mapFilename, final int localPlayerIndex) {
@@ -207,7 +206,8 @@ final class MenuMapStart {
 		turnManager = GameTurnManager.PAUSED;
 		final War3MapViewer viewer = new War3MapViewer(codebase, this.menu.screenManager, this.menu.currentMapConfig,
 				turnManager);
-		viewer.setTextureSizeLimit(GraphicsSettings.textureSize(this.menu.warsmashIni));
+		viewer.setTextureSizeLimit(GraphicsSettings.textureSize(this.menu.warsmashIni, gameGraphics(mapFilename),
+				GpuMemory::desktopDefaultTextureSize));
 		viewer.setRenderScale(GraphicsSettings.renderScale(this.menu.warsmashIni));
 		viewer.setTextureCompression(GraphicsSettings.textureCompression(this.menu.warsmashIni,
 				gameGraphics(mapFilename), Gdx.app.getType() == ApplicationType.Android,
@@ -610,7 +610,7 @@ final class MenuMapStart {
 		try {
 			replay = GameReplays.load(file);
 			final String reason = GameReplays.unplayableReason(replay,
-					this.menu.gameData != null ? this.menu.gameData : this.menu.dataSource);
+					this.menu.gameData != null ? this.menu.gameData : this.menu.dataSource, this.menu.warsmashIni);
 			if (reason != null) {
 				if (!forced && !Boolean.getBoolean(GameReplays.FORCE_PROPERTY)) {
 					throw new CReplayException(reason);

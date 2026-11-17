@@ -153,7 +153,7 @@ public class Jass2 {
 					if (lowerCasePath.startsWith(lowerCaseDirectoryPath)
 							|| lowerCasePath.startsWith(lowerCaseDirectoryPathLinux)) {
 						try {
-							readJassFile(dataSource, jassProgramVisitor, realPath);
+							environment.scriptFailed(readJassFile(dataSource, jassProgramVisitor, realPath));
 						}
 						catch (final Exception e) {
 							Log.error(e);
@@ -163,7 +163,7 @@ public class Jass2 {
 				}
 			}
 			else {
-				readJassFile(dataSource, jassProgramVisitor, jassFilePath);
+				environment.scriptFailed(readJassFile(dataSource, jassProgramVisitor, jassFilePath));
 			}
 		}
 		try {
@@ -597,6 +597,12 @@ public class Jass2 {
 			BlzNatives.register(jassProgramVisitor, war3MapViewer);
 			CustomMapNatives.register(jassProgramVisitor, war3MapViewer);
 			ObjectFieldNatives.register(jassProgramVisitor, war3MapViewer);
+			ReforgedInputNatives.register(jassProgramVisitor, war3MapViewer, meleeUI);
+			ReforgedEffectNatives.register(jassProgramVisitor, war3MapViewer);
+			AbilityFieldNatives.register(jassProgramVisitor, war3MapViewer);
+			WeaponFieldNatives.register(jassProgramVisitor, war3MapViewer);
+			ReforgedMiscNatives.register(jassProgramVisitor, war3MapViewer);
+			FrameNatives.register(jassProgramVisitor, war3MapViewer, uiViewport, meleeUI);
 			ScriptObjectNatives.register(jassProgramVisitor, war3MapViewer);
 		}
 
@@ -660,6 +666,7 @@ public class Jass2 {
 		private final GameUI gameUI;
 		private Element skin;
 		private final JassProgram jassProgramVisitor;
+		private Exception scriptError;
 
 		private ConfigEnvironment(final JassProgram jassProgramVisitor, final DataSource dataSource,
 				final Viewport uiViewport, final Scene uiScene, final GameUI gameUI, final War3MapConfig mapConfig) {
@@ -844,6 +851,12 @@ public class Jass2 {
 
 		}
 
+		private void scriptFailed(final Exception error) {
+			if ((error != null) && (this.scriptError == null)) {
+				this.scriptError = error;
+			}
+		}
+
 		public void config() {
 			try {
 				final JassThread configThread = this.jassProgramVisitor.getGlobals().createThread("config",
@@ -851,8 +864,10 @@ public class Jass2 {
 				this.jassProgramVisitor.getGlobals().runThreadUntilCompletion(configThread);
 			}
 			catch (final Exception exc) {
+				// A script that does not compile defines no config function; the reason is what matters.
 				throw new JassException(this.jassProgramVisitor.getGlobals(),
-						"Exception on Line " + this.jassProgramVisitor.getGlobals().getLineNumber(), exc);
+						"Exception on Line " + this.jassProgramVisitor.getGlobals().getLineNumber(),
+						this.scriptError != null ? this.scriptError : exc);
 			}
 		}
 

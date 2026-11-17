@@ -40,6 +40,9 @@ public class MdxShaders {
 			"    varying vec4 v_lightDir8;\r\n" + //
 			"    varying vec3 v_eyeVec;\r\n" + //
 			"    varying vec3 v_normal;\r\n" + //
+			"    varying vec3 v_worldTangent;\r\n" + //
+			"    varying vec3 v_worldBinormal;\r\n" + //
+			"    varying vec3 v_worldEye;\r\n" + //
 			"    \r\n" + //
 			"    \r\n" + //
 			"    void main() {\r\n" + //
@@ -248,6 +251,9 @@ public class MdxShaders {
 			"      v_layerAlpha = u_layerAlpha;\r\n" + //
 			"      \r\n" + //
 			"      v_normal = normal;\r\n" + //
+			"      v_worldTangent = tangent;\r\n" + //
+			"      v_worldBinormal = binormal;\r\n" + //
+			"      v_worldEye = u_eyePos - position;\r\n" + //
 			"      // v_lightDirWorld = normalize(lightDir);\r\n" + //
 			"      \r\n" + //
 			// TODO ONLY_TANGENTS
@@ -269,6 +275,9 @@ public class MdxShaders {
 				"uniform sampler2D u_teamColorMap;\r\n" + //
 				"uniform sampler2D u_environmentMap;\r\n" + //
 				"uniform float u_filterMode;\r\n" + //
+				"uniform vec4 u_fogColor;\r\n" + //
+				"uniform vec4 u_fogParams;\r\n" + //
+				"uniform vec2 u_iblParams;\r\n" + //
 				"// uniform sampler2D u_lutMap;\r\n" + //
 				"// uniform sampler2D u_envDiffuseMap;\r\n" + //
 				"// uniform sampler2D u_envSpecularMap;\r\n" + //
@@ -284,6 +293,9 @@ public class MdxShaders {
 				"varying vec4 v_lightDir8;\r\n" + //
 				"varying vec3 v_eyeVec;\r\n" + //
 				"varying vec3 v_normal;\r\n" + //
+				"varying vec3 v_worldTangent;\r\n" + //
+				"varying vec3 v_worldBinormal;\r\n" + //
+				"varying vec3 v_worldEye;\r\n" + //
 				"// varying vec3 v_lightDirWorld;\r\n" + //
 				"#if defined(ONLY_TANGENTS)\r\n" + //
 				"varying vec3 v_tangent;\r\n" + //
@@ -317,8 +329,8 @@ public class MdxShaders {
 				"vec3 getTeamColor() {\r\n" + //
 				"  return texture2D(u_teamColorMap, v_uv).rgb;\r\n" + //
 				"}\r\n" + //
-				"vec3 getEnvironmentMapColor() {\r\n" + //
-				"  return texture2D(u_environmentMap, v_uv).rgb;\r\n" + //
+				"vec3 getEnvironmentMapColor(vec3 worldDirection) {\r\n" + //
+				"  return texture2D(u_environmentMap, sampleEnvironmentMap(worldDirection)).rgb;\r\n" + //
 				"}\r\n" + //
 				"// const float PI = 3.14159265359;\r\n" + //
 				"// const float RECIPROCAL_PI = 0.31830988618;\r\n" + //
@@ -487,73 +499,71 @@ public class MdxShaders {
 				"  gl_FragColor = vec4(v_tangent, 1.0);\r\n" + //
 				"}\r\n" + //
 				"#endif\r\n" + //
-				"void applyLight(vec4 thisLightColor, vec4 thisLightDir, vec3 normal, vec3 baseColor, vec3 tc, vec4 ormTexel, vec3 reflectionsTexel, float tcFactor, inout vec3 color, inout vec3 lambertFactorSum) {\r\n"
-				+ //
-				"  if (thisLightColor.a > 0.0) {;\r\n" + //
+				"void applyLight(float rowPos, vec4 thisLightColor, vec4 thisLightDir, vec3 normal, vec3 specTint, float roughness, inout vec3 specularSum, inout vec3 lambertFactorSum) {\r\n" + //
+				"  vec4 thisLightAmbient = texture2D(u_lightTexture, vec2(0.875, rowPos));\r\n" + //
+				"  if (texture2D(u_lightTexture, vec2(0.375, rowPos)).x < 1.5) {\r\n" + //
+				"    lambertFactorSum += thisLightAmbient.rgb * thisLightAmbient.a * thisLightDir.a;\r\n" + //
+				"  }\r\n" + //
+				"  if (thisLightColor.a > 0.0) {\r\n" + //
 				"    float lambertFactor = clamp(dot(normal, thisLightDir.xyz), 0.0, 1.0);\r\n" + //
-				"    \r\n" + //
-				"			vec3 reflectDir = reflect(-thisLightDir.xyz, normal);\r\n" + //
-				"			vec3 halfwayDir = normalize(thisLightDir.xyz + v_eyeVec);\r\n" + //
-				"			float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);\r\n" + //
-				"			vec3 specular = vec3(max(-ormTexel.g+0.5, 0.0)+ormTexel.b) * spec /* * (reflectionsTexel.rgb * (1.0 - ormTexel.g) + ormTexel.g * baseColor.rgb) */ *  thisLightColor.rgb;\r\n"
-				+ //
-				"    lambertFactorSum += clamp(lambertFactor, 0.0, 1.0) * thisLightColor.rgb * thisLightColor.a * thisLightDir.a;\r\n"
-				+ //
-				"        color += (specular) * thisLightColor.a * thisLightDir.a;\r\n" + //
-				"  };\r\n" + //
+				"    vec3 halfwayDir = normalize(thisLightDir.xyz + v_eyeVec);\r\n" + //
+				"    float shininess = clamp(2.0 / max(roughness * roughness, 0.0001) - 2.0, 4.0, 256.0);\r\n" + //
+				"    float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess) * min(lambertFactor * 4.0, 1.0);\r\n" + //
+				"    float smoothness = 1.0 - roughness;\r\n" + //
+				"    specularSum += specTint * (smoothness * smoothness) * spec * thisLightColor.rgb * thisLightColor.a * thisLightDir.a;\r\n" + //
+				"    lambertFactorSum += lambertFactor * thisLightColor.rgb * thisLightColor.a * thisLightDir.a;\r\n" + //
+				"  }\r\n" + //
 				"}\r\n" + //
 				"void lambert() {\r\n" + //
 				"  vec4 baseColor = getDiffuseColor();\r\n" + //
 				"  vec3 normal = decodeNormal();\r\n" + //
 				"  vec4 orm = getOrmColor();\r\n" + //
-				"  vec3 environmentMapColor = getEnvironmentMapColor();\r\n" + //
 				"  vec3 emissive = getEmissiveColor();\r\n" + //
 				"  vec3 tc = getTeamColor();\r\n" + //
 				"  float aoFactor = orm.r;\r\n" + //
+				"  float roughness = clamp(orm.g, 0.04, 1.0);\r\n" + //
+				"  float metallic = clamp(orm.b, 0.0, 1.0);\r\n" + //
 				"  float tcFactor = orm.a;\r\n" + //
+				"  vec3 diffuse = baseColor.rgb;\r\n" + //
+				(!menu ? "  if (tcFactor > 0.1) {\r\n" + 
+				"    diffuse = diffuse * (1.0 - tcFactor) + diffuse * tc * tcFactor;\r\n" + 
+				"  }\r\n" : "") + //
+				"  vec3 specTint = mix(vec3(0.25), diffuse, metallic);\r\n" + //
+				"  diffuse *= 1.0 - 0.5 * metallic;\r\n" + //
 				"  vec3 lambertFactorSum = vec3(0.0);\r\n" + //
-//				"void applyLight(vec4 thisLightColor, vec3 thisLightDir, vec3 normal, vec3 baseColor, vec3 tc, float tcFactor, output vec3 color) {\r\n" + //
-				"  vec3 color = vec3(0.0);\r\n" + //
-				"  \r\n" + //
+				"  vec3 specularSum = vec3(0.0);\r\n" + //
 				"  float rowPos = (0.5) / u_lightTextureHeight;\r\n" + //
 				"  vec4 lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"  applyLight(lightColor, v_lightDir, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"  if( u_lightTextureHeight > 1.5 ) {\r\n" + //
+				"  float dayLevel = clamp(dot(lightColor.rgb * lightColor.a, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);\r\n" + //
+				"  applyLight(rowPos, lightColor, v_lightDir, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"  if (u_lightTextureHeight > 1.5) {\r\n" + //
 				"    rowPos = (1.5) / u_lightTextureHeight;\r\n" + //
 				"    lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"    applyLight(lightColor, v_lightDir2, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"    if( u_lightTextureHeight > 2.5 ) {\r\n" + //
+				"    applyLight(rowPos, lightColor, v_lightDir2, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"    if (u_lightTextureHeight > 2.5) {\r\n" + //
 				"      rowPos = (2.5) / u_lightTextureHeight;\r\n" + //
 				"      lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"      applyLight(lightColor, v_lightDir3, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"      if( u_lightTextureHeight > 3.5 ) {\r\n" + //
+				"      applyLight(rowPos, lightColor, v_lightDir3, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"      if (u_lightTextureHeight > 3.5) {\r\n" + //
 				"        rowPos = (3.5) / u_lightTextureHeight;\r\n" + //
 				"        lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"        applyLight(lightColor, v_lightDir4, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"        if( u_lightTextureHeight > 4.5 ) {\r\n" + //
+				"        applyLight(rowPos, lightColor, v_lightDir4, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"        if (u_lightTextureHeight > 4.5) {\r\n" + //
 				"          rowPos = (4.5) / u_lightTextureHeight;\r\n" + //
 				"          lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"          applyLight(lightColor, v_lightDir5, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"          if( u_lightTextureHeight > 5.5 ) {\r\n" + //
+				"          applyLight(rowPos, lightColor, v_lightDir5, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"          if (u_lightTextureHeight > 5.5) {\r\n" + //
 				"            rowPos = (5.5) / u_lightTextureHeight;\r\n" + //
 				"            lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"            applyLight(lightColor, v_lightDir6, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"            if( u_lightTextureHeight > 6.5 ) {\r\n" + //
+				"            applyLight(rowPos, lightColor, v_lightDir6, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"            if (u_lightTextureHeight > 6.5) {\r\n" + //
 				"              rowPos = (6.5) / u_lightTextureHeight;\r\n" + //
 				"              lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"              applyLight(lightColor, v_lightDir7, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
-				"              if( u_lightTextureHeight > 7.5 ) {\r\n" + //
+				"              applyLight(rowPos, lightColor, v_lightDir7, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
+				"              if (u_lightTextureHeight > 7.5) {\r\n" + //
 				"                rowPos = (7.5) / u_lightTextureHeight;\r\n" + //
 				"                lightColor = texture2D(u_lightTexture, vec2(0.625, rowPos));\r\n" + //
-				"                applyLight(lightColor, v_lightDir8, normal, baseColor.rgb, tc, orm, environmentMapColor, tcFactor, color, lambertFactorSum);\r\n"
-				+ //
+				"                applyLight(rowPos, lightColor, v_lightDir8, normal, specTint, roughness, specularSum, lambertFactorSum);\r\n" + //
 				"              }\r\n" + //
 				"            }\r\n" + //
 				"          }\r\n" + //
@@ -561,12 +571,18 @@ public class MdxShaders {
 				"      }\r\n" + //
 				"    }\r\n" + //
 				"  }\r\n" + //
-				"    vec3 diffuse = baseColor.rgb;\r\n" + //
-				(!menu ? "  if (tcFactor > 0.1) {\r\n" + //
-						"      diffuse = diffuse * (1.0 - tcFactor) + diffuse * tc * tcFactor;\r\n" + //
-						"    }\r\n" : "\r\n")
-				+ //
-				"  color = clamp(color, 0.0, 1.0) + diffuse * lambertFactorSum + emissive;\r\n" + //
+				"  vec3 worldNormal = normalize(v_worldTangent * normal.x + v_worldBinormal * normal.y + normalize(v_normal) * normal.z);\r\n" + //
+				"  vec3 viewDir = normalize(v_worldEye);\r\n" + //
+				"  float iblScale = u_iblParams.x * mix(u_iblParams.y, 1.0, dayLevel);\r\n" + //
+				"  float nDotV = clamp(dot(worldNormal, viewDir), 0.0, 1.0);\r\n" + //
+				"  vec3 envDiffuse = max(getEnvironmentMapColor(worldNormal), vec3(0.18) * (0.6 + 0.4 * worldNormal.z));\r\n" + //
+				"  vec3 envSpecular = getEnvironmentMapColor(reflect(-viewDir, worldNormal));\r\n" + //
+				"  float smoothness = 1.0 - roughness;\r\n" + //
+				"  vec3 fresnel = specTint + (vec3(1.0) - specTint) * pow(1.0 - nDotV, 5.0) * smoothness;\r\n" + //
+				"  vec3 iblDiffuse = envDiffuse * iblScale;\r\n" + //
+				"  vec3 iblSpecular = envSpecular * fresnel * (smoothness * smoothness) * iblScale;\r\n" + //
+				"  vec3 color = clamp(specularSum, 0.0, 1.0) + diffuse * (lambertFactorSum + iblDiffuse * aoFactor) + iblSpecular * aoFactor + emissive;\r\n" + //
+				Shaders.fogSystem(false, null) + //
 				"  gl_FragColor = vec4(color, baseColor.a);\r\n" + //
 				"}\r\n" + //
 				"void main() {\r\n" + //

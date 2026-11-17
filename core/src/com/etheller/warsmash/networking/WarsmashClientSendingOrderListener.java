@@ -141,4 +141,22 @@ public class WarsmashClientSendingOrderListener implements CPlayerUnitOrderListe
 		this.encoder.mouseEvent(eventId, x, y, button);
 		sendCommand();
 	}
+
+	@Override
+	public void syncData(final String prefix, final String data) {
+		this.encoder.syncData(prefix, data);
+		sendCommand();
+	}
+
+	@Override
+	public void keyEvent(final int key, final int metaKey, final boolean down) {
+		this.encoder.keyEvent(key, metaKey, down);
+		sendCommand();
+	}
+
+	@Override
+	public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+		this.encoder.frameEvent(frameId, eventType, value, text);
+		sendCommand();
+	}
 }

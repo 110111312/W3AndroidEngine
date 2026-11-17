@@ -566,7 +566,8 @@ final class CampaignPage extends LauncherViews {
 		float mx = tx;
 		if (result != null) {
 			final float continueW = t ? 340 : 190;
-			place(content, button(upper(glueLabel("CONTINUE", "Continue")), menuH, textSize,
+			final String[] label = CampaignResult.buttonLabel(result);
+			place(content, button(upper(glueLabel(label[0], label[1])), menuH, textSize,
 					v -> continueAfter(entry, result)), mx, menuY, continueW, menuH);
 			mx += continueW + gap;
 		}
@@ -710,7 +711,8 @@ final class CampaignPage extends LauncherViews {
 			centred(content, glueLabel(difficulty[1], difficulty[2]), l.difficultySize, text2, l.contentX,
 					l.difficultyY, l.contentW, l.difficultyH);
 		}
-		place(content, button(glueLabel("CONTINUE", "Continue"), l.buttonH, b.buttonText,
+		final String[] label = CampaignResult.buttonLabel(result);
+		place(content, button(glueLabel(label[0], label[1]), l.buttonH, b.buttonText,
 				v -> continueAfter(entry, result)), l.buttonX, l.buttonY, l.buttonW, l.buttonH);
 		action(view, 0, glueLabel("BACK", getString(R.string.launcher_back)), v -> {
 			this.activity.campaignResult = null;

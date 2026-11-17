@@ -132,6 +132,7 @@ final class ScriptNatives extends CommonNatives {
 					final CVersion version = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
 					return BooleanJassValue.of(version != null);
 				});
+		jassProgramVisitor.getGlobalScope().setHandleIdSource(this.simulation);
 		jassProgramVisitor.getJassNativeManager().createNative("GetHandleId",
 				(arguments, globalScope, triggerScope) -> {
 					final Object whichHandle = arguments.get(0).visit(ObjectJassValueVisitor.getInstance());

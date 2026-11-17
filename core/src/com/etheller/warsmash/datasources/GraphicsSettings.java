@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.IntSupplier;
 
 import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.units.Element;
+import com.etheller.warsmash.viewer5.handlers.w3x.CampaignMaps;
 
 /**
  * The [Graphics] section of the engine configuration, which both launchers write from their Options page: the in-game
@@ -26,9 +28,13 @@ public final class GraphicsSettings {
 	public static final int[] RENDER_SCALES = { 100, 85, 70, 50 };
 	public static final int MIN_RENDER_SCALE = 50;
 	/** The texture size limits offered, in the order the launchers list them; 0 is no limit. */
-	public static final int[] TEXTURE_SIZES = { 512, 1024, 0 };
+	public static final int[] TEXTURE_SIZES = { 512, 1024, 2048, 0 };
 	/** Below this much memory a tablet is treated as a phone. */
 	private static final long TABLET_MEMORY_MB = 6 * 1024;
+	/** A GPU with less memory of its own gets the smaller default limit. */
+	private static final long LOW_VIDEO_MEMORY_MB = 3 * 1024;
+	private static final String[] SOFTWARE_RENDERERS = { "llvmpipe", "softpipe", "swiftshader", "microsoft basic",
+			"gdi generic" };
 	private static final String LOCALES = "\\_locales\\";
 
 	private GraphicsSettings() {
@@ -54,9 +60,49 @@ public final class GraphicsSettings {
 		}
 	}
 
-	/** The texture size limit to play with; without a setting the desktop's default, no limit. */
+	/** The texture size limit to play with; without a setting no limit. */
 	public static int textureSize(final DataTable ini) {
 		return Math.max(0, configuredTextureSize(ini));
+	}
+
+	/**
+	 * The texture size limit of a game with these graphics: the configured one, else the {@code defaultSize} for the HD
+	 * and DE graphics, whose textures are four times the size of Classic's, and no limit for Classic.
+	 */
+	public static int textureSize(final DataTable ini, final GraphicsSet graphics,
+			final IntSupplier defaultSize) {
+		final int configured = configuredTextureSize(ini);
+		if (configured >= 0) {
+			return configured;
+		}
+		return graphics == GraphicsSet.CLASSIC ? 0 : Math.max(0, defaultSize.getAsInt());
+	}
+
+	/**
+	 * The default limit of a desktop for the HD and DE graphics: 1024 on a GPU that shares the system memory or has
+	 * little of its own, else 2048; a full-size texture set takes several gigabytes. A GPU that cannot be told apart
+	 * from its name or memory gets 2048.
+	 *
+	 * @param renderer the OpenGL renderer string, may be null
+	 * @param dedicatedMb the memory of the GPU in megabytes when the driver tells it, else 0
+	 */
+	public static int desktopDefaultTextureSize(final String renderer, final long dedicatedMb) {
+		if (dedicatedMb > 0) {
+			return dedicatedMb < LOW_VIDEO_MEMORY_MB ? 1024 : 2048;
+		}
+		if (renderer == null) {
+			return 2048;
+		}
+		final String name = renderer.toLowerCase(Locale.ROOT);
+		for (final String software : SOFTWARE_RENDERERS) {
+			if (name.contains(software)) {
+				return 1024;
+			}
+		}
+		final boolean intel = name.contains("intel") && !name.matches(".*arc\\(tm\\) [ab]\\d{3}.*");
+		final boolean radeonIntegrated = name.contains("radeon") && name.trim().endsWith("graphics")
+				&& !name.contains(" rx ");
+		return intel || radeonIntegrated ? 1024 : 2048;
 	}
 
 	/**
@@ -126,14 +172,20 @@ public final class GraphicsSettings {
 		section(ini).setField(KEY_TEXTURE_SIZE, Integer.toString(textureSize));
 	}
 
-	/** Sets the graphics of a configuration, for this run only. */
+	/**
+	 * Sets the graphics of a configuration, for this run only. A negative texture size leaves the limit as the
+	 * configuration has it, which may be none, so that {@link #textureSize(DataTable, GraphicsSet, IntSupplier)} still
+	 * chooses a default.
+	 */
 	public static void apply(final DataTable ini, final GraphicsSet graphics, final int textureSize) {
 		final Element section = section(ini);
 		section.setField(KEY_SET, graphics.getIniName());
-		section.setField(KEY_TEXTURE_SIZE, Integer.toString(Math.max(0, textureSize)));
+		if (textureSize >= 0) {
+			section.setField(KEY_TEXTURE_SIZE, Integer.toString(textureSize));
+		}
 	}
 
-	/** Sets the graphics and the render scale (percent) of a configuration, for this run only. */
+	/** Sets the graphics and the render scale (percent) of a configuration, for this run only; see the above. */
 	public static void apply(final DataTable ini, final GraphicsSet graphics, final int textureSize,
 			final int renderScalePercent) {
 		apply(ini, graphics, textureSize);
@@ -171,6 +223,20 @@ public final class GraphicsSettings {
 			}
 		}
 		return "enus";
+	}
+
+	/**
+	 * The graphics a game is played with, its models, icons and interface alike; the menu skin has no say in them. A
+	 * campaign mission has those of its campaign version, any other map those the options set for custom games. A map
+	 * made for the Reforged graphics alone is never played in Classic.
+	 */
+	public static GraphicsSet gameGraphics(final DataTable ini, final String mapFilename, final boolean reforgedCampaign,
+			final boolean reforgedMap) {
+		if (CampaignMaps.isCampaignMap(mapFilename)) {
+			return reforgedCampaign || reforgedMap ? GraphicsSet.REFORGED : GraphicsSet.CLASSIC;
+		}
+		final GraphicsSet custom = graphicsSet(ini);
+		return reforgedMap && (custom == GraphicsSet.CLASSIC) ? GraphicsSet.REFORGED : custom;
 	}
 
 	/** The game data as a game with these graphics reads it, its models, icons and interface alike. */

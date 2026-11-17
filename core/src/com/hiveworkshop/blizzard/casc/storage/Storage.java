@@ -4,6 +4,7 @@ import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.ClosedChannelException;
@@ -19,6 +20,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import com.hiveworkshop.blizzard.casc.Key;
 import com.hiveworkshop.blizzard.casc.nio.MalformedCASCStructureException;
@@ -32,6 +37,8 @@ public class Storage implements AutoCloseable {
 	 * The name of the data folder containing the configuration files.
 	 */
 	public static final String DATA_FOLDER_NAME = "data";
+
+	private static final int INDEX_LOAD_THREADS = 4;
 
 	/**
 	 * Number of index files used by a data store.
@@ -178,6 +185,7 @@ public class Storage implements AutoCloseable {
 			bucketOrder = Collections.reverseOrder(bucketOrder);
 		}
 
+		final Path[] currentPaths = new Path[indicies.length];
 		for (int index = 0; index < indicies.length; index += 1) {
 			final ArrayList<IndexFileNameMeta> bucketList = metaMap.get(index);
 			if (bucketList == null) {
@@ -193,8 +201,9 @@ public class Storage implements AutoCloseable {
 			}
 			olderIndexPaths.add(older);
 			idxVersions[index] = fileMeta.version;
-			indicies[index] = new IndexFile(loadFileFully(fileMeta.filePath));
+			currentPaths[index] = fileMeta.filePath;
 		}
+		loadIndexFiles(currentPaths);
 
 		// resolve index key length being used
 		int index = 0;
@@ -203,6 +212,53 @@ public class Storage implements AutoCloseable {
 			if (encodingKeyLength != indicies[index].getEncodingKeyLength()) {
 				throw new MalformedCASCStructureException("inconsistent encoding key length between index files");
 			}
+		}
+	}
+
+	/**
+	 * Reads and decodes the current index of every bucket. They are independent files, and decoding them one after
+	 * the other was most of the time it took to open the storage; a few at a time keep the buffers held at once small.
+	 */
+	private void loadIndexFiles(final Path[] paths) throws IOException {
+		final int workers = Math.min(INDEX_LOAD_THREADS, Runtime.getRuntime().availableProcessors());
+		if (workers < 2) {
+			for (int index = 0; index < paths.length; index += 1) {
+				indicies[index] = new IndexFile(loadFileFully(paths[index]));
+			}
+			return;
+		}
+		final ExecutorService executor = Executors.newFixedThreadPool(workers, runnable -> {
+			final Thread thread = new Thread(runnable, "casc-index");
+			thread.setDaemon(true);
+			return thread;
+		});
+		try {
+			final List<Future<IndexFile>> loading = new ArrayList<>(paths.length);
+			for (final Path path : paths) {
+				loading.add(executor.submit(() -> new IndexFile(loadFileFully(path))));
+			}
+			for (int index = 0; index < paths.length; index += 1) {
+				try {
+					indicies[index] = loading.get(index).get();
+				}
+				catch (final InterruptedException e) {
+					Thread.currentThread().interrupt();
+					throw new InterruptedIOException("interrupted while reading the storage index");
+				}
+				catch (final ExecutionException e) {
+					final Throwable cause = e.getCause();
+					if (cause instanceof IOException) {
+						throw new IOException(cause.getMessage(), cause);
+					}
+					if (cause instanceof RuntimeException) {
+						throw (RuntimeException) cause;
+					}
+					throw new IOException(cause);
+				}
+			}
+		}
+		finally {
+			executor.shutdownNow();
 		}
 	}
 

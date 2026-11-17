@@ -195,24 +195,17 @@ final class MapViewerUpdate {
 				if (viewer.modelCinematic.isDone()) {
 					viewer.endModelCinematic();
 				}
-				else if (!fullScreenCinematic) {
+				else {
 					viewer.modelCinematic.placeWorldCamera();
 				}
 			}
 			viewer.startFrame();
-			final float scale = beginScaledWorld(viewer, !fullScreenCinematic);
+			final float scale = beginScaledWorld(viewer, true);
 			worldScene.startFrame();
-			if (fullScreenCinematic && (viewer.modelCinematic != null)) {
-				viewer.modelCinematic.render();
-				return;
-			}
 			if (!viewer.worldHidden && (viewer.skyInstance != null)) {
 				renderSky(viewer);
 			}
 			// The score screen covers the game: only the interface scenes are drawn.
-			if (!viewer.worldHidden && (viewer.debugDepth > 0)) {
-				worldScene.renderOpaque(viewer.dynamicShadowManager, viewer.webGL);
-			}
 			PerfStats.end(PerfStats.Section.SHADOWS);
 			if (!viewer.worldHidden && (viewer.debugDepth > 1)) {
 				viewer.terrain.renderGround(viewer.dynamicShadowManager);
@@ -248,7 +241,7 @@ final class MapViewerUpdate {
 
 			final List<Scene> scenes = viewer.scenes;
 			for (final Scene scene : scenes) {
-				if ((scene != worldScene) && (scene != viewer.skyScene)) {
+				if (!fullScreenCinematic && (scene != worldScene) && (scene != viewer.skyScene)) {
 					scene.startFrame();
 					if (viewer.debugDepth > 8) {
 						scene.renderOpaque();

@@ -73,6 +73,7 @@ class StaticStateTest {
 			"simulation.CUnitClassification#UNIT_EDITOR_KEY_TO_CLASSIFICATION",
 			"simulation.SimulationTypeCodes#CODES",
 			"simulation.SimulationChecksum#X_POWER_2N",
+			"simulation.SimulationChecksum#CRC_TABLE",
 			"simulation.orders.OrderIdUtils#orderIdToString", "simulation.orders.OrderIdUtils#stringToOrderId",
 			"simulation.orders.OrderIdUtils#NO_STRING", "simulation.data.CUnitRace#keyToRace",
 			"simulation.abilities.harvest.CAbilityWispHarvest#TREE_ALIVE_TYPE_ONLY",
@@ -83,7 +84,10 @@ class StaticStateTest {
 			"jass.CommonNatives#REPORTED_MISSING_DESTRUCTORS",
 			// Tables of object field accessors, filled once and only read after.
 			"jass.ObjectFieldNatives#UNIT_INT_GET", "jass.ObjectFieldNatives#UNIT_INT_SET", "jass.ObjectFieldNatives#UNIT_REAL_GET", "jass.ObjectFieldNatives#UNIT_REAL_SET", "jass.ObjectFieldNatives#UNIT_BOOL_GET", "jass.ObjectFieldNatives#UNIT_BOOL_SET",
-			"jass.ObjectFieldNatives#UNIT_STRING_GET", "jass.ObjectFieldNatives#UNIT_STRING_SET", "jass.ObjectFieldNatives#ITEM_INT_GET", "jass.ObjectFieldNatives#ITEM_INT_SET", "jass.ObjectFieldNatives#ITEM_STRING_GET", "jass.ObjectFieldNatives#ITEM_STRING_SET",
+			"jass.ObjectFieldNatives#UNIT_STRING_GET", "jass.ObjectFieldNatives#UNIT_STRING_SET", "jass.ObjectFieldNatives#ITEM_INT_GET", "jass.ObjectFieldNatives#ITEM_INT_SET", "jass.ObjectFieldNatives#ITEM_STRING_GET", "jass.ObjectFieldNatives#ITEM_STRING_SET", "jass.ObjectFieldNatives#ITEM_REAL_GET", "jass.ObjectFieldNatives#ITEM_REAL_SET", "jass.ObjectFieldNatives#ITEM_BOOL_GET", "jass.ObjectFieldNatives#ITEM_BOOL_SET", "jass.ObjectFieldNatives#ITEM_ARMOR_TYPES",
+			"jass.OsKeys#VIRTUAL_TO_GDX", "jass.OsKeys#GDX_TO_VIRTUAL", "jass.ScriptAnimTypes#ANIM_NAMES", "jass.ScriptAnimTypes#SUB_ANIMS",
+			// Failures of ability builder actions already logged, so that one failing timer logs once.
+			"simulation.abilitybuilder.core.ABActionGuard#LOGGED_SITES",
 			// The script log file.
 			"interpreter.ast.util.JassLog#jassLogWriter",
 			// Tables of the generated script lexer.
@@ -209,12 +213,16 @@ class StaticStateTest {
 			"core.datasources.FolderDataSource#INDEXES",
 			// Parse trees of interface files, kept while memory allows and checked against the file's bytes.
 			"core.parsers.fdf.DataSourceFDFParserBuilder#PARSED", "core.units.HashedGameObject#SHARED_KEYS",
-			"core.units.HashedGameObject#SHARED_VALUES",
+			"core.units.HashedGameObject#SHARED_VALUES", "core.units.HashedGameObject#SHARED_SINGLE_LISTS",
+			"core.units.HashedGameObject#SHARED_LISTS",
+			// The text tables of the interface, shared by equal files while memory allows.
+			"core.util.WorldEditStrings#LOADED",
 			// State of the graphics device, the render thread and the platform, set up when a GL context or an activity
 			// starts; scratch of the render thread; the open resource scopes of the screens.
 			"core.GammaOverlay#white", "core.GammaOverlay#whiteContext", "core.GammaOverlay#whiteGeneration",
 			"core.viewer5.RenderScaler#currentTarget", "core.util.FrameLimiter#maxFps", "core.util.FrameLimiter#deadline",
 			"core.util.GraphicsContext#generation", "core.parsers.fdf.frames.StringFrame#shapeRenderer",
+			"core.parsers.fdf.frames.FadingSpriteBatch#SAMPLER_NAMES",
 			"core.viewer5.gl.Extensions#angleInstancedArrays", "core.viewer5.gl.Extensions#dynamicShadowExtension",
 			"core.viewer5.gl.Extensions#wireframeExtension", "core.viewer5.gl.Extensions#audio",
 			"core.viewer5.gl.Extensions#GL_LINE", "core.viewer5.gl.Extensions#GL_FILL", "core.WarsmashGdxGame#VAO",
@@ -234,12 +242,17 @@ class StaticStateTest {
 			"core.launcher.lan.LanText#source",
 			// The classic portraits' wire names, read from the skin's fixed item list once.
 			"core.launcher.lan.LanPortraitId#classicKeys", "core.launcher.lan.LanPortraitId#classicIndexes",
+			// Fixed classic/Reforged portrait pairs for LAN, built once.
+			"core.launcher.lan.LanPortraitTable#PAIRS", "core.launcher.lan.LanPortraitTable#CLASSIC_FOR_REFORGED",
+			"core.launcher.lan.LanPortraitTable#REFORGED_FOR_CLASSIC",
 			// The launcher's log sink, and what its data folder check remembers of the folder.
 			"core.launcher.LauncherLog#sink", "core.launcher.DataFolderCheck#DESCRIPTIONS",
 			// The platform's folder chooser, installed once at start.
 			"core.launcher.CustomFolderChooser$Holder#installed",
 			// Where the platform keeps the custom game list that the launcher and the engine's menu share.
 			"core.launcher.MapListCache#shared",
+			// Where the platform keeps the player's Save and Replay; set once at start, not a game's state.
+			"core.launcher.StorageRoot#root",
 			"core.launcher.DataFolderCheck#READABILITY", "core.launcher.DataFolderCheck#OPENED_FILES",
 			"core.launcher.HotkeyCatalog#BUILD_COMMANDS",
 			// Counters of the performance report; only counted when the switch is set, and not a game's state.
@@ -264,7 +277,7 @@ class StaticStateTest {
 			// Tables, arrays and sets filled once when the class loads and never written again (object data field lists,
 			// launcher menus and names, skin art, anchor priorities, decoder tables, lookup maps).
 			"core.datasources.AssetPathFallback#GRAPHICS_PACKAGES", "core.datasources.GraphicsSettings#TEXTURE_SIZES",
-			"core.datasources.GraphicsSettings#RENDER_SCALES", "core.launcher.LauncherOptions#RENDER_SCALES",
+			"core.datasources.GraphicsSettings#RENDER_SCALES", "core.datasources.GraphicsSettings#SOFTWARE_RENDERERS", "core.launcher.LauncherOptions#RENDER_SCALES",
 			"core.launcher.LauncherOptions#FRAME_CAPS", "core.launcher.LauncherOptions#FRAME_CAP_NAMES",
 			"core.datasources.LayeredDataSource#OTHER_PICTURES", "core.launcher.CampaignResult#ROWS",
 			"core.launcher.CustomGame#SLOT_TYPES", "core.launcher.CustomGame#RACES", "core.launcher.CustomGame#OPTION_NAMES",
@@ -273,6 +286,7 @@ class StaticStateTest {
 			"core.launcher.DataPackage#SET_FOLDERS", "core.launcher.CustomContent#FOLDERS", "core.launcher.EngineSettings#OWN_SECTIONS",
 			"core.launcher.HotkeyCatalog#HALLS", "core.launcher.HotkeyCatalog#RACE_NAMES", "core.launcher.HotkeyCatalog#BASE",
 			"core.launcher.LauncherKeys#DIFFICULTIES", "core.launcher.LauncherKeys#CAMPAIGN_MAPS",
+			"core.launcher.Profiles#FIELDS", "core.launcher.ProfileStorage#FOLDERS",
 			"core.launcher.LauncherOptions#GRAPHICS", "core.launcher.LauncherOptions#GRAPHICS_SETS",
 			"core.launcher.LauncherOptions#TEXTURE_SIZES", "core.launcher.LauncherOptions#SOUND",
 			"core.launcher.LauncherOptions#GAMEPLAY", "core.launcher.SkinArt#RACE_SYMBOLS", "core.launcher.SkinArt#SCENES",

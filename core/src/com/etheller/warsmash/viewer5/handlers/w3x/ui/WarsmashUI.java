@@ -11,6 +11,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CLeaderboard;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerColor;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.command.CommandErrorListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.dialog.CScriptDialog;
@@ -18,6 +19,16 @@ import com.etheller.warsmash.viewer5.handlers.w3x.ui.dialog.CScriptDialogButton;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.dialog.CTimerDialog;
 
 public interface WarsmashUI extends CommandErrorListener, WarsmashBaseUI {
+
+	/** The listener this machine's input goes through, or null when the game has none (a test). */
+	default CPlayerUnitOrderListener getUnitOrderListener() {
+		return null;
+	}
+
+	/** The unit under the pointer now, or null. */
+	default CUnit getMouseFocusUnit() {
+		return null;
+	}
 
 	CScriptDialog createScriptDialog(GlobalScope globalScope);
 

@@ -32,7 +32,7 @@ public class ABActionChargeItem implements ABSingleAction {
 
 		it.setCharges(it.getCharges() - 1);
 		if ((this.checkForPerish != null) && this.checkForPerish.callback(game, caster, localStore, castId)
-				&& it.getItemType().isPerishable() && (it.getCharges() == 0)) {
+				&& it.isPerishable() && (it.getCharges() == 0)) {
 			it.forceDropIfHeld(game);
 			game.removeItem(it);
 		}

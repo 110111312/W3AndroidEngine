@@ -137,7 +137,7 @@ final class LobbyPage extends LauncherViews {
 				ch - (2 * frame) - eh - (t ? 120 : 70));
 		action(view, 0, "Leave", v -> leave());
 		this.secondary = action(view, 1, "Ready", v -> readyOrCancel());
-		this.primary = action(view, 2, "Start Game", v -> model.startGame());
+		this.primary = action(view, 2, "Start Game", v -> this.activity.lan().hostPrimary());
 		this.shownVersion = -1;
 		this.shownChat = 0;
 		this.activity.setPage(view, LauncherActivity.PAGE_LAN);
@@ -229,8 +229,12 @@ final class LobbyPage extends LauncherViews {
 			this.secondary.setText(countdown ? "Cancel" : LanText.changeMap());
 			this.secondary.setEnabled(true);
 			this.secondary.setVisibility(View.VISIBLE);
-			this.primary.setText(countdown ? "Starting… " + model.countdownSeconds() : "Start Game");
-			this.primary.setEnabled(view.canStart() && !countdown);
+			final LanLobbyView.HostAction action = view.hostAction();
+			this.primary.setText(countdown ? "Starting… " + model.countdownSeconds()
+					: action == LanLobbyView.HostAction.START ? "Start Game"
+							: action == LanLobbyView.HostAction.NOT_READY ? "Not Ready" : "Ready");
+			this.primary.setSelected(action == LanLobbyView.HostAction.NOT_READY);
+			this.primary.setEnabled(!countdown && ((action == LanLobbyView.HostAction.START) || model.canReady()));
 		}
 		else {
 			final boolean ready = (view.mine != null) && view.mine.ready;

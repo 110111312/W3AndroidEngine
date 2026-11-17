@@ -97,6 +97,24 @@ public abstract class AbstractCAbilityBuild extends AbstractCAbility implements 
 	@Override
 	public final void checkCanTarget(final CSimulation game, final CUnit unit, final int playerIndex, final int orderId,
 			final boolean autoOrder, final CWidget target, final AbilityTargetCheckReceiver<CWidget> receiver) {
+		// The haunt order of the map scripts (IssueHauntOrderAtLocBJ): the structure id as a target order on the
+		// gold mine, which the original game takes instead of a point build order.
+		final War3ID orderIdAsWar3ID = new War3ID(orderId);
+		if ((target instanceof CUnit) && this.structuresBuilt.contains(orderIdAsWar3ID)) {
+			final CUnitType unitTypeToCreate = game.getUnitData().getUnitType(orderIdAsWar3ID);
+			if (unitTypeToCreate.isCanBeBuiltOnThem()) {
+				final float x = target.getX();
+				final float y = target.getY();
+				if (isBuildLocationObstructed(game, unitTypeToCreate, unitTypeToCreate.getBuildingPathingPixelMap(),
+						true, x, y, unit, BuildOnBuildingIntersector.INSTANCE.reset(x, y))) {
+					receiver.targetCheckFailed(CommandStringErrorKeys.UNABLE_TO_BUILD_THERE);
+				}
+				else {
+					receiver.targetOk(target);
+				}
+				return;
+			}
+		}
 		receiver.orderIdNotAccepted();
 	}
 
@@ -202,8 +220,8 @@ public abstract class AbstractCAbilityBuild extends AbstractCAbility implements 
 
 	/**
 	 * Puts the units of the controller (and units it shares control of) out of the footprint of a new structure.
-	 * A builder that walked up to the site is left alone; a caster that makes the structure where it stands is moved
-	 * like the rest.
+	 * A builder that walked up to the site is left alone and the others jump away from the site; a caster that makes
+	 * the structure where it stands is moved like the rest, to the nearest free cell.
 	 */
 	public static void moveControlledUnitsAside(final CSimulation simulation, final CUnit structure,
 			final CUnit worker, final boolean moveWorker) {
@@ -230,7 +248,12 @@ public abstract class AbstractCAbilityBuild extends AbstractCAbility implements 
 		});
 		for (int i = 0; i < unitsToMoveAside.size(); i++) {
 			final CUnit unit = unitsToMoveAside.get(i);
-			unit.setPointAndCheckUnstuck(unit.getX(), unit.getY(), simulation);
+			if (moveWorker) {
+				unit.setPointAndCheckUnstuck(unit.getX(), unit.getY(), simulation);
+			}
+			else {
+				unit.pushOutOfNewStructure(simulation, structure);
+			}
 		}
 	}
 

@@ -199,7 +199,7 @@ public final class SavedObjectGraph {
 		/** Goes after the bodies; a reader needs it first, so the caller stores it where it can be found. */
 		public byte[] finishTable() throws IOException {
 			this.table.flush();
-			final ByteArrayOutputStream result = new ByteArrayOutputStream();
+			final ByteArrayOutputStream result = new Bytes(1 << 16);
 			final DataOutputStream out = new DataOutputStream(result);
 			out.writeInt(this.nextId);
 			out.writeInt(this.classIds.size());
@@ -219,7 +219,7 @@ public final class SavedObjectGraph {
 					out.writeUTF(fieldKey(field));
 				}
 			}
-			out.write(this.tableBytes.toByteArray());
+			this.tableBytes.writeTo(out);
 			return result.toByteArray();
 		}
 
@@ -757,52 +757,130 @@ public final class SavedObjectGraph {
 
 	/**
 	 * A byte buffer without the locking of {@link ByteArrayOutputStream}, which costs more than the copy itself when
-	 * a save writes millions of single values into it from one thread.
+	 * a save writes millions of single values into it from one thread. The bytes are kept in chunks: a buffer that
+	 * doubles in one array needs the old and the new array at once, which on a phone with a large map is more than
+	 * the heap has left.
 	 */
 	public static final class Bytes extends ByteArrayOutputStream {
+		private static final int MAX_CHUNK = 1 << 20;
+		private byte[][] chunks = new byte[8][];
+		// How much of each chunk is used: a value is never split between chunks, so a chunk can end short.
+		private int[] used = new int[8];
+		private int chunkCount;
+		private byte[] current;
+		private int position;
+		private int total;
+		private int nextSize;
+
 		public Bytes(final int size) {
-			super(size);
+			super(1);
+			this.nextSize = Math.max(16, Math.min(size, MAX_CHUNK));
 		}
 
 		private void grow(final int needed) {
-			if ((this.count + needed) > this.buf.length) {
-				this.buf = Arrays.copyOf(this.buf, Math.max(this.buf.length << 1, this.count + needed));
+			if ((this.current != null) && ((this.position + needed) <= this.current.length)) {
+				return;
 			}
+			if (this.current != null) {
+				this.used[this.chunkCount - 1] = this.position;
+			}
+			if (this.chunkCount == this.chunks.length) {
+				this.chunks = Arrays.copyOf(this.chunks, this.chunkCount << 1);
+				this.used = Arrays.copyOf(this.used, this.chunkCount << 1);
+			}
+			this.current = new byte[Math.max(this.nextSize, needed)];
+			this.nextSize = Math.min(this.nextSize << 1, MAX_CHUNK);
+			this.chunks[this.chunkCount++] = this.current;
+			this.position = 0;
 		}
 
 		void put1(final int v) {
 			grow(1);
-			this.buf[this.count++] = (byte) v;
+			this.current[this.position++] = (byte) v;
+			this.total++;
 		}
 
 		void put2(final int v) {
 			grow(2);
-			this.buf[this.count++] = (byte) (v >>> 8);
-			this.buf[this.count++] = (byte) v;
+			final byte[] b = this.current;
+			int c = this.position;
+			b[c++] = (byte) (v >>> 8);
+			b[c++] = (byte) v;
+			this.position = c;
+			this.total += 2;
 		}
 
 		void put4(final int v) {
 			grow(4);
-			final byte[] b = this.buf;
-			int c = this.count;
+			final byte[] b = this.current;
+			int c = this.position;
 			b[c++] = (byte) (v >>> 24);
 			b[c++] = (byte) (v >>> 16);
 			b[c++] = (byte) (v >>> 8);
 			b[c++] = (byte) v;
-			this.count = c;
+			this.position = c;
+			this.total += 4;
 		}
 
 		@Override
 		public void write(final int b) {
-			grow(1);
-			this.buf[this.count++] = (byte) b;
+			put1(b);
 		}
 
 		@Override
 		public void write(final byte[] b, final int off, final int len) {
-			grow(len);
-			System.arraycopy(b, off, this.buf, this.count, len);
-			this.count += len;
+			int from = off;
+			int left = len;
+			while (left > 0) {
+				if ((this.current == null) || (this.position == this.current.length)) {
+					grow(1);
+				}
+				final int count = Math.min(left, this.current.length - this.position);
+				System.arraycopy(b, from, this.current, this.position, count);
+				this.position += count;
+				from += count;
+				left -= count;
+			}
+			this.total += len;
+		}
+
+		@Override
+		public int size() {
+			return this.total;
+		}
+
+		@Override
+		public void reset() {
+			this.chunks = new byte[8][];
+			this.used = new int[8];
+			this.chunkCount = 0;
+			this.current = null;
+			this.position = 0;
+			this.total = 0;
+		}
+
+		@Override
+		public void writeTo(final java.io.OutputStream out) throws IOException {
+			for (int i = 0; i < this.chunkCount; i++) {
+				out.write(this.chunks[i], 0, i == (this.chunkCount - 1) ? this.position : this.used[i]);
+			}
+		}
+
+		@Override
+		public byte[] toByteArray() {
+			final byte[] all = new byte[this.total];
+			int at = 0;
+			for (int i = 0; i < this.chunkCount; i++) {
+				final int length = i == (this.chunkCount - 1) ? this.position : this.used[i];
+				System.arraycopy(this.chunks[i], 0, all, at, length);
+				at += length;
+			}
+			return all;
+		}
+
+		@Override
+		public String toString() {
+			return new String(toByteArray(), java.nio.charset.StandardCharsets.ISO_8859_1);
 		}
 	}
 

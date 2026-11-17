@@ -91,6 +91,7 @@ final class HashtableNatives extends CommonNatives {
 		jassProgramVisitor.getJassNativeManager().createNative("SaveDestructableHandle",
 				new SaveHashtableValueFunc());
 		jassProgramVisitor.getJassNativeManager().createNative("SaveItemHandle", new SaveHashtableValueFunc());
+		jassProgramVisitor.getJassNativeManager().createNative("SaveFrameHandle", new SaveHashtableValueFunc());
 		jassProgramVisitor.getJassNativeManager().createNative("SaveUnitHandle", new SaveHashtableValueFunc());
 		jassProgramVisitor.getJassNativeManager().createNative("SaveAbilityHandle", new SaveHashtableValueFunc());
 		jassProgramVisitor.getJassNativeManager().createNative("SaveTimerHandle", new SaveHashtableValueFunc());
@@ -152,6 +153,8 @@ final class HashtableNatives extends CommonNatives {
 				new LoadHashtableValueFunc(destructableType.getNullValue()));
 		jassProgramVisitor.getJassNativeManager().createNative("LoadItemHandle",
 				new LoadHashtableValueFunc(itemType.getNullValue()));
+		jassProgramVisitor.getJassNativeManager().createNative("LoadFrameHandle",
+				new LoadHashtableValueFunc(type("framehandle").getNullValue()));
 		jassProgramVisitor.getJassNativeManager().createNative("LoadUnitHandle",
 				new LoadHashtableValueFunc(unitType.getNullValue()));
 		jassProgramVisitor.getJassNativeManager().createNative("LoadAbilityHandle",

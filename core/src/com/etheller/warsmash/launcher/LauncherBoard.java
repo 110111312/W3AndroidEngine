@@ -297,6 +297,16 @@ public final class LauncherBoard {
 			}
 			return true;
 		}
+		// Choices that miss the design spacing still start at the control column and keep one even step, so that
+		// the rows of a page line up.
+		final float fitted = count > 1 ? (end - start - last) / (count - 1) : 0;
+		if ((count > 1) && (fitted >= (widest + gap))) {
+			for (int i = 0; i < count; i++) {
+				x[i] = start + (i * fitted);
+				w[i] = i == count - 1 ? last : fitted - gap;
+			}
+			return true;
+		}
 		if ((start + packed) - gap > end) {
 			return false;
 		}

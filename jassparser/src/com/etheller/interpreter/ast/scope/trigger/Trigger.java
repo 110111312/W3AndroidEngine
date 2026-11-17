@@ -255,14 +255,6 @@ public class Trigger implements CAllocatedHandle {
 		}
 	}
 
-	/**
-	 * TriggerExecuteWait: the waiting thread sleeps until the trigger's thread is done.
-	 */
-	public static void wakeWhenDone(final JassThread triggerThread, final JassThread waiter) {
-		((ActionsThread) triggerThread).waiter = waiter;
-		waiter.setSleeping(true);
-	}
-
 	public TriggerExecutionScope getTriggerExecutionScope() {
 		return this.triggerExecutionScope;
 	}

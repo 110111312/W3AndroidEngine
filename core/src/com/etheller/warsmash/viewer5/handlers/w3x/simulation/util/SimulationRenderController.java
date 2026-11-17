@@ -107,7 +107,7 @@ public interface SimulationRenderController {
 
 	void unitPreferredSelectionReplacement(CUnit unit, CUnit newUnit);
 
-	void heroRevived(CUnit trainedUnit);
+	void heroRevived(CUnit trainedUnit, boolean doEyecandy);
 
 	void heroDeathEvent(CUnit cUnit);
 

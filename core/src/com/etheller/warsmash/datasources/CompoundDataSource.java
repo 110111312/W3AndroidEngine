@@ -9,12 +9,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Predicate;
 
 import com.etheller.warsmash.util.Log;
 
@@ -57,7 +58,8 @@ public class CompoundDataSource implements DataSource {
 	// Index of the source that has each path, or MISSING. The sources do not change while this instance lives,
 	// and the same paths are asked for many times (prefixes, extensions, aliases).
 	private static final int MISSING = -1;
-	private final Map<String, Integer> sourceIndexCache = new ConcurrentHashMap<>();
+	private static final int UNKNOWN = -2;
+	private final PathCache sourceIndexCache = new PathCache();
 
 	// Data prepared as a folder has many files only under their alias target, and only CASC resolves aliases itself.
 	// The path as asked wins, so CASC sources behave as before.
@@ -83,12 +85,12 @@ public class CompoundDataSource implements DataSource {
 		if (this.fileAliases.isEmpty()) {
 			return null;
 		}
-		return this.fileAliases.get(filepath.toLowerCase(Locale.US).replace('/', '\\').replace(':', '\\'));
+		return this.fileAliases.get(CascDataSource.normalizePath(filepath));
 	}
 
 	private int findSourceIndex(final String filepath) {
-		final Integer cached = this.sourceIndexCache.get(filepath);
-		if (cached != null) {
+		final int cached = this.sourceIndexCache.get(filepath, UNKNOWN);
+		if (cached != UNKNOWN) {
 			return cached;
 		}
 		int found = MISSING;
@@ -199,8 +201,8 @@ public class CompoundDataSource implements DataSource {
 
 	private InputStream getResourceAsStreamFromSources(final String filepath) {
 		try {
-			final Integer cached = this.sourceIndexCache.get(filepath);
-			if ((cached != null) && (cached != MISSING)) {
+			final int cached = this.sourceIndexCache.get(filepath, UNKNOWN);
+			if ((cached != UNKNOWN) && (cached != MISSING)) {
 				final InputStream resourceAsStream = this.mpqList.get(cached).getResourceAsStream(filepath);
 				if (resourceAsStream != null) {
 					return resourceAsStream;
@@ -299,6 +301,15 @@ public class CompoundDataSource implements DataSource {
 	@Override
 	public Collection<String> getListfile() {
 		return getMergedListfile();
+	}
+
+	@Override
+	public Collection<String> getListfile(final Predicate<String> accept) {
+		final Set<String> accepted = new LinkedHashSet<>();
+		for (final DataSource mpqGuy : this.mpqList) {
+			accepted.addAll(mpqGuy.getListfile(accept));
+		}
+		return accepted;
 	}
 
 	@Override

@@ -220,7 +220,7 @@ public class CAbilityInventory extends AbstractGenericNoIconAbility {
 		// Measured on 1.29: the use event sees the charge already spent and the item still held; a used-up
 		// perishable item then fires a drop event before it goes.
 		caster.fireUseItemEvents(game, cItem);
-		if ((updatedCharges == 0) && cItem.getItemType().isPerishable() && (this.itemsHeld[slot] == cItem)) {
+		if ((updatedCharges == 0) && cItem.isPerishable() && (this.itemsHeld[slot] == cItem)) {
 			dropItem(game, caster, slot, caster.getX(), caster.getY(), false);
 			game.removeItem(cItem);
 		}
@@ -562,8 +562,8 @@ public class CAbilityInventory extends AbstractGenericNoIconAbility {
 			final boolean playUserUISounds) {
 		if ((item != null) && !item.isDead() && !item.isHidden() && isRequirementsMet(simulation, hero)) {
 			final CItemType itemType = item.getItemType();
-			if (this.canUseItems && itemType.isUseAutomaticallyWhenAcquired()) {
-				if (itemType.isActivelyUsed()) {
+			if (this.canUseItems && item.isUseAutomaticallyWhenAcquired()) {
+				if (item.isActivelyUsed()) {
 
 					// TODO when we give unit ability here, then use ability
 					final List<CAbility> addedAbilities = new ArrayList<>();

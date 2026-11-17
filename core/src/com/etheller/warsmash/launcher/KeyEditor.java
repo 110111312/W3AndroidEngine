@@ -93,10 +93,20 @@ public final class KeyEditor {
 		}
 	}
 
-	/** The key a typed character binds: a letter or a digit, as a capital; null for any other character. */
+	/**
+	 * The key a typed character binds: a letter or a digit, as a capital, or a printable punctuation mark as it is; null
+	 * for any other character. A comma is kept by its number, since the file's value ends at a comma, and the tilde is
+	 * the game's mark for Escape.
+	 */
 	public static String keyOfChar(final char c) {
 		if (((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9'))) {
 			return String.valueOf(c).toUpperCase(Locale.ROOT);
+		}
+		if (c == ',') {
+			return String.valueOf((int) c);
+		}
+		if ((c > ' ') && (c < 0x7F) && (c != '~') && (c != '|')) {
+			return String.valueOf(c);
 		}
 		return null;
 	}

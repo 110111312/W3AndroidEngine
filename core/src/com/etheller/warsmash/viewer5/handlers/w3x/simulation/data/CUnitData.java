@@ -997,7 +997,7 @@ public class CUnitData {
 		final String weaponSound = unitType.getFieldAsString(keys.weaponSound, 0);
 		final String weaponTypeName = unitType.getFieldAsString(keys.weaponType, 0);
 		CWeaponType weaponType = CWeaponType.NONE;
-		if (!"_".equals(weaponTypeName)) {
+		if (!"_".equals(weaponTypeName) && !weaponTypeName.isEmpty()) {
 			weaponType = CWeaponType.parseWeaponType(weaponTypeName);
 		}
 		if ((fallbackKeys != null) && !previousAttacks.isEmpty()) {

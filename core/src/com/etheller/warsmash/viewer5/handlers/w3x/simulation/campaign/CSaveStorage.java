@@ -16,14 +16,16 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import com.etheller.warsmash.launcher.StorageRoot;
 import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.GameOptions;
 
 /**
  * Where a player's saved games, game caches and campaign progress live: Save/&lt;profile&gt; in the application's own
- * storage (Gdx.files.local), which is the working folder on desktop and the private files folder on Android.
+ * storage (Gdx.files.local), which is the working folder on desktop and the private files folder on Android, or
+ * the folder the platform names in {@link StorageRoot} (Android keeps the profiles in the shared storage, where an
+ * uninstall leaves them).
  */
 public final class CSaveStorage {
 	public static final String SAVE_EXTENSION = ".w3z";
@@ -52,7 +54,7 @@ public final class CSaveStorage {
 	}
 
 	public static FileHandle profileFile(final String name) {
-		return Gdx.files.local("Save/" + profile + "/" + name);
+		return StorageRoot.local("Save/" + profile + "/" + name);
 	}
 
 	public static FileHandle savedGame(final String name) {

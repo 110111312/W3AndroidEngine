@@ -39,6 +39,7 @@ public class CBehaviorHarvest extends CAbstractRangedBehavior
 
 	public CBehavior reset(final CSimulation game, final CWidget target) {
 		this.abilityHarvest.setLastHarvestTarget(target);
+		this.abilityHarvest.setCycleForgotten(false);
 		this.poppedOut = false;
 		if (!(target instanceof CUnit)) {
 			this.abilityHarvest.resetMineSpeed(game, this.unit);

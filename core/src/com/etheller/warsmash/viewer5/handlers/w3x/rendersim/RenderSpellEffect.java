@@ -46,6 +46,8 @@ public class RenderSpellEffect extends AllocatedHandle implements RenderEffect, 
 	private float scriptZ;
 	private float scriptPitch;
 	private float scriptRoll;
+	private final EnumSet<SecondaryTag> scriptSubAnimations = EnumSet.noneOf(SecondaryTag.class);
+	private final List<Integer> scriptQueuedSequences = new java.util.ArrayList<>();
 
 	public RenderSpellEffect(final MdxComplexInstance modelInstance, final War3MapViewer war3MapViewer, final float yaw,
 			final PrimaryTag[] animationQueue, final EnumSet<SecondaryTag> requiredAnimationNames) {
@@ -69,7 +71,12 @@ public class RenderSpellEffect extends AllocatedHandle implements RenderEffect, 
 
 	@Override
 	public boolean updateAnimations(final War3MapViewer war3MapViewer, final float deltaTime) {
-		final boolean everythingDone = this.modelInstance.sequenceEnded && this.animationQueueIndex >= this.animationQueue.length;
+		if (this.modelInstance.sequenceEnded && !this.scriptQueuedSequences.isEmpty()
+				&& (this.animationQueueIndex >= this.animationQueue.length)) {
+			playScriptSequence(this.scriptQueuedSequences.remove(0));
+		}
+		final boolean everythingDone = this.modelInstance.sequenceEnded && this.animationQueueIndex >= this.animationQueue.length
+				&& this.scriptQueuedSequences.isEmpty();
 		if (everythingDone) {
 			if (this.killWhenDone) {
 				if (this.modelInstance.parent != null) {
@@ -288,6 +295,78 @@ public class RenderSpellEffect extends AllocatedHandle implements RenderEffect, 
 			offset = Math.max(0, Math.min(length, offset));
 		}
 		this.modelInstance.setFrame((int) (start + offset));
+	}
+
+	/** The sequence an animation name asks for (the script's name and the sub animations it set), or -1. */
+	private int selectScriptSequence(final String animationName) {
+		final EnumSet<PrimaryTag> primaryTags = EnumSet.noneOf(PrimaryTag.class);
+		final EnumSet<SecondaryTag> secondaryTags = EnumSet.noneOf(SecondaryTag.class);
+		Sequence.populateTags(primaryTags, secondaryTags, animationName == null ? "" : animationName);
+		secondaryTags.addAll(this.scriptSubAnimations);
+		final IndexedSequence sequence = SequenceUtils.selectSequence(Sequence.any(primaryTags), secondaryTags,
+				this.sequences, true);
+		return (sequence == null) ? -1 : sequence.index;
+	}
+
+	private void playScriptSequence(final int sequenceIndex) {
+		this.animationQueue = new PrimaryTag[0];
+		this.animationQueueIndex = 0;
+		final Sequence sequence = this.sequences.get(sequenceIndex);
+		// A stand animation keeps running, any other plays once and holds its last frame until the next one.
+		this.modelInstance.setSequenceLoopMode(sequence.getPrimaryTags().contains(PrimaryTag.STAND)
+				? SequenceLoopMode.ALWAYS_LOOP : SequenceLoopMode.NEVER_LOOP);
+		this.modelInstance.setSequence(sequenceIndex);
+	}
+
+	/** BlzSetSpecialEffectAnimation and BlzPlaySpecialEffect: the animation plays now, the queued ones are dropped. */
+	public void playScriptAnimation(final String animationName) {
+		final int index = selectScriptSequence(animationName);
+		if (index >= 0) {
+			this.scriptQueuedSequences.clear();
+			playScriptSequence(index);
+		}
+	}
+
+	/** BlzQueueSpecialEffectAnimation: plays after the animation playing now and the ones queued before. */
+	public void queueScriptAnimation(final String animationName) {
+		final int index = selectScriptSequence(animationName);
+		if (index >= 0) {
+			if (this.modelInstance.sequenceEnded && this.scriptQueuedSequences.isEmpty()) {
+				playScriptSequence(index);
+			}
+			else {
+				this.scriptQueuedSequences.add(index);
+			}
+		}
+	}
+
+	public void addScriptSubAnimation(final SecondaryTag tag) {
+		this.scriptSubAnimations.add(tag);
+	}
+
+	public void removeScriptSubAnimation(final SecondaryTag tag) {
+		this.scriptSubAnimations.remove(tag);
+	}
+
+	public void clearScriptSubAnimations() {
+		this.scriptSubAnimations.clear();
+	}
+
+	/** The scale of the three axes after BlzSetSpecialEffectMatrixScale, or the uniform scale. */
+	public void setScriptMatrixScale(final float x, final float y, final float z) {
+		this.modelInstance.setScale(new float[] { x, y, z });
+	}
+
+	public float getScriptScale() {
+		return this.modelInstance.localScale.x;
+	}
+
+	/** BlzResetSpecialEffectMatrix: the scale and the turn the script gave go back to what the effect had. */
+	public void resetScriptMatrix() {
+		this.modelInstance.setUniformScale(1f);
+		if (isScriptPlaced()) {
+			setScriptOrientation(this.yaw, 0, 0);
+		}
 	}
 
 	public void setScriptOrientation(final float yaw, final float pitch, final float roll) {

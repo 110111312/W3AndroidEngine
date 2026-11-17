@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 
 public class SubdirDataSource implements DataSource {
 	private final DataSource dataSource;
@@ -58,6 +59,18 @@ public class SubdirDataSource implements DataSource {
 		for (final String x : this.dataSource.getListfile()) {
 			if (x.startsWith(this.subdir)) {
 				results.add(x.substring(this.subdir.length()));
+			}
+		}
+		return results;
+	}
+
+	@Override
+	public Collection<String> getListfile(final Predicate<String> accept) {
+		final List<String> results = new ArrayList<>();
+		for (final String x : this.dataSource.getListfile(path -> path.startsWith(this.subdir))) {
+			final String inside = x.substring(this.subdir.length());
+			if (accept.test(inside)) {
+				results.add(inside);
 			}
 		}
 		return results;

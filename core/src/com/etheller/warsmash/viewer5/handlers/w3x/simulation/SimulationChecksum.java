@@ -10,6 +10,7 @@ import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
@@ -93,8 +94,8 @@ public final class SimulationChecksum {
 	 */
 	private static final Map<CSimulation, GameLines> GAME_LINES = new HashMap<>();
 
-	private final int[] crcs = new int[CATEGORIES.length];
-	private int total;
+	final int[] crcs = new int[CATEGORIES.length];
+	int total;
 	private final CRC32 segment = new CRC32();
 	private boolean capturing;
 	private int capturedCrc;
@@ -106,7 +107,7 @@ public final class SimulationChecksum {
 	private byte[] bytes = new byte[256];
 	private Writer detail;
 
-	private SimulationChecksum() {
+	SimulationChecksum() {
 	}
 
 	/**
@@ -319,51 +320,194 @@ public final class SimulationChecksum {
 		end();
 		final CUnit[] sorted = units.toArray(new CUnit[0]);
 		Arrays.sort(sorted, Comparator.comparingInt(CUnit::getHandleId));
-		for (final CUnit unit : sorted) {
-			begin(0, "unit", unit.getHandleId()).id("type", unit.getTypeId()).i("owner", unit.getPlayerIndex())
-					.f("x", unit.getX()).f("y", unit.getY()).f("facing", unit.getFacing())
-					.f("fly", unit.getFlyHeight()).f("life", unit.getLife()).f("mana", unit.getMana())
-					.b("dead", unit.isDead()).b("hidden", unit.isHidden()).b("paused", unit.isPaused())
-					.f("build", unit.getConstructionProgress()).i("gold", unit.getGold())
-					.i("userData", unit.getTriggerEditorCustomValue());
-			final CBehavior behavior = unit.getCurrentBehavior();
-			s("behavior", SimulationTypeCodes.of(behavior, "?"));
-			final COrder order = unit.getCurrentOrder();
-			if (order == null) {
-				s("order", "-");
+		final RowEmitter emitter = (checksum, key) -> checksum.unitRow(simulation, (CUnit) key);
+		if (this.detail != null) {
+			for (final CUnit unit : sorted) {
+				plainRow(unit, emitter);
 			}
-			else {
-				i("order", order.getOrderId()).i("orderAbility", order.getAbilityHandleId());
-				target("target", order.getTarget(simulation));
+			return;
+		}
+		final GameLines game = gameLines(simulation);
+		final RowCache rows;
+		synchronized (game) {
+			if (game.units == null) {
+				game.units = new RowCache();
 			}
-			i("queue", unit.getOrderQueue().size());
-			final CAbilityHero hero = unit.getHeroData();
-			if (hero != null) {
-				i("level", hero.getHeroLevel()).i("xp", hero.getXp());
+			rows = game.units;
+		}
+		synchronized (rows) {
+			hashRows(rows, sorted, emitter);
+		}
+	}
+
+	void hashRows(final RowCache rows, final Object[] keys, final RowEmitter emitter) throws IOException {
+		if (!rows.start()) {
+			// a game whose units nearly all change between two checksums gains nothing by keeping their rows
+			for (final Object key : keys) {
+				plainRow(key, emitter);
 			}
-			final CAbilityInventory inventory = unit.getInventoryData();
-			if (inventory != null) {
-				for (int slot = 0; slot < inventory.getItemCapacity(); slot++) {
-					final CItem item = inventory.getItemInSlot(slot);
-					name("slot", slot, "").value(item == null ? 0 : item.getHandleId());
-				}
+			return;
+		}
+		for (final Object key : keys) {
+			hashRow(rows, key, emitter);
+		}
+		rows.finish(keys.length);
+	}
+
+	void plainRow(final Object key, final RowEmitter emitter) throws IOException {
+		emitter.emit(this, key);
+		end();
+	}
+
+	/** The checksum of the rows so far. */
+	int checksumSoFar() {
+		flush();
+		return this.total;
+	}
+
+	/** One row's lines, written by calls of the line methods below; the row cache needs its values as they go by. */
+	interface RowEmitter {
+		void emit(SimulationChecksum checksum, Object key);
+	}
+
+	/**
+	 * A row is written once as the values its line is made of (the line methods, in this mode, take them down instead
+	 * of writing text). A row whose values are those it had at the last checksum is joined to the checksum by the
+	 * checksum of its line then; any other row's line is written out from its values, hashed, and kept. Everything the
+	 * line says is in the values, so a changed row cannot be taken for the one before.
+	 */
+	private void hashRow(final RowCache rows, final Object key, final RowEmitter emitter) {
+		this.fingerprint = true;
+		this.fingerprintLength = 0;
+		this.fingerprintStrings = rows;
+		try {
+			emitter.emit(this, key);
+		}
+		finally {
+			this.fingerprint = false;
+		}
+		RowCache.Row row = rows.rows.get(key);
+		if ((row != null) && row.matches(this.fingerprintValues, this.fingerprintLength)) {
+			rows.hits++;
+		}
+		else {
+			rows.misses++;
+			if (row == null) {
+				row = new RowCache.Row();
+				rows.rows.put(key, row);
 			}
-			for (final CAbility ability : unit.getAbilities()) {
-				final int handleId = ability.getHandleId();
-				name("a", handleId, "").value(ability.getAlias());
-				if (ability instanceof CLevelingAbility) {
-					name("a", handleId, ".level").value(((CLevelingAbility) ability).getLevel());
-				}
-				if (ability instanceof CBuff) {
-					name("a", handleId, ".left").value(((CBuff) ability).getDurationRemaining(simulation, unit));
-				}
-				final int cooldown = unit.getCooldownRemainingTicks(simulation, ability.getAlias());
-				if (cooldown != 0) {
-					name("a", handleId, ".cooldown").value(cooldown);
-				}
-				name("a", handleId, ".disabled").value(ability.isDisabled());
+			write(this.fingerprintValues, this.fingerprintLength, rows);
+			final int count = encodeLine();
+			row.set(this.fingerprintValues, this.fingerprintLength, crc32(this.encoded, count), count,
+					rows.shift(count));
+		}
+		row.seen = rows.generation;
+		flush();
+		add(0, row.crc, row.bytes, row.shift);
+	}
+
+	/** The row's line from its values, as the line methods write it when not taking the values down. */
+	private void write(final int[] values, final int length, final RowCache strings) {
+		for (int at = 0; at < length;) {
+			switch (values[at]) {
+			case FP_START:
+				start(values[at + 1], strings.string(values[at + 2]));
+				at += 3;
+				break;
+			case FP_KEY_INT:
+				this.line.append(values[at + 1]).append(' ');
+				at += 2;
+				break;
+			case FP_KEY_STRING:
+				this.line.append(strings.string(values[at + 1])).append(' ');
+				at += 2;
+				break;
+			case FP_NAME_STRING:
+				this.line.append(strings.string(values[at + 1])).append('=');
+				at += 2;
+				break;
+			case FP_NAME_INT:
+				this.line.append(values[at + 1]).append('=');
+				at += 2;
+				break;
+			case FP_NAME_PARTS:
+				this.line.append(strings.string(values[at + 1])).append(values[at + 2])
+						.append(strings.string(values[at + 3])).append('=');
+				at += 4;
+				break;
+			case FP_SEPARATOR:
+				this.line.append(' ');
+				at += 1;
+				break;
+			case FP_VALUE_INT:
+				this.line.append(values[at + 1]).append(' ');
+				at += 2;
+				break;
+			case FP_VALUE_FLOAT:
+				appendHex(this.line, values[at + 1]).append(' ');
+				at += 2;
+				break;
+			case FP_VALUE_STRING:
+				this.line.append(strings.string(values[at + 1])).append(' ');
+				at += 2;
+				break;
+			case FP_VALUE_ID:
+				this.line.append(new War3ID(values[at + 1]).toString()).append(' ');
+				at += 2;
+				break;
+			case FP_VALUE_NO_ID:
+				this.line.append("- ");
+				at += 1;
+				break;
+			default:
+				throw new IllegalStateException("Unknown value " + values[at]);
 			}
-			end();
+		}
+	}
+
+	private void unitRow(final CSimulation simulation, final CUnit unit) {
+		begin(0, "unit", unit.getHandleId()).id("type", unit.getTypeId()).i("owner", unit.getPlayerIndex())
+				.f("x", unit.getX()).f("y", unit.getY()).f("facing", unit.getFacing())
+				.f("fly", unit.getFlyHeight()).f("life", unit.getLife()).f("mana", unit.getMana())
+				.b("dead", unit.isDead()).b("hidden", unit.isHidden()).b("paused", unit.isPaused())
+				.f("build", unit.getConstructionProgress()).i("gold", unit.getGold())
+				.i("userData", unit.getTriggerEditorCustomValue());
+		final CBehavior behavior = unit.getCurrentBehavior();
+		s("behavior", SimulationTypeCodes.of(behavior, "?"));
+		final COrder order = unit.getCurrentOrder();
+		if (order == null) {
+			s("order", "-");
+		}
+		else {
+			i("order", order.getOrderId()).i("orderAbility", order.getAbilityHandleId());
+			target("target", order.getTarget(simulation));
+		}
+		i("queue", unit.getOrderQueue().size());
+		final CAbilityHero hero = unit.getHeroData();
+		if (hero != null) {
+			i("level", hero.getHeroLevel()).i("xp", hero.getXp());
+		}
+		final CAbilityInventory inventory = unit.getInventoryData();
+		if (inventory != null) {
+			for (int slot = 0; slot < inventory.getItemCapacity(); slot++) {
+				final CItem item = inventory.getItemInSlot(slot);
+				name("slot", slot, "").value(item == null ? 0 : item.getHandleId());
+			}
+		}
+		for (final CAbility ability : unit.getAbilities()) {
+			final int handleId = ability.getHandleId();
+			name("a", handleId, "").value(ability.getAlias());
+			if (ability instanceof CLevelingAbility) {
+				name("a", handleId, ".level").value(((CLevelingAbility) ability).getLevel());
+			}
+			if (ability instanceof CBuff) {
+				name("a", handleId, ".left").value(((CBuff) ability).getDurationRemaining(simulation, unit));
+			}
+			final int cooldown = unit.getCooldownRemainingTicks(simulation, ability.getAlias());
+			if (cooldown != 0) {
+				name("a", handleId, ".cooldown").value(cooldown);
+			}
+			name("a", handleId, ".disabled").value(ability.isDisabled());
 		}
 	}
 
@@ -468,6 +612,7 @@ public final class SimulationChecksum {
 
 	private static final class GameLines {
 		private DestructableLines destructables;
+		private RowCache units;
 		private final Map<GlobalScope, ScopeLines> scopes = new HashMap<>();
 	}
 
@@ -500,6 +645,107 @@ public final class SimulationChecksum {
 			this.values[at + 1] = Float.floatToIntBits(destructable.getX());
 			this.values[at + 2] = Float.floatToIntBits(destructable.getY());
 			this.values[at + 3] = Float.floatToIntBits(destructable.getLife());
+		}
+	}
+
+	/** The rows of a game's units as they were at the last checksum, by unit. */
+	static final class RowCache {
+		/** Rows kept above the number of units, and the checksums a game must have too many changed rows for. */
+		private static final int MIN_UNITS = 32;
+		private static final int SKIPPED_CHECKSUMS = 3;
+		private static final int SHIFTS = 4096;
+
+		final Map<Object, Row> rows = new HashMap<>();
+		int generation;
+		int hits;
+		int misses;
+		private int skip;
+		private boolean warm;
+		private final Map<String, Integer> ids = new HashMap<>();
+		private final List<String> strings = new ArrayList<>();
+		private final int[] shifts = new int[SHIFTS];
+		private final boolean[] shiftKnown = new boolean[SHIFTS];
+
+		static final class Row {
+			int[] values = new int[0];
+			int valueCount;
+			int crc;
+			long bytes;
+			int shift;
+			int seen;
+
+			boolean matches(final int[] other, final int otherLength) {
+				if (this.valueCount != otherLength) {
+					return false;
+				}
+				for (int i = 0; i < otherLength; i++) {
+					if (this.values[i] != other[i]) {
+						return false;
+					}
+				}
+				return true;
+			}
+
+			void set(final int[] other, final int otherLength, final int newCrc, final int byteCount,
+					final int newShift) {
+				if (this.values.length < otherLength) {
+					this.values = new int[otherLength];
+				}
+				System.arraycopy(other, 0, this.values, 0, otherLength);
+				this.valueCount = otherLength;
+				this.crc = newCrc;
+				this.bytes = byteCount;
+				this.shift = newShift;
+			}
+		}
+
+		int id(final String string) {
+			Integer id = this.ids.get(string);
+			if (id == null) {
+				id = this.strings.size();
+				this.ids.put(string, id);
+				this.strings.add(string);
+			}
+			return id;
+		}
+
+		String string(final int id) {
+			return this.strings.get(id);
+		}
+
+		int shift(final int bytes) {
+			if (bytes >= SHIFTS) {
+				return crcShift(bytes);
+			}
+			if (!this.shiftKnown[bytes]) {
+				this.shifts[bytes] = crcShift(bytes);
+				this.shiftKnown[bytes] = true;
+			}
+			return this.shifts[bytes];
+		}
+
+		/** Whether this checksum keeps rows; a game that changed nearly every row at the last one skips a few. */
+		boolean start() {
+			if (this.skip > 0) {
+				this.skip--;
+				return false;
+			}
+			this.generation++;
+			this.hits = 0;
+			this.misses = 0;
+			this.warm = !this.rows.isEmpty();
+			return true;
+		}
+
+		void finish(final int count) {
+			if (this.warm && (count >= MIN_UNITS) && ((this.misses * 3) > (count * 2))) {
+				this.skip = SKIPPED_CHECKSUMS;
+				this.rows.clear();
+				return;
+			}
+			if (this.rows.size() > count) {
+				this.rows.values().removeIf(row -> row.seen != this.generation);
+			}
 		}
 	}
 
@@ -848,8 +1094,54 @@ public final class SimulationChecksum {
 
 	private int category;
 
+	// The values a row is made of, as the line methods take them down for the row cache: a tag and its values each.
+	private static final int FP_START = 1;
+	private static final int FP_KEY_INT = 2;
+	private static final int FP_KEY_STRING = 3;
+	private static final int FP_NAME_STRING = 4;
+	private static final int FP_NAME_INT = 5;
+	private static final int FP_NAME_PARTS = 6;
+	private static final int FP_SEPARATOR = 7;
+	private static final int FP_VALUE_INT = 8;
+	private static final int FP_VALUE_FLOAT = 9;
+	private static final int FP_VALUE_STRING = 10;
+	private static final int FP_VALUE_ID = 11;
+	private static final int FP_VALUE_NO_ID = 12;
+
+	private boolean fingerprint;
+	private int[] fingerprintValues = new int[256];
+	private int fingerprintLength;
+	private RowCache fingerprintStrings;
+	private byte[] encoded;
+
+	private void take(final int tag) {
+		if ((this.fingerprintLength + 4) > this.fingerprintValues.length) {
+			this.fingerprintValues = Arrays.copyOf(this.fingerprintValues, this.fingerprintValues.length * 2);
+		}
+		this.fingerprintValues[this.fingerprintLength++] = tag;
+	}
+
+	private void take(final int tag, final int first) {
+		take(tag);
+		this.fingerprintValues[this.fingerprintLength++] = first;
+	}
+
+	private void take(final int tag, final int first, final int second) {
+		take(tag, first);
+		this.fingerprintValues[this.fingerprintLength++] = second;
+	}
+
+	private void take(final int tag, final int first, final int second, final int third) {
+		take(tag, first, second);
+		this.fingerprintValues[this.fingerprintLength++] = third;
+	}
+
 	private SimulationChecksum begin(final int category, final String kind, final String key) {
 		start(category, kind);
+		if (this.fingerprint) {
+			take(FP_KEY_STRING, this.fingerprintStrings.id(key));
+			return this;
+		}
 		this.line.append(key).append(' ');
 		if (this.detail != null) {
 			this.readable.append(key).append(' ');
@@ -857,8 +1149,12 @@ public final class SimulationChecksum {
 		return this;
 	}
 
-	private SimulationChecksum begin(final int category, final String kind, final int key) {
+	SimulationChecksum begin(final int category, final String kind, final int key) {
 		start(category, kind);
+		if (this.fingerprint) {
+			take(FP_KEY_INT, key);
+			return this;
+		}
 		this.line.append(key).append(' ');
 		if (this.detail != null) {
 			this.readable.append(key).append(' ');
@@ -867,6 +1163,10 @@ public final class SimulationChecksum {
 	}
 
 	private void start(final int category, final String kind) {
+		if (this.fingerprint) {
+			take(FP_START, category, this.fingerprintStrings.id(kind));
+			return;
+		}
 		this.category = category;
 		this.line.setLength(0);
 		this.line.append(kind).append(' ');
@@ -876,8 +1176,8 @@ public final class SimulationChecksum {
 		}
 	}
 
-	private void end() throws IOException {
-		// The line's UTF-8 bytes; nearly every line is ASCII, which needs no String and no encoder.
+	/** The line's UTF-8 bytes, in this.encoded; nearly every line is ASCII, which needs no String and no encoder. */
+	private int encodeLine() {
 		final int length = this.line.length();
 		if (this.bytes.length < length) {
 			this.bytes = new byte[Math.max(length, this.bytes.length * 2)];
@@ -893,6 +1193,13 @@ public final class SimulationChecksum {
 			}
 			encoded[index] = (byte) c;
 		}
+		this.encoded = encoded;
+		return count;
+	}
+
+	private void end() throws IOException {
+		final int count = encodeLine();
+		final byte[] encoded = this.encoded;
 		update(encoded, count);
 		if (this.detail != null) {
 			final CRC32 own = new CRC32();
@@ -957,6 +1264,26 @@ public final class SimulationChecksum {
 	// multiplying it with x^(8 * length) modulo the CRC polynomial, in the reflected bit order of CRC32.
 	private static final int POLYNOMIAL = 0xedb88320;
 	private static final int[] X_POWER_2N = new int[32];
+	private static final int[] CRC_TABLE = new int[256];
+
+	static {
+		for (int n = 0; n < 256; n++) {
+			int c = n;
+			for (int k = 0; k < 8; k++) {
+				c = (c & 1) != 0 ? POLYNOMIAL ^ (c >>> 1) : c >>> 1;
+			}
+			CRC_TABLE[n] = c;
+		}
+	}
+
+	/** CRC-32 as java.util.zip.CRC32 has it, without the call into native code that costs more than a short line. */
+	static int crc32(final byte[] bytes, final int count) {
+		int crc = ~0;
+		for (int i = 0; i < count; i++) {
+			crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+		}
+		return ~crc;
+	}
 
 	static {
 		int p = 1 << 30; // x^1
@@ -1001,7 +1328,11 @@ public final class SimulationChecksum {
 		return multiplyModP(shift, first) ^ second;
 	}
 
-	private SimulationChecksum name(final String name) {
+	SimulationChecksum name(final String name) {
+		if (this.fingerprint) {
+			take(FP_NAME_STRING, this.fingerprintStrings.id(name));
+			return this;
+		}
 		this.line.append(name).append('=');
 		if (this.detail != null) {
 			this.readable.append(name).append('=');
@@ -1010,6 +1341,10 @@ public final class SimulationChecksum {
 	}
 
 	private SimulationChecksum name(final int index) {
+		if (this.fingerprint) {
+			take(FP_NAME_INT, index);
+			return this;
+		}
 		this.line.append(index).append('=');
 		if (this.detail != null) {
 			this.readable.append(index).append('=');
@@ -1018,7 +1353,11 @@ public final class SimulationChecksum {
 	}
 
 	/** A name made of a prefix, a number and a suffix, as "a1234.level", without building it. */
-	private SimulationChecksum name(final String prefix, final int number, final String suffix) {
+	SimulationChecksum name(final String prefix, final int number, final String suffix) {
+		if (this.fingerprint) {
+			take(FP_NAME_PARTS, this.fingerprintStrings.id(prefix), number, this.fingerprintStrings.id(suffix));
+			return this;
+		}
 		this.line.append(prefix).append(number).append(suffix).append('=');
 		if (this.detail != null) {
 			this.readable.append(prefix).append(number).append(suffix).append('=');
@@ -1027,63 +1366,92 @@ public final class SimulationChecksum {
 	}
 
 	private void separator() {
+		if (this.fingerprint) {
+			take(FP_SEPARATOR);
+			return;
+		}
 		this.line.append(' ');
 		if (this.detail != null) {
 			this.readable.append(' ');
 		}
 	}
 
-	private void value(final int value) {
+	void value(final int value) {
+		if (this.fingerprint) {
+			take(FP_VALUE_INT, value);
+			return;
+		}
 		this.line.append(value).append(' ');
 		if (this.detail != null) {
 			this.readable.append(value).append(' ');
 		}
 	}
 
-	private void value(final boolean value) {
+	void value(final boolean value) {
+		if (this.fingerprint) {
+			take(FP_VALUE_INT, value ? 1 : 0);
+			return;
+		}
 		value(value ? "1" : "0");
 	}
 
-	private void value(final War3ID value) {
+	void value(final War3ID value) {
+		if (this.fingerprint) {
+			if (value == null) {
+				take(FP_VALUE_NO_ID);
+			}
+			else {
+				take(FP_VALUE_ID, value.getValue());
+			}
+			return;
+		}
 		value(value == null ? "-" : value.toString());
 	}
 
-	private void value(final float value) {
+	void value(final float value) {
 		final int bits = Float.floatToIntBits(value);
+		if (this.fingerprint) {
+			take(FP_VALUE_FLOAT, bits);
+			return;
+		}
 		appendHex(this.line, bits).append(' ');
 		if (this.detail != null) {
 			appendHex(this.readable.append(value).append('('), bits).append(") ");
 		}
 	}
 
-	private void value(final String value) {
+	void value(final String value) {
+		if (this.fingerprint) {
+			take(FP_VALUE_STRING, this.fingerprintStrings.id(value));
+			return;
+		}
 		this.line.append(value).append(' ');
 		if (this.detail != null) {
 			this.readable.append(value).append(' ');
 		}
 	}
 
-	private SimulationChecksum i(final String name, final int value) {
+	SimulationChecksum i(final String name, final int value) {
 		name(name).value(value);
 		return this;
 	}
 
-	private SimulationChecksum b(final String name, final boolean value) {
+	SimulationChecksum b(final String name, final boolean value) {
 		name(name).value(value);
 		return this;
 	}
 
-	private SimulationChecksum id(final String name, final War3ID value) {
+	SimulationChecksum id(final String name, final War3ID value) {
 		name(name).value(value);
 		return this;
 	}
 
-	private SimulationChecksum f(final String name, final float value) {
+	SimulationChecksum f(final String name, final float value) {
 		name(name).value(value);
 		return this;
 	}
 
-	private SimulationChecksum s(final String name, final String value) {
+	SimulationChecksum s(final String name, final String value) {
 		name(name).value(value);
 		return this;
 	}

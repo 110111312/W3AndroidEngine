@@ -87,7 +87,7 @@ public class CAbilityDrop extends AbstractGenericSingleIconNoSmartActiveAbility 
 		receiver.orderIdNotAccepted();
 	}
 
-	private static final float LAND_SEARCH_RADIUS = 64f;
+	private static final float LAND_SEARCH_RADIUS = 96f;
 
 	/** Whether a unit of that movement type can stand at or right next to the point. */
 	public static boolean isNearLand(final PathingGrid grid, final float x, final float y,

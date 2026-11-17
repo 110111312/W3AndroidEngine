@@ -32,7 +32,11 @@ public class RenderItemTypeData extends RenderWidgetTypeData<RenderItemType> {
 		if (path.toLowerCase().endsWith(".mdl") || path.toLowerCase().endsWith(".mdx")) {
 			path = path.substring(0, path.length() - 4);
 		}
-		final MdxModel model = this.mapViewer.loadModelMdx(path);
+		MdxModel model = this.mapViewer.loadModelMdx(path);
+		if (model == null) {
+			// The item still exists and can be picked up, it is just not seen.
+			model = this.mapViewer.emptyModel();
+		}
 		final MdxModel portraitModel = getPortraitModel(path, model);
 
 		final Element misc = this.miscData.get("Misc");

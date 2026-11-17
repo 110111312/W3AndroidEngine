@@ -330,7 +330,7 @@ public class AIController {
 	}
 
 	boolean isGuardCandidate(final CUnit unit) {
-		return isOurs(unit) && !unit.isBuilding() && !unit.isHidden() && !AIUnits.isWorkerType(unit)
+		return isOurs(unit) && !unit.isGuardPositionRemoved() && !unit.isBuilding() && !unit.isHidden() && !AIUnits.isWorkerType(unit)
 				&& (unit.getUnitType().getMovementType() != PathingGrid.MovementType.DISABLED);
 	}
 

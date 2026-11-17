@@ -1,11 +1,18 @@
 package com.etheller.warsmash.util;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.ref.SoftReference;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
+
+import org.apache.commons.io.IOUtils;
 
 import com.etheller.warsmash.datasources.DataSource;
 
@@ -15,20 +22,40 @@ public class WorldEditStrings implements StringBundle {
 
 	public WorldEditStrings(final DataSource dataSource) {
 		if (dataSource.has("UI\\WorldEditStrings.txt")) {
-			try (InputStream fis = dataSource.getResourceAsStream("UI\\WorldEditStrings.txt");
-					InputStreamReader reader = new InputStreamReader(fis, "utf-8")) {
-				this.bundle = new PropertyResourceBundle(reader);
-			}
-			catch (final IOException e) {
-				throw new RuntimeException(e);
-			}
+			this.bundle = loadBundle(dataSource, "UI\\WorldEditStrings.txt");
 		}
 		if (!dataSource.has("UI\\WorldEditGameStrings.txt")) {
 			throw new IllegalStateException("Game data not found: UI\\WorldEditGameStrings.txt is missing");
 		}
-		try (InputStream fis = dataSource.getResourceAsStream("UI\\WorldEditGameStrings.txt");
-				InputStreamReader reader = new InputStreamReader(fis, "utf-8")) {
-			this.bundlegs = new PropertyResourceBundle(reader);
+		this.bundlegs = loadBundle(dataSource, "UI\\WorldEditGameStrings.txt");
+	}
+
+	// The menu, the map viewer and the object data each read these files: about ten thousand strings per copy.
+	// Bundles are only read, so equal files share one, for as long as the memory is not needed.
+	private static final Map<String, SoftReference<Loaded>> LOADED = new HashMap<>();
+
+	private static final class Loaded {
+		private final byte[] content;
+		private final ResourceBundle bundle;
+
+		private Loaded(final byte[] content, final ResourceBundle bundle) {
+			this.content = content;
+			this.bundle = bundle;
+		}
+	}
+
+	private static synchronized ResourceBundle loadBundle(final DataSource dataSource, final String path) {
+		try (InputStream fis = dataSource.getResourceAsStream(path)) {
+			final byte[] content = IOUtils.toByteArray(fis);
+			final SoftReference<Loaded> reference = LOADED.get(path);
+			final Loaded known = reference == null ? null : reference.get();
+			if ((known != null) && Arrays.equals(known.content, content)) {
+				return known.bundle;
+			}
+			final ResourceBundle bundle = new PropertyResourceBundle(
+					new InputStreamReader(new ByteArrayInputStream(content), "utf-8"));
+			LOADED.put(path, new SoftReference<>(new Loaded(content, bundle)));
+			return bundle;
 		}
 		catch (final IOException e) {
 			throw new RuntimeException(e);

@@ -103,6 +103,8 @@ import com.etheller.warsmash.viewer5.SceneLightManager;
 import com.etheller.warsmash.viewer5.WorldScene;
 import com.etheller.warsmash.viewer5.gl.WebGL;
 import com.etheller.warsmash.viewer5.handlers.AbstractMdxModelViewer;
+import com.etheller.warsmash.viewer5.handlers.ResourceHandler;
+import com.etheller.warsmash.viewer5.handlers.ResourceHandlerConstructionParams;
 import com.etheller.warsmash.viewer5.handlers.mdx.MdxComplexInstance;
 import com.etheller.warsmash.viewer5.handlers.mdx.MdxHandler;
 import com.etheller.warsmash.viewer5.handlers.mdx.MdxHandler.ShaderEnvironmentType;
@@ -116,6 +118,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderFogGhost;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderDoodad;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderEffect;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderItem;
+import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderItemType;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderItemTypeData;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderLightningEffect;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderShadowType;
@@ -325,6 +328,8 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 	KeyedSounds uiSounds;
 	Collection<String> soundsToPreload;
 	int localPlayerIndex;
+	/** The interface switches a map script flips (cursor, selection, frames); local to this machine. */
+	public final ScriptUiState scriptUiState = new ScriptUiState();
 	private final SettableCommandErrorListener commandErrorListener;
 
 	public final List<TextTag> textTags = new ArrayList<>();
@@ -1723,6 +1728,18 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 		return this.intersectorFindsHighestWalkable.highestInstance;
 	}
 
+	/** Shows the item with the model of another item type (BlzSetItemSkin); false when that type has no model. */
+	public boolean setItemSkin(final CItem item, final War3ID skinId) {
+		final RenderItem renderItem = getRenderPeer(item);
+		final RenderItemType renderItemType = this.renderItemTypeData == null ? null
+				: this.renderItemTypeData.get(skinId);
+		if ((renderItem == null) || (renderItemType == null)) {
+			return false;
+		}
+		renderItem.updateItemModel(this, renderItemType);
+		return true;
+	}
+
 	public int getLocalPlayerIndex() {
 		return this.localPlayerIndex;
 	}
@@ -1986,6 +2003,15 @@ public class War3MapViewer extends AbstractMdxModelViewer implements MdxAssetLoa
 	@Override
 	public MdxModel loadModelMdx(final String path) {
 		return MapViewerEffects.loadModelMdx(this, path);
+	}
+
+	@Override
+	public MdxModel emptyModel() {
+		final ResourceHandler handler = (ResourceHandler) findHandler(".mdx")[0];
+		final MdxModel model = (MdxModel) handler
+				.construct(new ResourceHandlerConstructionParams(this, handler, ".mdx", this.mapPathSolver, ""));
+		model.loadData(null, null);
+		return model;
 	}
 
 	public static MdxModel loadModelMdx(final DataSource dataSource, final ModelViewer modelViewer, final String path,

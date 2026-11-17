@@ -161,7 +161,8 @@ public final class GestureRecognizer {
 		position[1] = event.y;
 		switch (this.state) {
 		case PENDING: {
-			final float slop = this.pen ? this.settings.penSlopPx : this.settings.tapSlopPx;
+			final float slop = (this.pen ? this.settings.penSlopPx : this.settings.tapSlopPx)
+					* this.listener.dragSlopFactor(this.downX, this.downY);
 			if (penDragButton(event)) {
 				this.secondary = true;
 			}

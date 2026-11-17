@@ -256,8 +256,16 @@ class LanLauncherModelTest {
 		assertTrue(this.model.lobby().iAmHost);
 		assertEquals("Thrall's Game", this.model.lobby().options.gameName);
 		assertEquals(4, this.model.lobby().rows.size());
-		until("the host's own mark", () -> this.model.lobby().readyHumans == 1 && this.model.mapReady());
+		until("the host's map", () -> this.model.mapReady());
+		assertEquals(0, this.model.lobby().readyHumans);
+		assertFalse(this.model.lobby().canStart());
+		assertEquals(LanLobbyView.HostAction.READY, this.model.lobby().hostAction());
+		this.model.startGame();
+		this.model.hostPrimary();
+		until("the host's own mark", () -> this.model.lobby().readyHumans == 1);
+		assertEquals(LanLauncherModel.Mode.LOBBY, this.model.mode());
 		assertTrue(this.model.lobby().canStart());
+		assertEquals(LanLobbyView.HostAction.START, this.model.lobby().hostAction());
 
 		// While the lobby stands no other game starts, and the lobby's own game does.
 		final LaunchRequest custom = new LaunchRequest();
@@ -273,8 +281,19 @@ class LanLauncherModelTest {
 		assertFalse(this.model.lobby().canStart());
 
 		until("the guest's map", () -> this.guestClient != null && this.guestClient.mapState() == LanClient.MAP_READY);
+		assertEquals(LanLobbyView.HostAction.NOT_READY, this.model.lobby().hostAction());
 		this.guestClient.setReady(true);
 		until("everybody ready", () -> this.model.lobby().canStart());
+		assertEquals(LanLobbyView.HostAction.START, this.model.lobby().hostAction());
+		this.guestClient.setReady(false);
+		until("the guest not ready", () -> !this.model.lobby().canStart());
+		assertEquals(LanLobbyView.HostAction.NOT_READY, this.model.lobby().hostAction());
+		this.model.hostPrimary();
+		until("the host not ready", () -> this.model.lobby().readyHumans == 0);
+		assertEquals(LanLobbyView.HostAction.READY, this.model.lobby().hostAction());
+		this.model.hostPrimary();
+		this.guestClient.setReady(true);
+		until("everybody ready again", () -> this.model.lobby().canStart());
 
 		this.guestClient.chat(LanProtocol.CHAT_ALL, "glhf");
 		until("the chat", () -> this.model.chat().stream().anyMatch(l -> !l.system && l.text.equals("glhf")));

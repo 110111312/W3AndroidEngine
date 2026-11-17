@@ -222,7 +222,9 @@ public class DesktopLauncher {
 						final Preferences launcher = Gdx.app.getPreferences(LauncherScreen.PREFERENCES);
 						GraphicsSettings.apply(warsmashIni,
 								GraphicsSet.fromIniName(launcher.getString(LauncherKeys.KEY_GRAPHICS, null)),
-								launcher.getInteger(LauncherKeys.KEY_TEXTURE_SIZE, 0));
+								launcher.contains(LauncherKeys.KEY_TEXTURE_SIZE)
+										? launcher.getInteger(LauncherKeys.KEY_TEXTURE_SIZE, 0)
+										: -1);
 					}
 					menuScreen.setWaitForTap(finalWaitForTap);
 					if (finalLauncherMode) {

@@ -12,8 +12,7 @@ import com.hiveworkshop.rms.parsers.mdlx.timeline.MdlxUInt32Timeline;
 
 public class AnimatedObject {
 	public MdxModel model;
-	public Map<War3ID, Sd<?>> timelines;
-	public Map<String, byte[]> variants;
+	public final VariantFlags variants = new VariantFlags();
 	// An object has a handful of timelines and they are read for every node every frame, so they are also kept in
 	// arrays searched by id: cheaper than a hash map lookup, which showed up in phone frame times.
 	private int[] timelineIds = new int[0];
@@ -21,16 +20,15 @@ public class AnimatedObject {
 
 	public AnimatedObject(final MdxModel model, final MdlxAnimatedObject object) {
 		this.model = model;
-		this.timelines = new HashMap<>();
-		this.variants = new HashMap<>();
+		final Map<War3ID, Sd<?>> timelines = new HashMap<>();
 
 		for (final MdlxTimeline<?> timeline : object.getTimelines()) {
-			this.timelines.put(timeline.getName(), createTypedSd(model, timeline));
+			timelines.put(timeline.getName(), createTypedSd(model, timeline));
 		}
-		this.timelineIds = new int[this.timelines.size()];
-		this.timelineArray = new Sd<?>[this.timelines.size()];
+		this.timelineIds = new int[timelines.size()];
+		this.timelineArray = new Sd<?>[timelines.size()];
 		int index = 0;
-		for (final Map.Entry<War3ID, Sd<?>> entry : this.timelines.entrySet()) {
+		for (final Map.Entry<War3ID, Sd<?>> entry : timelines.entrySet()) {
 			this.timelineIds[index] = entry.getKey().getValue();
 			this.timelineArray[index] = entry.getValue();
 			index++;
@@ -109,19 +107,53 @@ public class AnimatedObject {
 	}
 
 	public void addVariants(final War3ID name, final String variantName) {
-		final Sd<?> timeline = this.timelines.get(name);
+		final Sd<?> timeline = findTimeline(name);
 		final int sequences = this.model.getSequences().size();
-		final byte[] variants = new byte[sequences];
+		byte[] variants = new byte[sequences];
 
+		boolean any = false;
 		if (timeline != null) {
 			for (int i = 0; i < sequences; i++) {
 				if (timeline.isVariant(i)) {
 					variants[i] = 1;
+					any = true;
 				}
 			}
 		}
+		if (!any) {
+			// The flags are only read: the objects without a varying timeline share one array of the model.
+			variants = this.model.noVariants(sequences);
+		}
 
 		this.variants.put(variantName, variants);
+	}
+
+	/** The flags of an object's timelines by name: an object has two or three, so a plain list. */
+	public static final class VariantFlags {
+		private String[] names = new String[0];
+		private byte[][] flags = new byte[0][];
+
+		public byte[] get(final String name) {
+			for (int i = 0; i < this.names.length; i++) {
+				if (this.names[i].equals(name)) {
+					return this.flags[i];
+				}
+			}
+			return null;
+		}
+
+		void put(final String name, final byte[] value) {
+			for (int i = 0; i < this.names.length; i++) {
+				if (this.names[i].equals(name)) {
+					this.flags[i] = value;
+					return;
+				}
+			}
+			this.names = java.util.Arrays.copyOf(this.names, this.names.length + 1);
+			this.flags = java.util.Arrays.copyOf(this.flags, this.flags.length + 1);
+			this.names[this.names.length - 1] = name;
+			this.flags[this.flags.length - 1] = value;
+		}
 	}
 
 	public boolean isVariant(final War3ID name, final int sequence) {

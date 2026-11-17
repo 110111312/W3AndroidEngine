@@ -1,6 +1,5 @@
 package com.etheller.warsmash.units;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -67,7 +66,6 @@ public class Element extends HashedGameObject {
 		return getFieldAsList("abilList", this.parentTable);
 	}
 
-	HashMap<String, List<Element>> hashedLists = new HashMap<>();
 
 	@Override
 	public String toString() {

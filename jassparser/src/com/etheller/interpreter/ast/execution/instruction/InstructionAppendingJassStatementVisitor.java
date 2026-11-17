@@ -59,6 +59,7 @@ import com.etheller.interpreter.ast.util.JassSettings;
 import com.etheller.interpreter.ast.value.ArrayJassType;
 import com.etheller.interpreter.ast.value.BooleanJassValue;
 import com.etheller.interpreter.ast.value.CodeJassValue;
+import com.etheller.interpreter.ast.value.HandleJassType;
 import com.etheller.interpreter.ast.value.JassType;
 import com.etheller.interpreter.ast.value.JassValue;
 import com.etheller.interpreter.ast.value.JassValueVisitor;
@@ -85,6 +86,7 @@ public class InstructionAppendingJassStatementVisitor
 	private final ArrayDeque<LoopImpl> loopStartInstructionPtrs = new ArrayDeque<>();
 	private int localsOpCost;
 	private StructJassType enclosingStructType;
+	private JassType returnType;
 
 	public InstructionAppendingJassStatementVisitor(final List<JassInstruction> instructions, final Scope scope,
 			final List<JassParameter> parameters) {
@@ -310,9 +312,19 @@ public class InstructionAppendingJassStatementVisitor
 		return null;
 	}
 
+	public void setReturnType(final JassType returnType) {
+		this.returnType = returnType;
+	}
+
 	@Override
 	public Void visit(final JassReturnStatement statement) {
 		insertExpressionInstructions(statement.getExpression());
+		if (this.returnType == JassType.INTEGER) {
+			this.instructions.add(HandleIdAsIntegerInstruction.INSTANCE);
+		}
+		else if (this.returnType instanceof HandleJassType) {
+			this.instructions.add(new IntegerAsHandleInstruction((HandleJassType) this.returnType));
+		}
 		this.instructions.add(ReturnInstruction.RETURN_VALUE);
 		return null;
 	}

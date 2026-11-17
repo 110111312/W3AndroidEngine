@@ -34,6 +34,17 @@ public class PathingGrid {
 	private final float[] centerOffset;
 	private final List<RemovablePathingMapInstance> dynamicPathingInstances;
 	private int overlayVersion;
+	/**
+	 * The pathing cells each recent change of the overlay touched, newest last in a ring, each with the version the
+	 * change ended on; a reader that knows the version it last saw takes the cells changed since
+	 * ({@link #collectOverlayChanges}). A change that touches no cell of the grid is not listed.
+	 */
+	private static final int CHANGE_LOG = 256;
+	private final int[] changeVersions = new int[CHANGE_LOG];
+	private final int[] changeCells = new int[CHANGE_LOG * 4];
+	private int changesLogged;
+	private int changesDroppedVersion = Integer.MIN_VALUE;
+	private boolean changesSuppressed;
 	public static final short SCRIPT_PEON_BLOCKED = 1;
 	public static final short SCRIPT_PEON_OPEN = 2;
 	public static final short SCRIPT_AMPHIBIOUS_BLOCKED = 4;
@@ -58,6 +69,7 @@ public class PathingGrid {
 		final int rotation = (rotationInput + 450) % 360;
 		final int divW = ((rotation % 180) != 0) ? pathingTextureTga.getHeight() : pathingTextureTga.getWidth();
 		final int divH = ((rotation % 180) != 0) ? pathingTextureTga.getWidth() : pathingTextureTga.getHeight();
+		logTextureChange(positionX, positionY, divW, divH);
 		for (int j = 0; j < pathingTextureTga.getHeight(); j++) {
 			for (int i = 0; i < pathingTextureTga.getWidth(); i++) {
 				int x = i;
@@ -101,6 +113,61 @@ public class PathingGrid {
 				this.dynamicPathingOverlay[(yy * this.pathingGridSizes[0]) + xx] |= data;
 			}
 		}
+	}
+
+	/** The cells a texture of divW x divH cells centred on a position covers (see the blit), as a logged change. */
+	private void logTextureChange(final float positionX, final float positionY, final int divW, final int divH) {
+		if (this.changesSuppressed) {
+			return;
+		}
+		final int minX = getCellX(positionX) - (divW / 2);
+		final int minY = getCellY(positionY) - (divH / 2);
+		logChange(this.overlayVersion, minX, minY, (minX + divW) - 1, (minY + divH) - 1);
+	}
+
+	private void logChange(final int version, final int minX, final int minY, final int maxX, final int maxY) {
+		final int clippedMinX = Math.max(minX, 0);
+		final int clippedMinY = Math.max(minY, 0);
+		final int clippedMaxX = Math.min(maxX, this.pathingGridSizes[0] - 1);
+		final int clippedMaxY = Math.min(maxY, this.pathingGridSizes[1] - 1);
+		if ((clippedMinX > clippedMaxX) || (clippedMinY > clippedMaxY)) {
+			return;
+		}
+		final int slot = this.changesLogged % CHANGE_LOG;
+		if (this.changesLogged >= CHANGE_LOG) {
+			this.changesDroppedVersion = Math.max(this.changesDroppedVersion, this.changeVersions[slot]);
+		}
+		this.changeVersions[slot] = version;
+		this.changeCells[slot * 4] = clippedMinX;
+		this.changeCells[(slot * 4) + 1] = clippedMinY;
+		this.changeCells[(slot * 4) + 2] = clippedMaxX;
+		this.changeCells[(slot * 4) + 3] = clippedMaxY;
+		this.changesLogged++;
+	}
+
+	/**
+	 * The cells (minX, minY, maxX, maxY of each, written to out) whose pathing the overlay or a terrain flag changed
+	 * after the given version. Returns how many rectangles that is, or -1 when out holds too few of them or the log
+	 * no longer reaches back to the version.
+	 */
+	public int collectOverlayChanges(final int sinceVersion, final int[] out) {
+		if (sinceVersion < this.changesDroppedVersion) {
+			return -1;
+		}
+		int count = 0;
+		final int logged = Math.min(this.changesLogged, CHANGE_LOG);
+		for (int i = 0; i < logged; i++) {
+			final int slot = (this.changesLogged - logged + i) % CHANGE_LOG;
+			if (this.changeVersions[slot] <= sinceVersion) {
+				continue;
+			}
+			if ((count * 4) >= out.length) {
+				return -1;
+			}
+			System.arraycopy(this.changeCells, slot * 4, out, count * 4, 4);
+			count++;
+		}
+		return count;
 	}
 
 	public boolean checkPathingTexture(final float positionX, final float positionY, final int rotationInput,
@@ -336,6 +403,7 @@ public class PathingGrid {
 		final int index = (cellY * this.pathingGridSizes[0]) + cellX;
 		this.pathingGrid[index] = (short) (set ? (this.pathingGrid[index] | flag) : (this.pathingGrid[index] & ~flag));
 		this.overlayVersion++;
+		logChange(this.overlayVersion, cellX, cellY, cellX, cellY);
 	}
 
 	public void setScriptFlag(final float x, final float y, final short onFlag, final short offFlag,
@@ -697,9 +765,20 @@ public class PathingGrid {
 			PathingGrid.this.dynamicPathingInstances.remove(this);
 			Arrays.fill(PathingGrid.this.dynamicPathingOverlay, (short) 0);
 			PathingGrid.this.overlayVersion++;
-			for (final RemovablePathingMapInstance instance : PathingGrid.this.dynamicPathingInstances) {
-				instance.blit();
+			// The others are laid down again as they were; only the cells of this one can differ afterwards.
+			PathingGrid.this.changesSuppressed = true;
+			try {
+				for (final RemovablePathingMapInstance instance : PathingGrid.this.dynamicPathingInstances) {
+					instance.blit();
+				}
 			}
+			finally {
+				PathingGrid.this.changesSuppressed = false;
+			}
+			final boolean turned = (((this.rotationInput + 450) % 360) % 180) != 0;
+			PathingGrid.this.logTextureChange(this.positionX, this.positionY,
+					turned ? this.pathingTextureTga.getHeight() : this.pathingTextureTga.getWidth(),
+					turned ? this.pathingTextureTga.getWidth() : this.pathingTextureTga.getHeight());
 		}
 
 		public void add() {

@@ -65,11 +65,14 @@ public class JassNativeManager {
 	}
 
 	private JassFunction createConstantConverter(final HandleJassType returnType) {
-		return (arguments, globalScope, triggerScope) -> {
-			final int value = arguments.get(0).visit(IntegerJassValueVisitor.getInstance());
-			return this.convertedConstants.computeIfAbsent(returnType.getName() + ":" + value,
-					key -> new HandleJassValue(returnType, new ConvertedConstant(returnType.getName(), value)));
-		};
+		return (arguments, globalScope, triggerScope) -> convertedConstant(returnType,
+				arguments.get(0).visit(IntegerJassValueVisitor.getInstance()));
+	}
+
+	/** The constant Convert<Type>(value) gives, for natives that hand a script one of those constants. */
+	public HandleJassValue convertedConstant(final HandleJassType type, final int value) {
+		return this.convertedConstants.computeIfAbsent(type.getName() + ":" + value,
+				key -> new HandleJassValue(type, new ConvertedConstant(type.getName(), value)));
 	}
 
 	public void checkUnregisteredNatives() {

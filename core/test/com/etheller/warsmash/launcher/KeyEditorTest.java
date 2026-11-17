@@ -103,11 +103,16 @@ class KeyEditorTest {
 	}
 
 	@Test
-	void onlyLettersAndDigitsBind() {
+	void lettersDigitsAndPunctuationBind() {
 		assertEquals("A", KeyEditor.keyOfChar('a'));
 		assertEquals("7", KeyEditor.keyOfChar('7'));
+		assertEquals("-", KeyEditor.keyOfChar('-'));
+		assertEquals("[", KeyEditor.keyOfChar('['));
+		assertEquals("44", KeyEditor.keyOfChar(','));
+		assertEquals(",", CustomKeys.shown(KeyEditor.keyOfChar(',')));
 		assertNull(KeyEditor.keyOfChar(' '));
-		assertNull(KeyEditor.keyOfChar('-'));
+		assertNull(KeyEditor.keyOfChar('~'));
+		assertNull(KeyEditor.keyOfChar('\n'));
 	}
 
 	@Test

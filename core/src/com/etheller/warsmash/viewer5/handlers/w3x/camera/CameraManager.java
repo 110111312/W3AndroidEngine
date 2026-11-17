@@ -13,15 +13,12 @@ public abstract class CameraManager {
 	protected CanvasProvider canvas;
 	public Camera camera;
 	protected float moveSpeed;
-	protected float rotationSpeed;
-	protected float zoomFactor;
 	public float horizontalAngle;
 	public float verticalAngle;
 	public float distance;
 	protected Vector3 position;
 	public Vector3 target;
 	protected Vector3 worldUp;
-	protected Vector3 vecHeap;
 	protected Quaternion quatHeap;
 	protected Quaternion quatHeap2;
 
@@ -37,15 +34,12 @@ public abstract class CameraManager {
 		this.canvas = scene.viewer.canvas;
 		this.camera = scene.camera;
 		this.moveSpeed = 2;
-		this.rotationSpeed = (float) HORIZONTAL_ANGLE_INCREMENT;
-		this.zoomFactor = 0.1f;
 		this.horizontalAngle = 0;// (float) (Math.PI / 2);
 		this.verticalAngle = (float) Math.toRadians(34);
 		this.distance = 1650;
 		this.position = new Vector3();
 		this.target = new Vector3(0, 0, 0);
 		this.worldUp = new Vector3(0, 0, 1);
-		this.vecHeap = new Vector3();
 		this.quatHeap = new Quaternion();
 		this.quatHeap2 = new Quaternion();
 

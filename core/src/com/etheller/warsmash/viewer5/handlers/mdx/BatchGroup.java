@@ -16,6 +16,11 @@ import com.etheller.warsmash.viewer5.handlers.w3x.DynamicShadowManager;
 import com.etheller.warsmash.viewer5.handlers.w3x.W3xSceneLightManager;
 
 public class BatchGroup extends GenericGroup {
+	// Environment-map lighting of HD materials: overall strength, and the share kept at night when the DNC sun
+	// colour is black (the Reforged DNC lights carry no ambient). Tunable without a rebuild for screenshot matching.
+	private static final float HD_IBL_STRENGTH = Float.parseFloat(System.getProperty("warsmash.hdIblStrength", "1.0"));
+	private static final float HD_NIGHT_AMBIENT = Float.parseFloat(System.getProperty("warsmash.hdNightAmbient", "1.0"));
+
 	private static final float[] tempFloat3Array = new float[3];
 
 	private final MdxModel model;
@@ -94,6 +99,10 @@ public class BatchGroup extends GenericGroup {
 			shader.setUniformi("u_emissiveMap", 3);
 			shader.setUniformi("u_teamColorMap", 4);
 			shader.setUniformi("u_environmentMap", 5);
+			shader.setUniformf("u_fogColor", scene.fogSettings.color);
+			shader.setUniformf("u_fogParams", scene.fogSettings.style.ordinal(), scene.fogSettings.start,
+					scene.fogSettings.end, scene.fogSettings.density);
+			shader.setUniformf("u_iblParams", HD_IBL_STRENGTH, HD_NIGHT_AMBIENT);
 
 			gl.glEnable(GL20.GL_BLEND);
 			gl.glEnable(GL20.GL_DEPTH_TEST);
@@ -140,6 +149,7 @@ public class BatchGroup extends GenericGroup {
 					{
 						final Integer replaceable = replaceables.get(diffuseId);
 						if ((replaceable > 0) && (replaceable < WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT)
+								&& (instance.replaceableTextures_diffuse != null)
 								&& (instance.replaceableTextures_diffuse[replaceable] != null)) {
 							diffuseTexture = instance.replaceableTextures_diffuse[replaceable];
 						}
@@ -151,6 +161,7 @@ public class BatchGroup extends GenericGroup {
 					{
 						final Integer replaceable = replaceables.get(normalsId);
 						if ((replaceable > 0) && (replaceable < WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT)
+								&& (instance.replaceableTextures_normal != null)
 								&& (instance.replaceableTextures_normal[replaceable] != null)) {
 							normalsTexture = instance.replaceableTextures_normal[replaceable];
 						}
@@ -162,6 +173,7 @@ public class BatchGroup extends GenericGroup {
 					{
 						final Integer replaceable = replaceables.get(ormId);
 						if ((replaceable > 0) && (replaceable < WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT)
+								&& (instance.replaceableTextures_orm != null)
 								&& (instance.replaceableTextures_orm[replaceable] != null)) {
 							ormTexture = instance.replaceableTextures_orm[replaceable];
 						}

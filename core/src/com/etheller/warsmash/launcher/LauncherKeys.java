@@ -10,6 +10,8 @@ public final class LauncherKeys {
 	/** Whether the launcher looks for a newer engine release when it starts (on by default), and the one skipped. */
 	public static final String KEY_UPDATE_CHECK = "updateCheck";
 	public static final String KEY_UPDATE_SKIPPED = "updateSkipped";
+	/** Whether the profiles are kept in the shared storage, where an uninstall leaves them (on by default; Android). */
+	public static final String KEY_PROFILES_SHARED = "profilesShared";
 	/** Whether a crash leaves a log file on the phone (off by default; the player turns it on knowing what it holds). */
 	public static final String KEY_CRASH_LOGS = "crashLogs";
 	/** The desktop's in-game graphics and texture size limit; Android keeps them in the engine configuration. */

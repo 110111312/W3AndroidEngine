@@ -1,5 +1,6 @@
 package com.etheller.warsmash.parsers.jass;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ import com.etheller.interpreter.ast.value.visitor.RealJassValueVisitor;
 import com.etheller.interpreter.ast.value.visitor.StringJassValueVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability.AbilityDataUI;
+import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability.ItemUI;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
@@ -77,6 +79,10 @@ final class ObjectFieldNatives {
 	private static final Map<Integer, StringSet<CUnit>> UNIT_STRING_SET = new HashMap<>();
 	private static final Map<Integer, IntGet<CItem>> ITEM_INT_GET = new HashMap<>();
 	private static final Map<Integer, IntSet<CItem>> ITEM_INT_SET = new HashMap<>();
+	private static final Map<Integer, RealGet<CItem>> ITEM_REAL_GET = new HashMap<>();
+	private static final Map<Integer, RealSet<CItem>> ITEM_REAL_SET = new HashMap<>();
+	private static final Map<Integer, BoolGet<CItem>> ITEM_BOOL_GET = new HashMap<>();
+	private static final Map<Integer, BoolSet<CItem>> ITEM_BOOL_SET = new HashMap<>();
 	private static final Map<Integer, StringGet<CItem>> ITEM_STRING_GET = new HashMap<>();
 	private static final Map<Integer, StringSet<CItem>> ITEM_STRING_SET = new HashMap<>();
 
@@ -95,6 +101,25 @@ final class ObjectFieldNatives {
 	private static int id(final String fourChars) {
 		return (fourChars.charAt(0) << 24) | (fourChars.charAt(1) << 16) | (fourChars.charAt(2) << 8)
 				| fourChars.charAt(3);
+	}
+
+	private static final List<String> ITEM_ARMOR_TYPES = Arrays.asList("flesh", "metal", "wood", "ethereal", "stone");
+
+	private static void tintItemField(final String code, final int channel) {
+		ITEM_INT_GET.put(id(code), (n, i) -> {
+			final RenderItem peer = n.viewer.getRenderPeer(i);
+			return peer == null ? 255 : Math.round(peer.getInstance().vertexColor[channel] * 255f);
+		});
+		ITEM_INT_SET.put(id(code), (n, i, v) -> {
+			final RenderItem peer = n.viewer.getRenderPeer(i);
+			if (peer == null) {
+				return false;
+			}
+			final float[] color = peer.getInstance().vertexColor.clone();
+			color[channel] = Math.max(0, Math.min(255, v)) / 255f;
+			peer.getInstance().setVertexColor(color[0], color[1], color[2], color[3]);
+			return true;
+		});
 	}
 
 	private static void tintFields(final String code, final int channel) {
@@ -304,28 +329,80 @@ final class ObjectFieldNatives {
 			i.setLife(n.simulation, v);
 			return true;
 		});
+		// The name and the text belong to the item: another item of the same type keeps what its type says.
 		ITEM_STRING_GET.put(id("unam"), (n, i) -> {
 			final ItemUI ui = n.itemUI(i);
-			return ui == null ? "" : ui.getName();
+			return i.getNameOverride() != null ? i.getNameOverride() : ui == null ? "" : ui.getName();
 		});
 		ITEM_STRING_SET.put(id("unam"), (n, i, v) -> {
-			final ItemUI ui = n.itemUI(i);
-			if (ui == null) {
-				return false;
-			}
-			ui.setName(v);
+			i.setNameOverride(v);
 			return true;
 		});
 		ITEM_STRING_GET.put(id("ides"), (n, i) -> {
 			final ItemUI ui = n.itemUI(i);
-			return ui == null ? "" : ui.getDescription();
+			return i.getDescriptionOverride() != null ? i.getDescriptionOverride()
+					: ui == null ? "" : ui.getDescription();
 		});
 		ITEM_STRING_SET.put(id("ides"), (n, i, v) -> {
-			final ItemUI ui = n.itemUI(i);
-			if (ui == null) {
+			i.setDescriptionOverride(v);
+			return true;
+		});
+		ITEM_INT_GET.put(id("icid"), (n, i) -> i.getItemType().getCooldownGroup() == null ? 0
+				: i.getItemType().getCooldownGroup().getValue());
+		ITEM_INT_GET.put(id("ipri"), (n, i) -> i.getItemType().getPriority());
+		ITEM_INT_GET.put(id("iarm"), (n, i) -> {
+			final int index = ITEM_ARMOR_TYPES.indexOf(String.valueOf(i.getItemType().getArmorType()).toLowerCase());
+			return Math.max(0, index);
+		});
+		tintItemField("iclr", 0);
+		tintItemField("iclg", 1);
+		tintItemField("iclb", 2);
+		tintItemField("ical", 3);
+		ITEM_REAL_GET.put(id("isca"), (n, i) -> {
+			final RenderItem peer = n.viewer.getRenderPeer(i);
+			return peer == null ? 1f : peer.getInstance().localScale.x;
+		});
+		ITEM_REAL_SET.put(id("isca"), (n, i, v) -> {
+			final RenderItem peer = n.viewer.getRenderPeer(i);
+			if (peer == null) {
 				return false;
 			}
-			ui.setDescription(v);
+			peer.getInstance().setUniformScale(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("idrp"), (n, i) -> i.isDropOnDeath());
+		ITEM_BOOL_SET.put(id("idrp"), (n, i, v) -> {
+			i.setDropOnDeath(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("idro"), (n, i) -> i.isDroppable());
+		ITEM_BOOL_SET.put(id("idro"), (n, i, v) -> {
+			i.setDroppable(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("iper"), (n, i) -> i.isPerishable());
+		ITEM_BOOL_SET.put(id("iper"), (n, i, v) -> {
+			i.setPerishable(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("iprn"), (n, i) -> i.isIncludeAsRandomChoice());
+		ITEM_BOOL_SET.put(id("iprn"), (n, i, v) -> {
+			i.setIncludeAsRandomChoice(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("ipow"), (n, i) -> i.isUseAutomaticallyWhenAcquired());
+		ITEM_BOOL_SET.put(id("ipow"), (n, i, v) -> {
+			i.setUseAutomaticallyWhenAcquired(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("ipaw"), (n, i) -> i.isPawnable());
+		ITEM_BOOL_SET.put(id("ipaw"), (n, i, v) -> {
+			i.setPawnable(v);
+			return true;
+		});
+		ITEM_BOOL_GET.put(id("iusa"), (n, i) -> i.isActivelyUsed());
+		ITEM_BOOL_SET.put(id("iusa"), (n, i, v) -> {
+			i.setActivelyUsed(v);
 			return true;
 		});
 		ITEM_STRING_GET.put(id("iico"), (n, i) -> {
@@ -428,6 +505,28 @@ final class ObjectFieldNatives {
 	}
 
 	private void registerItemFields() {
+		add("BlzGetItemRealField", (arguments, globalScope, triggerScope) -> {
+			final CItem item = object(arguments, 0);
+			final RealGet<CItem> getter = ITEM_REAL_GET.get(field(arguments, 1));
+			return RealJassValue.of((item == null) || (getter == null) ? 0 : getter.get(this, item));
+		});
+		add("BlzSetItemRealField", (arguments, globalScope, triggerScope) -> {
+			final CItem item = object(arguments, 0);
+			final RealSet<CItem> setter = ITEM_REAL_SET.get(field(arguments, 1));
+			return BooleanJassValue.of((item != null) && (setter != null) && setter.set(this, item,
+					arguments.get(2).visit(RealJassValueVisitor.getInstance()).floatValue()));
+		});
+		add("BlzGetItemBooleanField", (arguments, globalScope, triggerScope) -> {
+			final CItem item = object(arguments, 0);
+			final BoolGet<CItem> getter = ITEM_BOOL_GET.get(field(arguments, 1));
+			return BooleanJassValue.of((item != null) && (getter != null) && getter.get(this, item));
+		});
+		add("BlzSetItemBooleanField", (arguments, globalScope, triggerScope) -> {
+			final CItem item = object(arguments, 0);
+			final BoolSet<CItem> setter = ITEM_BOOL_SET.get(field(arguments, 1));
+			return BooleanJassValue.of((item != null) && (setter != null)
+					&& setter.set(this, item, arguments.get(2).visit(BooleanJassValueVisitor.getInstance())));
+		});
 		add("BlzGetItemIntegerField", (arguments, globalScope, triggerScope) -> {
 			final CItem item = object(arguments, 0);
 			final IntGet<CItem> getter = ITEM_INT_GET.get(field(arguments, 1));

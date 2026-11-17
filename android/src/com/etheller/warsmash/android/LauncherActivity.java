@@ -415,6 +415,7 @@ public class LauncherActivity extends AndroidApplication {
 		super.onResume();
 		this.resumed = true;
 		currentActivity = this;
+		ProfileStorageAndroid.mirror(this.profiles);
 		this.lanTickAt = SystemClock.uptimeMillis();
 		this.lanClock.removeCallbacks(this.lanTick);
 		this.lanClock.post(this.lanTick);

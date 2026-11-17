@@ -62,4 +62,19 @@ public interface CPlayerUnitOrderListener {
 	 * point of the ground under it. Sent only while a trigger listens for that player's mouse event.
 	 */
 	void mouseEvent(int eventId, float x, float y, int button);
+
+	/**
+	 * Data the player's script sent to every machine (BlzSendSyncData): it fires the sync triggers of that player
+	 * with the same text everywhere.
+	 */
+	void syncData(String prefix, String data);
+
+	/** A key the player pressed or released, with the meta keys held, while a trigger listens for it. */
+	void keyEvent(int key, int metaKey, boolean down);
+
+	/**
+	 * What the player did to a frame the script made (a click, a value change, a text entry): the frame is told as
+	 * its number in the order the script created frames, the event as the number of its frameeventtype.
+	 */
+	void frameEvent(int frameId, int eventType, float value, String text);
 }

@@ -420,8 +420,10 @@ final class BlzNatives {
 
 	private void registerItems() {
 		add("BlzGetItemDescription", (arguments, globalScope, triggerScope) -> {
-			final ItemUI ui = itemUI(object(arguments, 0));
-			return text(ui == null ? "" : ui.getDescription());
+			final CItem item = object(arguments, 0);
+			final ItemUI ui = itemUI(item);
+			return text(ui == null ? "" : item.getDescriptionOverride() != null ? item.getDescriptionOverride()
+					: ui.getDescription());
 		});
 		add("BlzGetItemTooltip", (arguments, globalScope, triggerScope) -> {
 			final ItemUI ui = itemUI(object(arguments, 0));

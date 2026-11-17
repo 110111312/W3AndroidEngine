@@ -68,6 +68,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.SimulationChecksum;
  * <li>-frametime S: game seconds a frame passes on to the game (default 1, so 20 steps a frame).</li>
  * </ul>
  * The program ends with the game (EndGame, the end of a replay with -Dwarsmash.replay.exit=true) or at -steps.
+ * A map or replay that cannot be loaded ends it with status 5.
  *
  * -Dwarsmash.test.games=<map>;<map>;...;<steps> plays the maps one after another in this one process, each from the
  * menu: a game runs to the step, is left as Quit Mission leaves it, and the next map is started from the menu. The
@@ -198,6 +199,7 @@ public final class HeadlessLauncher {
 
 		final long started = System.nanoTime();
 		long gameStarted = 0;
+		boolean loadFailed = false;
 		int firstTick = 0;
 		CSimulation last = null;
 		int lastTick = -1;
@@ -242,6 +244,12 @@ public final class HeadlessLauncher {
 			else if ((last != null) && !LanHeadless.isRestarting()) {
 				break;
 			}
+			else if ((last == null) && (menuScreen.mapLoadErrorCount() > 0)) {
+				Log.error("Headless: the map or replay could not be loaded: "
+						+ (fileToLoad != null ? fileToLoad : replayToPlay));
+				loadFailed = true;
+				break;
+			}
 			this.frameId++;
 			this.currentFrameTime = frame;
 			game.render();
@@ -262,6 +270,9 @@ public final class HeadlessLauncher {
 			Log.error(e);
 		}
 		LanHeadless.finish();
+		if (loadFailed) {
+			return 5;
+		}
 		return LanHeadless.hasFailed() ? 4 : 0;
 	}
 
@@ -311,6 +322,10 @@ public final class HeadlessLauncher {
 						how = "ended";
 						checksum = String.format(Locale.ROOT, "%08x", SimulationChecksum.compute(simulation));
 					}
+					break;
+				}
+				if ((simulation == null) && (menuScreen.mapLoadErrorCount() > 0)) {
+					how = "load-error";
 					break;
 				}
 				if (((System.nanoTime() - started) > (simulation == null ? LOAD_TIMEOUT_NANOS : GAME_TIMEOUT_NANOS))

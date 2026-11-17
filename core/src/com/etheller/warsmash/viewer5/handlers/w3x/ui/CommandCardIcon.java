@@ -193,9 +193,17 @@ public class CommandCardIcon extends AbstractRenderableFrame implements Clickabl
 		return super.touchDown(screenX, screenY, button);
 	}
 
+	public char getHotkey() {
+		return this.hotkey;
+	}
+
 	public boolean checkHotkey(final char c, final int keycode) {
-		return (c == this.hotkey) || (Character.toUpperCase(c) == this.hotkey)
-				|| ((this.hotkey == 0x7E) && (keycode == Input.Keys.ESCAPE));
+		return hotkeyMatches(this.hotkey, c, keycode);
+	}
+
+	static boolean hotkeyMatches(final char hotkey, final char c, final int keycode) {
+		return (c == hotkey) || (Character.toUpperCase(c) == hotkey)
+				|| ((hotkey == 0x7E) && (keycode == Input.Keys.ESCAPE));
 	}
 
 	@Override
@@ -313,7 +321,8 @@ public class CommandCardIcon extends AbstractRenderableFrame implements Clickabl
 					.replaceAll("(?i:\\|cffffcc00)([^|]*)\\|r", "$1") : tip;
 		}
 		final String key = hotkey == 0x7E ? "ESC"
-				: Character.isLetterOrDigit(hotkey) ? String.valueOf(Character.toUpperCase(hotkey)) : null;
+				: Character.isLetterOrDigit(hotkey) ? String.valueOf(Character.toUpperCase(hotkey))
+						: ((hotkey > ' ') && (hotkey < 0x7F) && (hotkey != 0x7C)) ? String.valueOf(hotkey) : null;
 		// A gold level, "[|cffffcc00Level 1|r]", is no mark of the key.
 		if ((key == null) || tip.toLowerCase().contains(HOTKEY_COLOR + key.toLowerCase() + "|r")) {
 			return tip;

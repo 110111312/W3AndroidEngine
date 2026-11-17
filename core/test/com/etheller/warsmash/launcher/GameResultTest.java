@@ -238,4 +238,12 @@ class GameResultTest {
 		played.score = new GameResult.Score();
 		return played;
 	}
+
+	@Test
+	void resultButtonIsContinueAfterVictoryAndRestartAfterLoss() {
+		final GameResult result = won();
+		assertArrayEquals(new String[] { "CONTINUE", "Continue" }, CampaignResult.buttonLabel(result));
+		result.result = "defeat";
+		assertArrayEquals(new String[] { "RESTART", "Restart" }, CampaignResult.buttonLabel(result));
+	}
 }

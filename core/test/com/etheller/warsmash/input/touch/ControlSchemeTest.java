@@ -39,7 +39,7 @@ class ControlSchemeTest {
 		assertEquals(ControlScheme.TOUCH, TouchSettings.defaults(2f, ControlScheme.TOUCH).controlScheme);
 		assertEquals(ControlScheme.MOUSE_KEYBOARD,
 				TouchSettings.defaults(1f, ControlScheme.MOUSE_KEYBOARD).controlScheme);
-		assertEquals(TouchStyle.TAP_HOLD, TouchSettings.defaults(1f, ControlScheme.TOUCH).touchStyle);
+		assertEquals(TouchStyle.DOUBLE_TAP, TouchSettings.defaults(1f, ControlScheme.TOUCH).touchStyle);
 		assertEquals(64f, TouchSettings.defaults(2f, ControlScheme.TOUCH).doubleTapSlopPx);
 	}
 
@@ -113,14 +113,14 @@ class ControlSchemeTest {
 		Files.write(ini.toPath(), "[Touch]\nTouchControls=Off\nTapSlopDp=10\n".getBytes(StandardCharsets.UTF_8));
 		final EngineSettings engine = new EngineSettings(folder, "p", ini);
 		assertEquals(ControlScheme.MOUSE_KEYBOARD, engine.controlScheme(ControlScheme.TOUCH));
-		assertEquals(TouchStyle.TAP_HOLD, engine.touchStyle());
+		assertEquals(TouchStyle.DOUBLE_TAP, engine.touchStyle());
 		assertEquals(PenButton.SHIFT, engine.penButton());
 		engine.setControlScheme(ControlScheme.TOUCH);
-		engine.setTouchStyle(TouchStyle.DOUBLE_TAP);
+		engine.setTouchStyle(TouchStyle.TAP_HOLD);
 		engine.setPenButton(PenButton.DRAG);
 		final EngineSettings again = new EngineSettings(folder, "p", ini);
 		assertEquals(ControlScheme.TOUCH, again.controlScheme(ControlScheme.MOUSE_KEYBOARD));
-		assertEquals(TouchStyle.DOUBLE_TAP, again.touchStyle());
+		assertEquals(TouchStyle.TAP_HOLD, again.touchStyle());
 		assertEquals(PenButton.DRAG, again.penButton());
 		assertEquals("10", again.touch("TapSlopDp", ""));
 	}

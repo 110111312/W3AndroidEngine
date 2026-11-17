@@ -45,6 +45,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTargetVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorMove;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.harvest.CBehaviorHarvest;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.nightelf.units.CAbilityShadowmeld;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CAttackType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CGenericDamageFlags;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
@@ -349,7 +351,8 @@ final class UnitNatives extends CommonNatives {
 					final CUnit whichUnit = inGame(nullable(arguments, 0, ObjectJassValueVisitor.<CUnit>getInstance()));
 					final CPlayer whichPlayer = nullable(arguments, 1, ObjectJassValueVisitor.getInstance());
 					return BooleanJassValue.of((whichUnit != null) && (whichPlayer != null)
-							&& !isUnitVisibleToPlayer(whichUnit, whichPlayer));
+							&& (!isUnitVisibleToPlayer(whichUnit, whichPlayer)
+									|| isUnseenAfterCreation(whichUnit, whichPlayer)));
 				});
 		jassProgramVisitor.getJassNativeManager().createNative("IsUnitFogged",
 				(arguments, globalScope, triggerScope) -> {
@@ -726,7 +729,7 @@ final class UnitNatives extends CommonNatives {
 					final CUnit unit = nullable(arguments, 0, ObjectJassValueVisitor.<CUnit>getInstance());
 					final boolean flag = arguments.get(1).visit(BooleanJassValueVisitor.getInstance());
 					if (unit != null) {
-						unit.setPaused(flag);
+						unit.pauseByScript(flag, this.simulation);
 					}
 					return null;
 				});
@@ -1475,6 +1478,13 @@ final class UnitNatives extends CommonNatives {
 						// stunned.
 						orderId = OrderIds.stunned;
 					}
+					else if ((whichUnit != null) && (whichUnit.getCurrentBehavior() instanceof CBehaviorHarvest)
+							&& !whichUnit.getCurrentBehavior().interruptable()
+							&& (whichUnit.getOrderQueue().peek() != null)
+							&& (whichUnit.getOrderQueue().peek().getOrderId() == OrderIds.stop)) {
+						// 1.29: a stop given to a worker inside the mine reads 0 at once.
+						orderId = 0;
+					}
 					else if ((whichUnit != null) && whichUnit.isWalkingToPost()) {
 												orderId = OrderIds.move;
 					}
@@ -1761,6 +1771,14 @@ final class UnitNatives extends CommonNatives {
 					final CUnit whichUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
 					return RealJassValue.of(whichUnit.getUnitType().getCastBackswingPoint());
 				});
+	}
+
+	private boolean isUnseenAfterCreation(final CUnit unit, final CPlayer player) {
+		if (unit.getPlayerIndex() == player.getId()) {
+			return false;
+		}
+		final CAbilityShadowmeld shadowmeld = unit.getFirstAbilityOfType(CAbilityShadowmeld.class);
+		return (shadowmeld != null) && shadowmeld.isUnseenAfterCreation(this.simulation);
 	}
 
 	private boolean isLoaded(final CUnit unit) {

@@ -15,8 +15,8 @@ public final class PointerEvent {
 		FINGER, STYLUS, ERASER, MOUSE, UNKNOWN
 	}
 
-	/** Button bits as in Android MotionEvent: secondary (2) and stylus primary (32) both mean the pen button. */
-	public static final int PEN_BUTTON_MASK = 2 | 32;
+	/** Button bits as in Android MotionEvent: secondary (2), stylus primary (32) and stylus secondary (64) all mean the pen button. */
+	public static final int PEN_BUTTON_MASK = 2 | 32 | 64;
 
 	public final int pointerId;
 	public final Tool tool;

@@ -2,10 +2,12 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.neutral.creeps.CCreepCastAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.orc.blademaster.CAbilityMirrorImage;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTargetVisitor;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.behavior.CBehaviorAbilityBuilderBase;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.behavior.CBehaviorAbilityBuilderNoTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CRangedBehavior;
@@ -67,6 +69,13 @@ final class CUnitOrders {
 	static void order(final CUnit self, final CSimulation game, final COrder order, final boolean queue, final boolean autoOrder) {
 		if (self.isDead() || CAbilityMirrorImage.isHidingCaster(self)) {
 			return;
+		}
+		if (!queue && ((order == null) || (order.getOrderId() == OrderIds.stop))) {
+			// Measured on 1.29: a stop makes a worker forget its harvest cycle; a later return delivers once and idles.
+			final CAbilityHarvest harvest = self.getFirstAbilityOfType(CAbilityHarvest.class);
+			if (harvest != null) {
+				harvest.setCycleForgotten(true);
+			}
 		}
 		final boolean wasPostFight = self.aggro.postFight;
 		final int wasGuardReturn = self.aggro.guardReturn;
@@ -152,6 +161,13 @@ final class CUnitOrders {
 					}
 				}
 			}
+			if (((self.orders.currentBehavior == null) || (self.orders.currentBehavior == self.stopBehavior))
+					&& ((order == null) || (order.getOrderId() == OrderIds.stop)
+							|| (order.getOrderId() == OrderIds.holdposition) || (order.getOrderId() == OrderIds.move)
+							|| (order.getOrderId() == OrderIds.smart))) {
+				// Measured (1.29): an idle unit that stands over others is placed free of them when it takes the order.
+				CUnitPlacement.separateFromOverlapping(self, game);
+			}
 			self.setDefaultBehavior(self.stopBehavior);
 			final boolean walking = (self.moveBehavior != null) && (self.orders.currentBehavior == self.moveBehavior);
 			final CRangedBehavior walkingFor = walking ? self.moveBehavior.getRangedBehavior() : null;
@@ -184,6 +200,24 @@ final class CUnitOrders {
 		}
 	}
 
+	/** Drops the orders waiting behind the one the unit is on; the ability of each learns it was cancelled. */
+	static void clearQueuedOrders(final CUnit self, final CSimulation game) {
+		if (self.orders.orderQueue.isEmpty()) {
+			return;
+		}
+		for (final COrder queuedOrder : new java.util.ArrayList<>(self.orders.orderQueue)) {
+			if (queuedOrder != null) {
+				final CAbility ability = game.getAbility(queuedOrder.getAbilityHandleId());
+				if (ability != null) {
+					ability.onCancelFromQueue(game, self, queuedOrder.getPlayerIndex(), queuedOrder.getOrderId());
+				}
+			}
+		}
+		self.orders.orderQueue.clear();
+		self.stateNotifier.ordersChanged();
+		self.stateNotifier.waypointsChanged();
+	}
+
 	/**
 	 * Measured on 1.29: a creep sent to attack after its first moments thinks of its opening spell (Ensnare) at the
 	 * next beat of 0.5 s of its age, at once when the order comes on one; the beats run from its creation or wake.
@@ -211,7 +245,8 @@ final class CUnitOrders {
 	static void startCastInOrder(final CUnit self, final CSimulation game, final CBehavior behavior) {
 		if (self.isDead() || self.paused || self.production.constructing || (self.orders.currentBehavior != behavior)
 				|| !((behavior instanceof CBehaviorTargetSpellBase) || (behavior instanceof CBehaviorNoTargetSpellBase)
-						|| (behavior instanceof CBehaviorAbilityBuilderNoTarget))) {
+						|| (behavior instanceof CBehaviorAbilityBuilderNoTarget)
+						|| (behavior instanceof CBehaviorAbilityBuilderBase))) {
 			return;
 		}
 		final CBehavior next = behavior.update(game);
@@ -434,5 +469,5 @@ final class CUnitOrders {
 			}
 			beginBehavior(self, game, next, true);
 		}
-	}
+	}
 }

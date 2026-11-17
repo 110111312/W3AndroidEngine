@@ -1,5 +1,7 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability;
 
+import java.util.function.UnaryOperator;
+
 import com.badlogic.gdx.graphics.Texture;
 
 public class IconUI {
@@ -9,6 +11,8 @@ public class IconUI {
 	private int buttonPositionY;
 	private String toolTip;
 	private String uberTip;
+	/** Reads the object data the text refers to; null when the text is final. Run on first use, not for every icon. */
+	private UnaryOperator<String> uberTipParser;
 	private final char hotkey;
 
 	public IconUI(final IconTexture icon, final IconTexture iconDisabled, final int buttonPositionX, final int buttonPositionY,
@@ -20,6 +24,17 @@ public class IconUI {
 		this.toolTip = toolTip;
 		this.uberTip = uberTip;
 		this.hotkey = hotkey;
+	}
+
+	/**
+	 * @param uberTip       the text as the data has it
+	 * @param uberTipParser fills in the values the text refers to when the tip is first asked for, or null
+	 */
+	public IconUI(final IconTexture icon, final IconTexture iconDisabled, final int buttonPositionX,
+			final int buttonPositionY, final String toolTip, final String uberTip,
+			final UnaryOperator<String> uberTipParser, final char hotkey) {
+		this(icon, iconDisabled, buttonPositionX, buttonPositionY, toolTip, uberTip, hotkey);
+		this.uberTipParser = uberTipParser;
 	}
 
 	public Texture getIcon() {
@@ -43,6 +58,11 @@ public class IconUI {
 	}
 
 	public String getUberTip() {
+		if (this.uberTipParser != null) {
+			final UnaryOperator<String> parser = this.uberTipParser;
+			this.uberTipParser = null;
+			this.uberTip = parser.apply(this.uberTip);
+		}
 		return this.uberTip;
 	}
 
@@ -72,6 +92,7 @@ public class IconUI {
 	}
 
 	public void setUberTip(final String uberTip) {
+		this.uberTipParser = null;
 		this.uberTip = uberTip;
 	}
 }

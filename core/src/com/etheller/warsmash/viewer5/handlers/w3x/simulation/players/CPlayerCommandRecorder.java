@@ -161,4 +161,22 @@ public class CPlayerCommandRecorder implements CPlayerUnitOrderListener {
 		this.encoder.mouseEvent(eventId, x, y, button);
 		apply();
 	}
+
+	@Override
+	public void syncData(final String prefix, final String data) {
+		this.encoder.syncData(prefix, data);
+		apply();
+	}
+
+	@Override
+	public void keyEvent(final int key, final int metaKey, final boolean down) {
+		this.encoder.keyEvent(key, metaKey, down);
+		apply();
+	}
+
+	@Override
+	public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+		this.encoder.frameEvent(frameId, eventType, value, text);
+		apply();
+	}
 }

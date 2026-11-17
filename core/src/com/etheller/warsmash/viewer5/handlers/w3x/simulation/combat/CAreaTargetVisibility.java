@@ -7,7 +7,7 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat;
 public enum CAreaTargetVisibility {
 	/**
 	 * Fog and invisibility alike: auras, Immolation, Bladestorm, War Stomp, Thunder Clap, Frost Nova, Death and Decay,
-	 * splash of attacks, Cluster Rockets, Blizzard.
+	 * splash of attacks, Cluster Rockets, Blizzard, Kaboom.
 	 */
 	ANY,
 	/**
@@ -15,7 +15,7 @@ public enum CAreaTargetVisibility {
 	 */
 	NOT_HIDDEN_GHOST,
 	/**
-	 * Units in the fog, but not invisible ones the owner does not detect: bounce and line spill of attacks, Kaboom.
+	 * Units in the fog, but not invisible ones the owner does not detect: bounce and line spill of attacks.
 	 */
 	NOT_INVISIBLE,
 	/**

@@ -131,7 +131,7 @@ public class CAbilityStampede extends CAbilityPointTargetSpellBase {
 			@Override
 			public boolean canHitTarget(final CSimulation game, final CWidget target) {
 				final CUnit unit = target.visit(AbilityTargetVisitor.UNIT);
-				return (unit != null) && !unit.isUnitAlly(game.getPlayer(caster.getPlayerIndex()))
+				return (unit != null)
 						&& unit.canBeAreaTargetedBy(game, caster, CAreaTargetVisibility.ANY, getTargetsAllowed(),
 								BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset());
 			}
@@ -164,7 +164,6 @@ public class CAbilityStampede extends CAbilityPointTargetSpellBase {
 		final List<CUnit> targets = new ArrayList<>();
 		simulation.getWorldCollision().enumUnitsInRange(x, y, this.damageRadius, (enumUnit) -> {
 			if (enumUnit.canReach(x, y, this.damageRadius)
-					&& !enumUnit.isUnitAlly(simulation.getPlayer(caster.getPlayerIndex()))
 					&& enumUnit.canBeAreaTargetedBy(simulation, caster, CAreaTargetVisibility.ANY, getTargetsAllowed(),
 							BooleanAbilityTargetCheckReceiver.<CWidget>getInstance().reset())) {
 				targets.add(enumUnit);

@@ -121,7 +121,10 @@ public final class CReplayHeader {
 		return this.engineVersion;
 	}
 
-	/** The short git commit of the build that recorded the game, or "unknown". */
+	/**
+	 * The short git commit of the build that recorded the game, with "+" and a hash of its uncommitted changes when it
+	 * had any, or "unknown".
+	 */
 	public String getBuildCommit() {
 		return this.buildCommit;
 	}

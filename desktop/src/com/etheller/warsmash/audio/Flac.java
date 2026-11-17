@@ -16,17 +16,15 @@
 
 package com.etheller.warsmash.audio;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.StreamUtils;
-import com.etheller.warsmash.audio.Wav.WavInputStream;
 import com.etheller.warsmash.util.Log;
 
 import io.nayuki.flac.common.StreamInfo;
@@ -35,16 +33,11 @@ import io.nayuki.flac.decode.FlacDecoder;
 
 public class Flac {
 	static public class Music extends OpenALMusic {
-		private WavInputStream input;
+		private PcmStream input;
 
 		public Music(final OpenALAudio audio, final FileHandle file) {
 			super(audio, file);
-			try {
-				this.input = new WavInputStream(new ByteArrayInputStream(makeItWav(file)), file);
-			}
-			catch (final IOException ex) {
-				throw new GdxRuntimeException("Error reading FLAC file: " + this.file, ex);
-			}
+			this.input = open(file);
 			if (audio.noDevice) {
 				return;
 			}
@@ -54,16 +47,11 @@ public class Flac {
 		@Override
 		public int read(final byte[] buffer) {
 			if (this.input == null) {
-				try {
-					this.input = new WavInputStream(new ByteArrayInputStream(makeItWav(this.file)), this.file);
-				}
-				catch (final IOException ex) {
-					throw new GdxRuntimeException("Error reading FLAC file: " + this.file, ex);
-				}
+				this.input = open(this.file);
 				setup(this.input.channels, this.input.sampleRate);
 			}
 			try {
-				return this.input.read(buffer);
+				return this.input.read(buffer, 0, buffer.length);
 			}
 			catch (final IOException ex) {
 				throw new GdxRuntimeException("Error reading FLAC file: " + this.file, ex);
@@ -75,6 +63,15 @@ public class Flac {
 			StreamUtils.closeQuietly(this.input);
 			this.input = null;
 		}
+
+		private static PcmStream open(final FileHandle file) {
+			try {
+				return new PcmStream(file.readBytes());
+			}
+			catch (final IOException ex) {
+				throw new GdxRuntimeException("Error reading FLAC file: " + file, ex);
+			}
+		}
 	}
 
 	static public class Sound extends OpenALSound {
@@ -84,140 +81,190 @@ public class Flac {
 				return;
 			}
 
-			WavInputStream input = null;
-			try {
-				input = new WavInputStream(new ByteArrayInputStream(makeItWav(file)), file);
-				setup(StreamUtils.copyStreamToByteArray(input, input.dataRemaining), input.channels, input.sampleRate);
+			try (PcmStream input = new PcmStream(file.readBytes())) {
+				final byte[] pcm = new byte[(int) input.dataLength];
+				int total = 0;
+				while (total < pcm.length) {
+					final int count = input.read(pcm, total, pcm.length - total);
+					if (count < 0) {
+						break;
+					}
+					total += count;
+				}
+				if (total == pcm.length) {
+					input.read(new byte[1], 0, 1);
+				}
+				setup(total == pcm.length ? pcm : Arrays.copyOf(pcm, total), input.channels, input.sampleRate);
 			}
 			catch (final IOException ex) {
 				throw new GdxRuntimeException("Error reading FLAC file: " + file, ex);
 			}
-			finally {
-				StreamUtils.closeQuietly(input);
-			}
 		}
 	}
 
-	private static byte[] makeItWav(final FileHandle file) throws IOException {
-		// Decode input FLAC file
-		StreamInfo streamInfo;
-		int[][] samples;
-		try (FlacDecoder dec = new FlacDecoder(file.readBytes())) {
+	/**
+	 * Decodes a FLAC track block by block into 16-bit (or the source depth, up to 16) little endian PCM, as it is
+	 * read. Only one decoded block lives in memory, so long tracks and ambient loops need no sample arrays. Layouts
+	 * wider than stereo are folded to stereo, even channels to the left and odd ones to the right, since libgdx plays
+	 * only mono and stereo.
+	 */
+	static final class PcmStream implements Closeable {
+		private final FlacDecoder decoder;
+		private final StreamInfo streamInfo;
+		private final int sourceChannels;
+		private final int[][] block;
+		private final int[] counts = new int[2];
+		private final byte[] frame;
+		private final int bytesPerSample;
+		private final int downsampleBytes;
+		private final MessageDigest md5;
+		private final byte[] md5Buffer;
+		private int blockLength;
+		private int blockPosition;
+		private int frameLength;
+		private int framePosition;
+		private boolean finished;
+		private boolean md5Verified;
 
-			// Handle metadata header blocks
-			while (dec.readAndHandleMetadataBlock() != null) {
+		final int channels;
+		final int sampleRate;
+		final long dataLength;
+
+		PcmStream(final byte[] fileBytes) throws IOException {
+			this.decoder = new FlacDecoder(fileBytes);
+			while (this.decoder.readAndHandleMetadataBlock() != null) {
 				;
 			}
-			streamInfo = dec.streamInfo;
-			if ((streamInfo.sampleDepth % 8) != 0) {
+			this.streamInfo = this.decoder.streamInfo;
+			if ((this.streamInfo.sampleDepth % 8) != 0) {
 				throw new UnsupportedOperationException("Only whole-byte sample depth supported");
 			}
+			this.sourceChannels = this.streamInfo.numChannels;
+			this.channels = Math.min(this.sourceChannels, 2);
+			for (int j = 0; j < this.sourceChannels; j++) {
+				this.counts[j % 2]++;
+			}
+			this.sampleRate = this.streamInfo.sampleRate;
+			final int sourceBytes = this.streamInfo.sampleDepth / 8;
+			if (sourceBytes >= 3) {
+				this.downsampleBytes = sourceBytes - 2;
+				this.bytesPerSample = 2;
+			}
+			else {
+				this.downsampleBytes = 0;
+				this.bytesPerSample = sourceBytes;
+			}
+			this.dataLength = this.streamInfo.numSamples * this.channels * this.bytesPerSample;
+			this.block = new int[this.sourceChannels][65536];
+			this.frame = new byte[this.channels * this.bytesPerSample];
+			this.md5 = newMd5();
+			this.md5Buffer = new byte[this.sourceChannels * (this.streamInfo.sampleDepth / 8)];
+		}
 
-			// Decode every block
-			samples = new int[streamInfo.numChannels][(int) streamInfo.numSamples];
-			for (int off = 0;;) {
-				final int len = dec.readAudioBlock(samples, off);
-				if (len == 0) {
-					break;
-				}
-				off += len;
+		private static MessageDigest newMd5() {
+			try {
+				return MessageDigest.getInstance("MD5");
+			}
+			catch (final NoSuchAlgorithmException e) {
+				throw new AssertionError(e);
 			}
 		}
 
-		// Check audio MD5 hash
-		final byte[] expectHash = streamInfo.md5Hash;
-		if (Arrays.equals(expectHash, new byte[16])) {
-			Log.warn("Warning: MD5 hash field was blank");
-		}
-		else if (!Arrays.equals(StreamInfo.getMd5Hash(samples, streamInfo.sampleDepth), expectHash)) {
-			throw new DataFormatException("MD5 hash check failed");
-			// Else the hash check passed
-		}
-
-		// libGDX plays only mono and stereo: wider layouts (the quad ambient loops of the Reforged data) are folded
-		// to stereo, even channels to the left and odd ones to the right.
-		if (samples.length > 2) {
-			final int[][] stereo = new int[2][samples[0].length];
-			final int[] counts = new int[2];
-			for (int j = 0; j < samples.length; j++) {
-				counts[j % 2]++;
-			}
-			for (int i = 0; i < samples[0].length; i++) {
-				long left = 0;
-				long right = 0;
-				for (int j = 0; j < samples.length; j++) {
-					if ((j % 2) == 0) {
-						left += samples[j][i];
-					}
-					else {
-						right += samples[j][i];
-					}
-				}
-				stereo[0][i] = (int) (left / counts[0]);
-				stereo[1][i] = (int) (right / counts[1]);
-			}
-			samples = stereo;
-		}
-		final int numChannels = samples.length;
-
-		// Start writing WAV output file
-		int bytesPerSample = streamInfo.sampleDepth / 8;
-		final boolean needsDownscaleForLibgdx = bytesPerSample >= 3;
-		int downsampleBytes = 0;
-		if (needsDownscaleForLibgdx) {
-			downsampleBytes = bytesPerSample - 2;
-			bytesPerSample = 2;
-		}
-		final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(baos))) {
-			// Header chunk
-			final int sampleDataLen = samples[0].length * numChannels * bytesPerSample;
-			out.writeInt(0x52494646); // "RIFF"
-			writeLittleInt32(out, sampleDataLen + 36);
-			out.writeInt(0x57415645); // "WAVE"
-
-			// Metadata chunk
-			out.writeInt(0x666D7420); // "fmt "
-			writeLittleInt32(out, 16);
-			writeLittleInt16(out, 0x0001);
-			writeLittleInt16(out, numChannels);
-			writeLittleInt32(out, streamInfo.sampleRate);
-			writeLittleInt32(out, streamInfo.sampleRate * numChannels * bytesPerSample);
-			writeLittleInt16(out, numChannels * bytesPerSample);
-			writeLittleInt16(out, needsDownscaleForLibgdx ? 16 : streamInfo.sampleDepth);
-
-			// Audio data chunk ("data")
-			out.writeInt(0x64617461); // "data"
-			writeLittleInt32(out, sampleDataLen);
-			for (int i = 0; i < samples[0].length; i++) {
-				for (int j = 0; j < samples.length; j++) {
-					int val = samples[j][i];
-					for (int k = 0; k < downsampleBytes; k++) {
-						val = val >>> 8;
-					}
-					if (bytesPerSample == 1) {
-						out.write(val + 128); // Convert to unsigned, as per WAV PCM conventions
-					}
-					else { // 2 <= bytesPerSample <= 4
-						for (int k = 0; k < bytesPerSample; k++) {
-							out.write(val >>> (k * 8)); // Little endian
-						}
+		/** Fills up to {@code length} bytes; returns the count, or -1 at the end of the track. */
+		int read(final byte[] buffer, final int offset, final int length) throws IOException {
+			int written = 0;
+			while (written < length) {
+				if (this.framePosition == this.frameLength) {
+					if (!nextFrame()) {
+						break;
 					}
 				}
+				final int count = Math.min(length - written, this.frameLength - this.framePosition);
+				System.arraycopy(this.frame, this.framePosition, buffer, offset + written, count);
+				this.framePosition += count;
+				written += count;
 			}
-			out.flush();
-			return baos.toByteArray();
+			return (written == 0) && (length > 0) ? -1 : written;
+		}
+
+		/** True when the stored audio hash matched, or was blank; false before the end of the track. */
+		boolean isVerified() {
+			return this.md5Verified;
+		}
+
+		private boolean nextFrame() throws IOException {
+			if (this.blockPosition == this.blockLength) {
+				if (this.finished) {
+					return false;
+				}
+				this.blockLength = this.decoder.readAudioBlock(this.block, 0);
+				this.blockPosition = 0;
+				if (this.blockLength == 0) {
+					this.finished = true;
+					verifyMd5();
+					return false;
+				}
+				hashBlock();
+			}
+			final int i = this.blockPosition++;
+			int p = 0;
+			for (int c = 0; c < this.channels; c++) {
+				int val;
+				if (this.sourceChannels > 2) {
+					long sum = 0;
+					for (int j = c; j < this.sourceChannels; j += 2) {
+						sum += this.block[j][i];
+					}
+					val = (int) (sum / this.counts[c]);
+				}
+				else {
+					val = this.block[c][i];
+				}
+				for (int k = 0; k < this.downsampleBytes; k++) {
+					val = val >>> 8;
+				}
+				if (this.bytesPerSample == 1) {
+					this.frame[p++] = (byte) (val + 128);
+				}
+				else {
+					for (int k = 0; k < this.bytesPerSample; k++) {
+						this.frame[p++] = (byte) (val >>> (k * 8));
+					}
+				}
+			}
+			this.frameLength = p;
+			this.framePosition = 0;
+			return true;
+		}
+
+		private void hashBlock() {
+			final int numBytes = this.streamInfo.sampleDepth / 8;
+			for (int i = 0; i < this.blockLength; i++) {
+				int l = 0;
+				for (int j = 0; j < this.sourceChannels; j++) {
+					final int val = this.block[j][i];
+					for (int k = 0; k < numBytes; k++) {
+						this.md5Buffer[l++] = (byte) (val >>> (k << 3));
+					}
+				}
+				this.md5.update(this.md5Buffer, 0, l);
+			}
+		}
+
+		private void verifyMd5() throws IOException {
+			final byte[] expectHash = this.streamInfo.md5Hash;
+			if (Arrays.equals(expectHash, new byte[16])) {
+				Log.warn("Warning: MD5 hash field was blank");
+			}
+			else if (!Arrays.equals(this.md5.digest(), expectHash)) {
+				throw new DataFormatException("MD5 hash check failed");
+			}
+			this.md5Verified = true;
+		}
+
+		@Override
+		public void close() throws IOException {
+			this.decoder.close();
 		}
 	}
-
-	// Helper members for writing WAV files
-
-	private static void writeLittleInt16(final DataOutputStream out, final int x) throws IOException {
-		out.writeShort(Integer.reverseBytes(x) >>> 16);
-	}
-
-	private static void writeLittleInt32(final DataOutputStream out, final int x) throws IOException {
-		out.writeInt(Integer.reverseBytes(x));
-	}
-
 }

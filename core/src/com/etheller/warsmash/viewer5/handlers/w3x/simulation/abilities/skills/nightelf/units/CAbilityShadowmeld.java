@@ -14,6 +14,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.skills.CBehaviorNoTargetSpellBase;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.AbilityTargetCheckReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.StateModBuff;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.StateModBuffType;
 
@@ -33,6 +34,7 @@ public class CAbilityShadowmeld extends CAbilityNoTargetSpellBase {
 	private boolean eligible;
 	private boolean lastBlockedByDay = true;
 	private int meldTick;
+	private int unseenUntilTick = Integer.MIN_VALUE;
 
 	public CAbilityShadowmeld(final int handleId, final War3ID alias) {
 		super(handleId, alias);
@@ -51,6 +53,30 @@ public class CAbilityShadowmeld extends CAbilityNoTargetSpellBase {
 		this.permanent = worldEditorAbility.getFieldAsBoolean(AbilityFields.DATA_D + level, 0);
 		setCastingPrimaryTag(PrimaryTag.STAND);
 		setCastingSecondaryTags(SequenceUtils.EMPTY);
+	}
+
+	@Override
+	public void onAdd(final CSimulation game, final CUnit unit) {
+		super.onAdd(game, unit);
+		// Measured on 1.29: a unit made at night counts as unseen by its enemies for its first 0.1 s.
+		this.unseenUntilTick = game.isNight() ? game.getGameTurnTick() + CTimer.wholeSteps(0.1f)
+				: Integer.MIN_VALUE;
+	}
+
+	public boolean isUnseenAfterCreation(final CSimulation game) {
+		return game.getGameTurnTick() <= this.unseenUntilTick;
+	}
+
+	// Measured on 1.29: the order is refused by day.
+	@Override
+	protected void innerCheckCanTargetNoTarget(final CSimulation game, final CUnit unit, final int orderId,
+			final AbilityTargetCheckReceiver<Void> receiver) {
+		if (this.permanent || game.isNight()) {
+			receiver.targetOk(null);
+		}
+		else {
+			receiver.orderIdNotAccepted();
+		}
 	}
 
 	@Override

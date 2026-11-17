@@ -33,6 +33,8 @@ import net.warsmash.lan.protocol.LanProtocol;
  */
 final class LanPage extends LauncherViews {
 	private static final int RED = Color.rgb(0xFF, 0x60, 0x60);
+	private static final int NOTIFICATION_REQUEST = 6112;
+	private static boolean notificationsAsked;
 
 	private List<GameCatalog.MapEntry> maps;
 	private GameCatalog.MapDetails mapDetails;
@@ -53,10 +55,19 @@ final class LanPage extends LauncherViews {
 		super(activity);
 	}
 
+	/** Android 13+: the session service's notification needs the permission; asked on the first visit only. */
+	private void askNotificationsOnce() {
+		if (!notificationsAsked) {
+			notificationsAsked = true;
+			LanSessionService.requestNotificationPermission(this.activity, NOTIFICATION_REQUEST);
+		}
+	}
+
 	/** The rail's Local Area Network entry: the lobby while there is one, else the page last used. */
 	void showLan() {
 		final LanLauncherModel model = this.activity.lan();
 		this.activity.askLanChecksum();
+		askNotificationsOnce();
 		model.pageShown();
 		if (model.inSession()) {
 			this.activity.lobbyPage.showLobby();

@@ -112,8 +112,45 @@ final class MapViewerPrewarm {
 		}
 	}
 
-	private static String unescape(final String jassString) {
-		return jassString.replace("\\\\", "\\").replace("\\\"", "\"");
+	/** Reads the escapes left to right in one pass, as the game's script reader does: a pair is never reread. */
+	static String unescape(final String jassString) {
+		if (jassString.indexOf('\\') == -1) {
+			return jassString;
+		}
+		final StringBuilder result = new StringBuilder(jassString.length());
+		for (int i = 0; i < jassString.length(); i++) {
+			final char c = jassString.charAt(i);
+			if ((c != '\\') || (i + 1 == jassString.length())) {
+				result.append(c);
+				continue;
+			}
+			final char escaped = jassString.charAt(++i);
+			switch (escaped) {
+			case 'n':
+				result.append('\n');
+				break;
+			case 't':
+				result.append('\t');
+				break;
+			case 'r':
+				result.append('\r');
+				break;
+			case 'b':
+				result.append('\b');
+				break;
+			case 'f':
+				result.append('\f');
+				break;
+			case '"':
+			case '\\':
+				result.append(escaped);
+				break;
+			default:
+				result.append(c).append(escaped);
+				break;
+			}
+		}
+		return result.toString();
 	}
 
 	/**

@@ -39,6 +39,7 @@ public class CBehaviorDrop implements CRangedBehavior {
 	private AbilityPointTarget dropOrigin;
 	private int lastDropTick = 0;
 	private boolean dropping;
+	private float[] shoreSpot;
 
 	public CBehaviorDrop(final CUnit unit, final CAbilityDrop ability) {
 		this.unit = unit;
@@ -50,6 +51,7 @@ public class CBehaviorDrop implements CRangedBehavior {
 		this.meetingPoint = null;
 		this.dropOrigin = null;
 		this.dropping = false;
+		this.shoreSpot = null;
 		this.lastDropTick = game.getGameTurnTick() - 1000000;
 		final CAbilityCargoHold cargoData = this.unit.getCargoData();
 		if ((cargoData == null) || cargoData.isEmpty()) {
@@ -60,7 +62,7 @@ public class CBehaviorDrop implements CRangedBehavior {
 			return dropStep(game);
 		}
 		if (this.unit.isMovementDisabled() || isNearWater(game, cargoData)) {
-			return this.unit.pollNextOrderBehavior(game);
+			return unloadAtShore(game, cargoData);
 		}
 		float[] meeting = CargoReach.reachableOnTheWay(game, this.unit, target.x, target.y,
 				(x, y) -> dropSpotFrom(game, x, y) != null);
@@ -69,9 +71,27 @@ public class CBehaviorDrop implements CRangedBehavior {
 		}
 		this.meetingPoint = new AbilityPointTarget(meeting[0], meeting[1]);
 		if (isAtMeetingPoint()) {
-			return this.unit.pollNextOrderBehavior(game);
+			return unloadAtShore(game, cargoData);
 		}
 		return this.unit.getMoveBehavior().reset(this.meetingPoint, this, false);
+	}
+
+	/**
+	 * Measured on 1.29: a ship by the shore told to unload on a point it cannot unload on or sail towards puts its
+	 * cargo on the ground nearest to it at once, without moving; a ship with no ground within the cargo hold area
+	 * does nothing.
+	 */
+	private CBehavior unloadAtShore(final CSimulation game, final CAbilityCargoHold cargoData) {
+		if (this.unit.getMovementType() == MovementType.FLOAT) {
+			final float[] spot = cargoData.findDropSpot(game, this.unit, cargoData.getUnit(0), this.unit.getX(),
+					this.unit.getY());
+			if (spot != null) {
+				this.shoreSpot = spot;
+				this.dropping = true;
+				return dropStep(game);
+			}
+		}
+		return this.unit.pollNextOrderBehavior(game);
 	}
 
 	/**
@@ -114,6 +134,9 @@ public class CBehaviorDrop implements CRangedBehavior {
 	}
 
 	private float[] dropSpot(final CSimulation game) {
+		if (this.shoreSpot != null) {
+			return this.shoreSpot;
+		}
 		if (this.dropOrigin != null) {
 			return dropSpotFrom(game, this.dropOrigin.x, this.dropOrigin.y);
 		}
@@ -231,8 +254,8 @@ public class CBehaviorDrop implements CRangedBehavior {
 			return false;
 		}
 		final CUnit dropped = cargoData.dropUnitByIndex(simulation, this.unit, 0, spot[0], spot[1]);
-		if (StrictMath.hypot(dropped.getX() - this.target.x, dropped.getY() - this.target.y) > cargoData
-				.getDropRadius()) {
+		if ((this.shoreSpot == null) && (StrictMath.hypot(dropped.getX() - this.target.x,
+				dropped.getY() - this.target.y) > cargoData.getDropRadius())) {
 			dropped.order(simulation, OrderIds.move, new AbilityPointTarget(this.target.x, this.target.y));
 		}
 		return true;

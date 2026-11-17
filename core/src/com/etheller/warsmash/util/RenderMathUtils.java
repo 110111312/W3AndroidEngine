@@ -3,6 +3,7 @@ package com.etheller.warsmash.util;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.CharBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
@@ -120,32 +121,6 @@ public enum RenderMathUtils {
 		dest.set(left); // TODO better performance here, remove the extra
 						// copying
 		dest.mul(right);
-	}
-
-	public static Quaternion rotateX(final Quaternion out, final Quaternion a, float rad) {
-		rad *= 0.5;
-
-		final float ax = a.x, ay = a.y, az = a.z, aw = a.w;
-		final float bx = (float) Math.sin(rad), bw = (float) Math.cos(rad);
-
-		out.x = (ax * bw) + (aw * bx);
-		out.y = (ay * bw) + (az * bx);
-		out.z = (az * bw) - (ay * bx);
-		out.w = (aw * bw) - (ax * bx);
-		return out;
-	}
-
-	public static Quaternion rotateY(final Quaternion out, final Quaternion a, float rad) {
-		rad *= 0.5;
-
-		final float ax = a.x, ay = a.y, az = a.z, aw = a.w;
-		final float by = (float) Math.sin(rad), bw = (float) Math.cos(rad);
-
-		out.x = (ax * bw) - (az * by);
-		out.y = (ay * bw) + (aw * by);
-		out.z = (az * bw) + (ax * by);
-		out.w = (aw * bw) - (ay * by);
-		return out;
 	}
 
 	public static Matrix4 perspective(final Matrix4 out, final float fovy, final float aspect, final float near,
@@ -490,6 +465,48 @@ public enum RenderMathUtils {
 	public static boolean intersectRayTriangles(final Ray ray, final float[] vertices, final char[] indices,
 			final int vertexSize, final Vector3 intersection) {
 		return intersectRayTriangles(ray, vertices, null, indices, indices.length, vertexSize, intersection);
+	}
+
+	/** The same with vertices and faces in native buffers, which a model keeps for picking. */
+	public static boolean intersectRayTriangles(final Ray ray, final FloatBuffer vertices, final CharBuffer indices,
+			final int vertexSize, final Vector3 intersection) {
+		float min_dist = Float.MAX_VALUE;
+		boolean hit = false;
+		final int indexCount = indices.limit();
+
+		if ((indexCount % 3) != 0) {
+			throw new RuntimeException("triangle list size is not a multiple of 3");
+		}
+
+		for (int i = 0; i < indexCount; i += 3) {
+			final int i1 = indices.get(i) * vertexSize;
+			final int i2 = indices.get(i + 1) * vertexSize;
+			final int i3 = indices.get(i + 2) * vertexSize;
+
+			final boolean result = FixedIntersector.intersectRayTriangle(ray,
+					tmp1.set(vertices.get(i1), vertices.get(i1 + 1), vertices.get(i1 + 2)),
+					tmp2.set(vertices.get(i2), vertices.get(i2 + 1), vertices.get(i2 + 2)),
+					tmp3.set(vertices.get(i3), vertices.get(i3 + 1), vertices.get(i3 + 2)), tmp);
+
+			if (result == true) {
+				final float dist = ray.origin.dst2(tmp);
+				if (dist < min_dist) {
+					min_dist = dist;
+					best.set(tmp);
+					hit = true;
+				}
+			}
+		}
+
+		if (hit == false) {
+			return false;
+		}
+		else {
+			if (intersection != null) {
+				intersection.set(best);
+			}
+			return true;
+		}
 	}
 
 	private static boolean intersectRayTriangles(final Ray ray, final float[] vertices, final int[] intIndices,

@@ -166,4 +166,24 @@ public class CPlayerUnitOrderListenerDelaying implements CPlayerUnitOrderListene
 		}
 	}
 
+	@Override
+	public void syncData(final String prefix, final String data) {
+		this.actions.add(() -> {
+			this.delegate.syncData(prefix, data);
+		});
+	}
+
+	@Override
+	public void keyEvent(final int key, final int metaKey, final boolean down) {
+		this.actions.add(() -> {
+			this.delegate.keyEvent(key, metaKey, down);
+		});
+	}
+
+	@Override
+	public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+		this.actions.add(() -> {
+			this.delegate.frameEvent(frameId, eventType, value, text);
+		});
+	}
 }

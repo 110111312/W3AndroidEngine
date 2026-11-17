@@ -248,6 +248,12 @@ public final class CampaignResult {
 				: new String[] { "DEFEAT", "Defeat" };
 	}
 
+	/** The result's button: Continue after a victory, Restart (the mission again) after a loss; its glue key and text. */
+	public static String[] buttonLabel(final GameResult result) {
+		return "victory".equals(result.result) ? new String[] { "CONTINUE", "Continue" }
+				: new String[] { "RESTART", "Restart" };
+	}
+
 	/** Whether a game's end brings the result: a campaign mission won, lost or left, with its score. */
 	public static boolean shows(final GameResult result) {
 		return (result != null) && LaunchRequest.SOURCE_CAMPAIGN.equals(result.source) && !result.failed()

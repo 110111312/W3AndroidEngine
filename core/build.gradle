@@ -33,6 +33,33 @@ def gitOutput = { List<String> args ->
         return null
     }
 }
+// Two builds of one commit with different uncommitted changes must not take each other for the same build: the hash
+// of the changes (tracked and untracked files) tells them apart.
+def treeHash = {
+    try {
+        def digest = java.security.MessageDigest.getInstance("SHA-256")
+        def diff = new ProcessBuilder(["git", "-C", rootProject.projectDir.absolutePath, "diff", "HEAD", "--binary"])
+                .redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        diff.inputStream.eachByte(1 << 16) { buffer, length -> digest.update(buffer, 0, length) }
+        if (diff.waitFor() != 0) {
+            return null
+        }
+        def untracked = gitOutput(["ls-files", "--others", "--exclude-standard", "-z"])
+        if (untracked == null) {
+            return null
+        }
+        untracked.split("\u0000").findAll { !it.isEmpty() }.sort().each { name ->
+            digest.update(name.getBytes("UTF-8"))
+            def file = new File(rootProject.projectDir, name)
+            if (file.isFile()) {
+                digest.update(file.bytes)
+            }
+        }
+        return digest.digest().encodeHex().toString().substring(0, 12)
+    } catch (Exception e) {
+        return null
+    }
+}
 def engineVersionDir = layout.buildDirectory.dir("generated/engineVersion")
 def engineVersionResource = tasks.register("engineVersionResource") {
     // The git state changes without any input changing.
@@ -42,10 +69,11 @@ def engineVersionResource = tasks.register("engineVersionResource") {
         def commit = gitOutput(["rev-parse", "--short=7", "HEAD"]) ?: "unknown"
         def status = gitOutput(["status", "--porcelain"])
         def dirty = (status == null) || !status.isEmpty()
+        def tree = dirty ? (treeHash() ?: "") : ""
         def file = engineVersionDir.get().file("com/etheller/warsmash/build.properties").asFile
         file.parentFile.mkdirs()
         def content = ["versionName=${engineVersion}", "versionCode=${engineVersionCode}", "commit=${commit}",
-                "dirty=${dirty}", "official=${officialFlag}", "officialCertSha256=${officialCertSha256}", ""].join(System.lineSeparator())
+                "dirty=${dirty}", "tree=${tree}", "official=${officialFlag}", "officialCertSha256=${officialCertSha256}", ""].join(System.lineSeparator())
         if (!file.exists() || file.text != content) {
             file.text = content
         }

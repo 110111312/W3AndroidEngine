@@ -15,7 +15,7 @@ public class ABConditionFloatNe0 extends ABCondition {
 	public Boolean callback(CSimulation game, CUnit caster, Map<String, Object> localStore, final int castId) {
 		Float v = value.callback(game, caster, localStore, castId);
 
-		return v!=0;
+		return floatValue(v) != 0;
 	}
 
 }

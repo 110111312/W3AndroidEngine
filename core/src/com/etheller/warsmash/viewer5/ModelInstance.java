@@ -24,6 +24,8 @@ public abstract class ModelInstance extends Node {
 	public TextureMapper textureMapper;
 	public boolean paused;
 	public boolean rendered;
+	/** Whether the scene already advances this instance's sequence clock while it is out of view. */
+	public boolean clockTracked;
 	/**
 	 * An effect (spell art, missile, special effect) that the viewer only sees where it has vision; the scene asks its
 	 * fog filter before drawing it.
@@ -82,6 +84,18 @@ public abstract class ModelInstance extends Node {
 	}
 
 	public abstract void updateAnimations(float dt);
+
+	/**
+	 * Advances only the animation clock (frame, sequence end, loops) of an instance that is out of view, without
+	 * computing nodes or batches, so what the viewer sees on return is where the animation would be.
+	 */
+	public void advanceClock(final float dt) {
+	}
+
+	/** Whether the current sequence still has to reach its end, so something may be waiting for that end. */
+	public boolean endsSequence() {
+		return false;
+	}
 
 	public abstract void clearEmittedObjects();
 

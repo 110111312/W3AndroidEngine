@@ -1227,4 +1227,9 @@ public class WarsmashGdxMenuScreen implements InputProcessor, Screen, SingleMode
 	public void showMapLoadError() {
 		this.menuUI.showMapLoadError();
 	}
+
+	/** See {@link MenuUI#mapLoadErrorCount()}; 0 until the menu is built. */
+	public int mapLoadErrorCount() {
+		return this.menuUI == null ? 0 : this.menuUI.mapLoadErrorCount();
+	}
 }

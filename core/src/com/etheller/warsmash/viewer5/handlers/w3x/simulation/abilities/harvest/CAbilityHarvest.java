@@ -45,6 +45,7 @@ public class CAbilityHarvest extends AbstractGenericSingleIconActiveAbility {
 	private ResourceType carriedResourceType;
 	private CUnitAttack treeAttack;
 	private CWidget lastHarvestTarget;
+	private boolean cycleForgotten;
 	private CBehaviorAttack behaviorTreeAttack;
 	// Measured in 1.29: at every mine entry a gold worker's speed is set so that its trip from the mine and back
 	// takes the target cycle minus the time inside (the mean of its last two trips), between half and 1.2 times its
@@ -335,6 +336,14 @@ public class CAbilityHarvest extends AbstractGenericSingleIconActiveAbility {
 
 	public CWidget getLastHarvestTarget() {
 		return this.lastHarvestTarget;
+	}
+
+	public void setCycleForgotten(final boolean cycleForgotten) {
+		this.cycleForgotten = cycleForgotten;
+	}
+
+	public boolean isCycleForgotten() {
+		return this.cycleForgotten;
 	}
 
 	@Override

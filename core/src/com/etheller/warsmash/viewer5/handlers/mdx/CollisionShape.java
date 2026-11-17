@@ -1,5 +1,8 @@
 package com.etheller.warsmash.viewer5.handlers.mdx;
 
+import java.nio.CharBuffer;
+import java.nio.FloatBuffer;
+
 import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
@@ -96,6 +99,25 @@ public class CollisionShape extends GenericObject {
 
 	public static boolean intersectRayTriangles(final Ray ray, final GenericNode mdxNode, final float[] vertices,
 			final char[] indices, final int vertexSize, final Vector3 intersection) {
+		intersectMatrixHeap.set(mdxNode.worldMatrix);
+		Matrix4.inv(intersectMatrixHeap.val);
+		intersectHeap.set(ray.origin);
+		intersectHeap2.set(ray.direction);
+		intersectHeap2.add(ray.origin);
+		intersectHeap.prj(intersectMatrixHeap);
+		intersectHeap2.prj(intersectMatrixHeap);
+		intersectHeap2.sub(intersectHeap);
+		intersectRayHeap.set(intersectHeap, intersectHeap2);
+		if (RenderMathUtils.intersectRayTriangles(intersectRayHeap, vertices, indices, vertexSize, intersection)) {
+			intersection.prj(mdxNode.worldMatrix);
+			return true;
+		}
+		return false;
+	}
+
+	/** The same for triangles kept in native buffers. */
+	public static boolean intersectRayTriangles(final Ray ray, final GenericNode mdxNode, final FloatBuffer vertices,
+			final CharBuffer indices, final int vertexSize, final Vector3 intersection) {
 		intersectMatrixHeap.set(mdxNode.worldMatrix);
 		Matrix4.inv(intersectMatrixHeap.val);
 		intersectHeap.set(ray.origin);

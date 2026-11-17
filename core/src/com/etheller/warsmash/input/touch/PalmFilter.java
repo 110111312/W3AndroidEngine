@@ -22,6 +22,8 @@ public final class PalmFilter {
 	}
 
 	private static final long PEN_GRACE_MILLIS = 500;
+	/** Fingers are accepted again when no pen event arrived for this long, so a lost hover-exit cannot block them. */
+	static final long PEN_SILENCE_MILLIS = 5000;
 
 	private final float palmTouchMajorPx;
 	private final PenFingerPolicy policy;
@@ -31,6 +33,7 @@ public final class PalmFilter {
 	private final Set<Integer> dropped = new HashSet<>();
 	private boolean penActive;
 	private long penNearUntil;
+	private long lastPenEventMillis;
 
 	public PalmFilter(final float palmTouchMajorPx, final PenFingerPolicy policy) {
 		this(palmTouchMajorPx, policy, SizeRejection.ON);
@@ -62,6 +65,7 @@ public final class PalmFilter {
 		final boolean pen = (event.tool == PointerEvent.Tool.STYLUS) || (event.tool == PointerEvent.Tool.ERASER);
 		if (pen) {
 			this.penSeen = true;
+			this.lastPenEventMillis = event.timeMillis;
 		}
 		switch (event.action) {
 		case HOVER_MOVE:
@@ -107,6 +111,9 @@ public final class PalmFilter {
 	}
 
 	private boolean isPenNear(final long timeMillis) {
+		if (this.penActive && ((timeMillis - this.lastPenEventMillis) >= PEN_SILENCE_MILLIS)) {
+			this.penActive = false;
+		}
 		return this.penActive || (timeMillis < this.penNearUntil);
 	}
 }

@@ -303,4 +303,21 @@ public class CPlayerUnitOrderExecutor implements CPlayerUnitOrderListener {
 				eventType);
 	}
 
+	@Override
+	public void syncData(final String prefix, final String data) {
+		this.game.getPlayer(this.playerIndex).fireSyncEvents(prefix, data);
+	}
+
+	@Override
+	public void keyEvent(final int key, final int metaKey, final boolean down) {
+		this.game.getPlayer(this.playerIndex).fireKeyEvents(key, metaKey, down);
+	}
+
+	@Override
+	public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+		final CFrameEventHandler handler = this.game.getFrameEventHandler();
+		if (handler != null) {
+			handler.frameEvent(this.game.getPlayer(this.playerIndex), frameId, eventType, value, text);
+		}
+	}
 }

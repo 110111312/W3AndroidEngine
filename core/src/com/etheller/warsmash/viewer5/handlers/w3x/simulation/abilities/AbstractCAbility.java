@@ -1,5 +1,7 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities;
 
+import java.util.HashMap;
+import java.util.Map;
 import com.etheller.interpreter.ast.util.CExtensibleHandleAbstract;
 import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedDefault;
@@ -21,6 +23,8 @@ public abstract class AbstractCAbility extends CExtensibleHandleAbstract impleme
 	 */
 	@SavedDefault("1")
 	private int scriptLevel = 1;
+	// Values a script set through the ability field natives; they read back from here.
+	private Map<String, String> scriptFields;
 
 	private final War3ID code;
 
@@ -42,6 +46,17 @@ public abstract class AbstractCAbility extends CExtensibleHandleAbstract impleme
 	@Override
 	public War3ID getAlias() {
 		return getCode();
+	}
+
+	public String getScriptField(final String key) {
+		return this.scriptFields == null ? null : this.scriptFields.get(key);
+	}
+
+	public void setScriptField(final String key, final String value) {
+		if (this.scriptFields == null) {
+			this.scriptFields = new HashMap<>();
+		}
+		this.scriptFields.put(key, value);
 	}
 
 	public int getScriptLevel() {

@@ -3,7 +3,9 @@ package com.etheller.warsmash.movie;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.util.Log;
@@ -99,14 +101,21 @@ public final class Movies {
 				"Fonts\\ARHEIU20M.TTF", "Fonts\\ARHEIU20_MD.TTF", "Fonts\\ARHEIGB_BD.TTF", "Fonts\\GHEI00B_T.TTF",
 				"Fonts\\DFHEIMD.TTF", "Fonts\\DFHEILT.TTF", "Fonts\\DFST-M3U.TTF", "Fonts\\TT5500M_.TTF",
 				"Fonts\\2002.TTF", "Fonts\\2002B.TTF", "Fonts\\DFKGOTHICMD.TTF", "Fonts\\ULEI00M.TTF" };
-		// Fonts of the computer that cover the scripts the game's own fonts miss.
+		// Fonts of the computer that cover the scripts the game's own fonts miss: Windows, macOS, then Linux.
 		final String[] computerFonts = { "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/malgun.ttf",
 				"C:/Windows/Fonts/msjh.ttc", "C:/Windows/Fonts/YuGothM.ttc", "C:/Windows/Fonts/msgothic.ttc",
 				"C:/Windows/Fonts/simsun.ttc", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
 				"/System/Library/Fonts/PingFang.ttc", "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-				"/Library/Fonts/Arial Unicode.ttf", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+				"/System/Library/Fonts/Hiragino Sans GB.ttc",
+				"/System/Library/Fonts/Supplemental/Arial Unicode.ttf", "/Library/Fonts/Arial Unicode.ttf",
+				"/System/Library/Fonts/Helvetica.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 				"/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-				"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" };
+				"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+				"/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+				"/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
+				"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+				"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+				"/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf" };
 		final List<File> fonts = new ArrayList<>();
 		for (final String path : gameFonts) {
 			final File font = file(data, path);
@@ -124,7 +133,34 @@ public final class Movies {
 				fonts.add(font);
 			}
 		}
+		if (fonts.isEmpty()) {
+			// A Linux with its fonts elsewhere (other distribution layouts, the user's own folders).
+			for (final String root : new String[] { "/usr/share/fonts", "/usr/local/share/fonts",
+					System.getProperty("user.home", "") + "/.local/share/fonts", System.getProperty("user.home", "") + "/.fonts" }) {
+				scanFonts(new File(root), 0, fonts);
+			}
+		}
 		return fonts;
+	}
+
+	private static void scanFonts(final File folder, final int depth, final List<File> found) {
+		final File[] children = folder.listFiles();
+		if ((children == null) || (depth > 4) || (found.size() >= 4)) {
+			return;
+		}
+		Arrays.sort(children);
+		for (final File child : children) {
+			if (child.isDirectory()) {
+				scanFonts(child, depth + 1, found);
+			}
+			else {
+				final String name = child.getName().toLowerCase(Locale.ROOT);
+				if ((name.startsWith("notosanscjk") || name.startsWith("dejavusans.") || name.startsWith("liberationsans-regular"))
+						&& (name.endsWith(".ttf") || name.endsWith(".ttc") || name.endsWith(".otf"))) {
+					found.add(child);
+				}
+			}
+		}
 	}
 
 	private static File file(final DataSource data, final String path) {

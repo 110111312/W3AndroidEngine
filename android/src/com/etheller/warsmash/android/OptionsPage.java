@@ -13,7 +13,11 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
 
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -57,7 +61,7 @@ final class OptionsPage extends LauncherViews {
 		final FrameLayout view = this.activity.homePage.shell(LauncherActivity.RAIL_OPTIONS);
 		final FrameLayout content = content(view, 0);
 		final float top = addTabs(content, new int[] { R.string.options_graphics, R.string.options_sound,
-			R.string.options_gameplay, R.string.options_touch, R.string.options_game_data, R.string.options_about },
+			R.string.options_gameplay, R.string.options_controls, R.string.options_game_data, R.string.options_about },
 				tab, this::showOptions);
 		final FrameLayout panel = framed(content, 0, top, b.contentW, b.contentH - top);
 		final ScrollView scroll = new ScrollView(this.activity);
@@ -355,6 +359,49 @@ final class OptionsPage extends LauncherViews {
 		place(row, button(getString(R.string.options_recheck), buttonH, b.tablet ? 36 : 26, v -> recheck()),
 				b.labelX + buttonW + (b.tablet ? 32 : 24), (b.rowH - buttonH) / 2, buttonW, buttonH);
 		customContentRows(rows, buttonW, buttonH);
+		profileStorageRows(rows);
+	}
+
+	/**
+	 * Whether the profiles are kept in the shared storage (where an uninstall leaves them), and where they are now.
+	 * The choice takes effect when the app starts next.
+	 */
+	private void profileStorageRows(final LinearLayout rows) {
+		final boolean wanted = ProfileStorageAndroid.wanted(this.activity);
+		checkRow(rows, R.string.options_profiles_shared, wanted, on -> {
+			ProfileStorageAndroid.setWanted(this.activity, on);
+			showOptions(TAB_GAME_DATA);
+		});
+		final String state = ProfileStorageAndroid.state();
+		final File shared = ProfileStorageAndroid.active();
+		final boolean blocked = "noaccess".equals(state) || "unwritable".equals(state) || "failed".equals(state);
+		final String where;
+		if (shared != null) {
+			where = shared.getAbsolutePath();
+		}
+		else if ("noaccess".equals(state)) {
+			where = getString(R.string.options_profiles_noaccess);
+		}
+		else if ("unwritable".equals(state)) {
+			where = getString(R.string.options_profiles_unwritable);
+		}
+		else if ("failed".equals(state)) {
+			where = getString(R.string.options_profiles_failed);
+		}
+		else {
+			where = getString(R.string.options_profiles_private);
+		}
+		final TextView shown = infoRow(rows, R.string.options_profiles_where,
+				(wanted == (shared != null)) || blocked ? where
+						: getString(R.string.options_profiles_restart, where),
+				shared != null);
+		if ("noaccess".equals(state) && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
+			final View row = rows.getChildAt(rows.getChildCount() - 1);
+			onTap(row, false, v -> this.activity.startActivity(
+					new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+							Uri.parse("package:" + this.activity.getPackageName()))));
+			row.setContentDescription(shown.getText());
+		}
 	}
 
 	/** The player's content folder: where it is and the buttons that choose or leave it. */

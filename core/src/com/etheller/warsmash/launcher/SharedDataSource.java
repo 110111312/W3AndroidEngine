@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Collection;
+import java.util.function.Predicate;
 
 import com.etheller.warsmash.datasources.DataSource;
 
@@ -52,6 +53,11 @@ public final class SharedDataSource implements DataSource {
 	@Override
 	public synchronized Collection<String> getListfile() {
 		return this.data.getListfile();
+	}
+
+	@Override
+	public synchronized Collection<String> getListfile(final Predicate<String> accept) {
+		return this.data.getListfile(accept);
 	}
 
 	@Override

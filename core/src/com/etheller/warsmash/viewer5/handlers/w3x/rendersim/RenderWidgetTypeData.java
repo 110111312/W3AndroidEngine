@@ -44,6 +44,10 @@ public abstract class RenderWidgetTypeData<T> {
 	}
 
 	protected final MdxModel getPortraitModel(final String path, final MdxModel model) {
+		if (path.length() < 4) {
+			// An item or unit type with no model file at all.
+			return model;
+		}
 		MdxModel portraitModel;
 		final String portraitPath = path.substring(0, path.length() - 4) + "_portrait.mdx";
 		if (this.dataSource.has(portraitPath)) {

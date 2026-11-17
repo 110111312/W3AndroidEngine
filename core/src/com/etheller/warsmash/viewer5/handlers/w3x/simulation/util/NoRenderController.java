@@ -323,8 +323,8 @@ public class NoRenderController implements SimulationRenderController {
 	}
 
 	@Override
-	public void heroRevived(final CUnit trainedUnit) {
-		this.world.heroRevived(trainedUnit);
+	public void heroRevived(final CUnit trainedUnit, final boolean doEyecandy) {
+		this.world.heroRevived(trainedUnit, doEyecandy);
 	}
 
 	@Override

@@ -137,7 +137,7 @@ public class EngineSettings {
 	}
 
 	public TouchStyle touchStyle() {
-		return TouchStyle.parse(touch("TouchScheme", ""), TouchStyle.TAP_HOLD);
+		return TouchStyle.parse(touch("TouchScheme", ""), TouchStyle.DOUBLE_TAP);
 	}
 
 	public void setTouchStyle(final TouchStyle style) {

@@ -224,6 +224,16 @@ public abstract class ModelViewer {
 				}
 			}
 			extension = solved.getExtension();
+			if (finalSrc.length() > 4 && finalSrc.regionMatches(true, finalSrc.length() - 4, ".blp", 0, 4)
+					&& finalSrc.equals(solved.getFinalSrc())) {
+				// The latest data source with either name decides, so a .dds in an override folder wins over the
+				// game's .blp; within one source the .blp stays first.
+				final String ddsPath = finalSrc.substring(0, finalSrc.length() - 4) + ".dds";
+				final String found = this.dataSource.findFirst(finalSrc, ddsPath);
+				if (ddsPath.equals(found)) {
+					finalSrc = ddsPath;
+				}
+			}
 			if (!finalSrc.equals(solved.getFinalSrc())) {
 				// Found under another name (a .dds beside it or in a graphics package), so it is read as that file's type.
 				extension = finalSrc.substring(finalSrc.lastIndexOf('.'));
@@ -381,6 +391,8 @@ public abstract class ModelViewer {
 	public void startFrame() {
 		Gdx.gl.glScissor(0, 0, (int) this.canvas.getWidth(), (int) this.canvas.getHeight());
 		this.gl.glDepthMask(true);
+		// The scenes set their own clear colours: the bars beside a letterboxed view must not show the last of them.
+		this.gl.glClearColor(0, 0, 0, 1);
 		this.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 //		WarsmashGdxGame.bindDefaultVertexArray();
 	}

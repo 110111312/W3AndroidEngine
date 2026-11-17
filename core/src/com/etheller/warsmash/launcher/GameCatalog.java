@@ -26,6 +26,8 @@ import java.util.function.Supplier;
 import com.badlogic.gdx.files.FileHandle;
 import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.datasources.DataSource;
+import com.etheller.warsmash.datasources.GraphicsSet;
+import com.etheller.warsmash.datasources.GraphicsSettings;
 import com.etheller.warsmash.movie.Movie;
 import com.etheller.warsmash.movie.Movies;
 import com.etheller.warsmash.parsers.fdf.GameUI;
@@ -774,7 +776,7 @@ public class GameCatalog {
 		run(() -> {
 			final List<ReplayEntry> replays = new ArrayList<>();
 			final File[] files = replayFolder().listFiles();
-			Integer dataChecksum = null;
+			final Map<GraphicsSet, Integer> dataChecksums = new HashMap<>();
 			final Map<String, Boolean> melee = new HashMap<>();
 			if (files != null) {
 				for (final File file : files) {
@@ -791,10 +793,14 @@ public class GameCatalog {
 							final CReplayHeader header = replay.getHeader();
 							describe(entry, header);
 							entry.length = replay.getLastTick() * WarsmashConstants.SIMULATION_STEP_TIME;
-							if (GameReplays.isThisEngine(header) && (dataChecksum == null)) {
-								dataChecksum = GameReplays.dataChecksum(data());
+							final GraphicsSet graphics = GameReplays.playbackGraphics(data(), this.ini,
+									header.getMapPath());
+							final DataSource replayData = GraphicsSettings.gameData(data(), this.ini, graphics);
+							if (GameReplays.isThisEngine(header) && !dataChecksums.containsKey(graphics)) {
+								dataChecksums.put(graphics, GameReplays.dataChecksum(replayData));
 							}
-							entry.unplayable = GameReplays.unplayableReason(header, data(), dataChecksum);
+							entry.unplayable = GameReplays.unplayableReason(header, replayData,
+									dataChecksums.get(graphics));
 							if (!melee.containsKey(entry.mapFile)) {
 								melee.put(entry.mapFile, isMelee(entry.mapFile));
 							}

@@ -51,6 +51,17 @@ public final class PerfStats {
 		}
 	}
 
+	/** What opening the game data's storage took: the storage itself, then waiting for the list of its paths. */
+	public static void cascOpened(final long start, final long storageEnd, final long listEnd, final int paths,
+			final boolean listSaved) {
+		if (ENABLED) {
+			System.err.println("CASC open: total " + ((listEnd - start) / 1_000_000) + " ms, storage "
+					+ ((storageEnd - start) / 1_000_000) + " ms, waiting for path list "
+					+ ((listEnd - storageEnd) / 1_000_000) + " ms (" + paths + " paths, "
+					+ (listSaved ? "read from disk" : "read from the storage") + ")");
+		}
+	}
+
 	public static void frameStart() {
 		if (!checkedLocalFile) {
 			checkedLocalFile = true;

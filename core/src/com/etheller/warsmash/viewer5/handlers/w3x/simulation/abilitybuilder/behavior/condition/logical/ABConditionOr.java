@@ -17,7 +17,7 @@ public class ABConditionOr extends ABCondition {
 		if (conditions != null) {
 			for (ABCondition cond : conditions) {
 				if (!result) {
-					result = result || cond.callback(game, caster, localStore, castId);
+					result = Boolean.TRUE.equals(cond.callback(game, caster, localStore, castId));
 				}
 			}
 		}

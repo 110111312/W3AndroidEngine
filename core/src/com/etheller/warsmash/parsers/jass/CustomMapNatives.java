@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.etheller.interpreter.ast.function.JassFunction;
+import com.etheller.interpreter.ast.scope.TriggerExecutionScope;
+import com.etheller.interpreter.ast.value.HandleJassType;
+import com.etheller.interpreter.ast.value.HandleJassValue;
 import com.etheller.interpreter.ast.value.BooleanJassValue;
 import com.etheller.interpreter.ast.value.IntegerJassValue;
 import com.etheller.interpreter.ast.value.JassValue;
@@ -15,6 +18,7 @@ import com.etheller.interpreter.ast.value.visitor.ObjectJassValueVisitor;
 import com.etheller.interpreter.ast.value.visitor.RealJassValueVisitor;
 import com.etheller.interpreter.ast.value.visitor.StringJassValueVisitor;
 import com.etheller.interpreter.ast.util.JassProgram;
+import com.etheller.warsmash.parsers.jass.scope.CDamageEvent;
 import com.etheller.warsmash.parsers.jass.scope.CommonTriggerExecutionScope;
 import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.viewer5.handlers.w3x.War3MapViewer;
@@ -27,7 +31,11 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.generic.CLevelingAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.hero.CAbilityHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.skills.util.CBuffTimedLife;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CAttackType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CAttackTypeJass;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CDamageType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CWeaponSoundTypeJass;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 
 /**
@@ -188,6 +196,91 @@ final class CustomMapNatives {
 				((CommonTriggerExecutionScope) triggerScope).setDamageTaken(real(arguments, 0));
 			}
 			return null;
+		});
+		registerDamageEvent();
+	}
+
+	private static CDamageEvent damageEvent(final TriggerExecutionScope triggerScope) {
+		return triggerScope instanceof CommonTriggerExecutionScope
+				? ((CommonTriggerExecutionScope) triggerScope).getDamageEvent()
+				: null;
+	}
+
+	/** The index a script's constant has for the value: the number its Convert native takes. */
+	private static int scriptIndex(final Object[] values, final Object value) {
+		for (int i = 0; i < values.length; i++) {
+			if (values[i] == value) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static HandleJassValue enumHandle(final HandleJassType type, final Object[] values, final Object value,
+			final int fallbackIndex) {
+		final int index = scriptIndex(values, value);
+		return index >= 0 ? new HandleJassValue(type, value) : type.getUnknownEnumValue(fallbackIndex);
+	}
+
+	/**
+	 * The fields of the hit a damage trigger runs for. Outside a damage event they read as nothing; the setters
+	 * work in the damaging event only (before armor and resistance) and return whether they changed something.
+	 */
+	private void registerDamageEvent() {
+		add("BlzGetEventDamageTarget", (arguments, globalScope, triggerScope) -> {
+			final CDamageEvent event = damageEvent(triggerScope);
+			return new HandleJassValue(globalScope.getHandleType("unit"), event == null ? null : event.getTarget());
+		});
+		add("BlzGetEventAttackType", (arguments, globalScope, triggerScope) -> {
+			final HandleJassType type = globalScope.getHandleType("attacktype");
+			final CDamageEvent event = damageEvent(triggerScope);
+			return event == null ? type.getNullValue()
+					: enumHandle(type, CAttackTypeJass.VALUES, event.getAttackType(), event.getAttackType().ordinal());
+		});
+		add("BlzGetEventDamageType", (arguments, globalScope, triggerScope) -> {
+			final HandleJassType type = globalScope.getHandleType("damagetype");
+			final CDamageEvent event = damageEvent(triggerScope);
+			return event == null ? type.getNullValue()
+					: enumHandle(type, CDamageType.VALUES, event.getDamageType(), event.getDamageType().ordinal());
+		});
+		add("BlzGetEventWeaponType", (arguments, globalScope, triggerScope) -> {
+			final HandleJassType type = globalScope.getHandleType("weapontype");
+			final CDamageEvent event = damageEvent(triggerScope);
+			return event == null ? type.getNullValue() : new HandleJassValue(type, event.getWeaponType());
+		});
+		add("BlzGetEventIsAttack", (arguments, globalScope, triggerScope) -> {
+			final CDamageEvent event = damageEvent(triggerScope);
+			return BooleanJassValue.of((event != null) && event.isAttack());
+		});
+		add("BlzSetEventAttackType", (arguments, globalScope, triggerScope) -> {
+			final CDamageEvent event = damageEvent(triggerScope);
+			final Object value = object(arguments, 0);
+			if ((event == null) || !event.isDamaging() || !(value instanceof CAttackType)
+					|| (scriptIndex(CAttackTypeJass.VALUES, value) < 0)) {
+				return BooleanJassValue.FALSE;
+			}
+			event.setAttackType((CAttackType) value);
+			return BooleanJassValue.TRUE;
+		});
+		add("BlzSetEventDamageType", (arguments, globalScope, triggerScope) -> {
+			final CDamageEvent event = damageEvent(triggerScope);
+			final Object value = object(arguments, 0);
+			if ((event == null) || !event.isDamaging() || !(value instanceof CDamageType)) {
+				return BooleanJassValue.FALSE;
+			}
+			event.setDamageType((CDamageType) value);
+			return BooleanJassValue.TRUE;
+		});
+		add("BlzSetEventWeaponType", (arguments, globalScope, triggerScope) -> {
+			final CDamageEvent event = damageEvent(triggerScope);
+			final Object value = object(arguments, 0);
+			if ((event == null) || !event.isDamaging() || !(value instanceof CWeaponSoundTypeJass)) {
+				return BooleanJassValue.FALSE;
+			}
+			final CWeaponSoundTypeJass weaponType = (CWeaponSoundTypeJass) value;
+			event.setWeaponSoundType(weaponType == CWeaponSoundTypeJass.WHOKNOWS ? weaponType.name()
+					: weaponType.getSoundKey());
+			return BooleanJassValue.TRUE;
 		});
 	}
 

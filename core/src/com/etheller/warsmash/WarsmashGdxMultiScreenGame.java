@@ -157,7 +157,10 @@ public class WarsmashGdxMultiScreenGame extends Game implements CanvasProvider {
 	 * up new ones.
 	 */
 	public void disposeLostScreens() {
-		GraphicsContext.disposeLost(this::dispose);
+		GraphicsContext.disposeLost(() -> {
+			GammaOverlay.disposeLost();
+			dispose();
+		});
 		this.screen = null;
 	}
 

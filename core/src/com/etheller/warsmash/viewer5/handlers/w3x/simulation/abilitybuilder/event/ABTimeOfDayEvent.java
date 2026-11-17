@@ -8,6 +8,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation.TimeOfDayEvent;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABAction;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABActionGuard;
 
 public class ABTimeOfDayEvent implements TimeOfDayEvent {
 
@@ -37,11 +38,7 @@ public class ABTimeOfDayEvent implements TimeOfDayEvent {
 
 	@Override
 	public void fire() {
-		if (actions != null) {
-			for (ABAction eventAction : actions) {
-				eventAction.runAction(game, caster, localStore, castId);
-			}
-		}
+		ABActionGuard.runAll("time of day event", actions, game, caster, localStore, castId);
 	}
 
 	@Override

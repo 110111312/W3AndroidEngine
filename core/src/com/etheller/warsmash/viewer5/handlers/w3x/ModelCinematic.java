@@ -8,18 +8,17 @@ import com.etheller.warsmash.util.Log;
 import com.etheller.warsmash.util.RenderMathUtils;
 import com.etheller.warsmash.util.WarsmashConstants;
 import com.etheller.warsmash.viewer5.Camera;
-import com.etheller.warsmash.viewer5.Scene;
 import com.etheller.warsmash.viewer5.handlers.mdx.MdxComplexInstance;
 import com.etheller.warsmash.viewer5.handlers.mdx.MdxModel;
 import com.etheller.warsmash.viewer5.handlers.mdx.Sequence;
 import com.etheller.warsmash.viewer5.handlers.mdx.SequenceLoopMode;
 
 /**
- * A model made as a whole scene (its own terrain, actors, camera and sounds) that plays shot after shot, each shot one
- * of its sequences. PlayModelCinematic fills the screen with it and shows the game again when the last shot is over;
- * the in-game variant puts the model in the world at a place and turns the game's camera into the model's, so the
- * interface and the world stay as they are. The map goes on meanwhile, so the trigger that asked for it can wait for
- * it.
+ * A model made as a whole scene (its actors, props, camera and sounds) that plays shot after shot, each shot one of
+ * its sequences. Both variants put the model in the world and turn the game's camera into the model's, so the map
+ * shows behind the actors: the in-game variant at the place it is given, with the interface and the world as they
+ * are; PlayModelCinematic where the game camera is looking, with only the world drawn, and the game again when the
+ * last shot is over. The map goes on meanwhile, so the trigger that asked for it can wait for it.
  */
 public final class ModelCinematic {
 	private static final float MODEL_FOV_SCALE = 0.75f;
@@ -76,7 +75,6 @@ public final class ModelCinematic {
 	private final MdxModel model;
 	private final Timeline timeline;
 	private final boolean inGame;
-	private final Scene scene;
 	private final MdxComplexInstance instance;
 	private final com.etheller.warsmash.viewer5.handlers.mdx.Camera[] shotCameras;
 	private final float[] positionOffset = new float[3];
@@ -101,21 +99,41 @@ public final class ModelCinematic {
 		this.model = model;
 		this.inGame = inGame;
 		this.timeline = new Timeline(model, viewer.simulation.getGameTurnTick());
-		this.scene = inGame ? viewer.worldScene : viewer.addWorldScene();
-		if (!inGame) {
-			this.scene.enableAudio();
-		}
 		this.instance = (MdxComplexInstance) model.addInstance();
 		this.instance.setSequenceLoopMode(SequenceLoopMode.NEVER_LOOP);
 		this.instance.setSequence(0);
-		this.origin.set(x, y, z);
-		this.facing.setFromAxisRad(RenderMathUtils.VEC3_UNIT_Z, (float) Math.toRadians(rotationDegrees));
 		if (inGame) {
-			this.instance.setLocation(x, y, z);
-			this.instance.rotate(this.facing);
+			this.origin.set(x, y, z);
 		}
-		this.instance.setScene(this.scene);
+		else {
+			lookedAtGround(viewer, this.origin);
+		}
+		this.facing.setFromAxisRad(RenderMathUtils.VEC3_UNIT_Z, (float) Math.toRadians(rotationDegrees));
+		this.instance.setLocation(this.origin.x, this.origin.y, this.origin.z);
+		this.instance.rotate(this.facing);
+		this.instance.setScene(viewer.worldScene);
 		this.shotCameras = shotCameras(model);
+	}
+
+	/** Where the game camera's view axis meets the ground. */
+	private static void lookedAtGround(final War3MapViewer viewer, final Vector3 result) {
+		final Camera camera = viewer.worldScene.camera;
+		final Vector3 forward = new Vector3(camera.directionZ).scl(-1);
+		final float eyeX = camera.location.x;
+		final float eyeY = camera.location.y;
+		final float eyeZ = camera.location.z;
+		float x = eyeX;
+		float y = eyeY;
+		float z = viewer.terrain.getGroundHeight(x, y);
+		if (forward.z < -0.01f) {
+			for (int i = 0; i < 3; i++) {
+				final float distance = (eyeZ - z) / -forward.z;
+				x = eyeX + (forward.x * distance);
+				y = eyeY + (forward.y * distance);
+				z = viewer.terrain.getGroundHeight(x, y);
+			}
+		}
+		result.set(x, y, z);
 	}
 
 	/**
@@ -225,19 +243,7 @@ public final class ModelCinematic {
 		}
 	}
 
-	/** Draws the scene over the whole view; the game's own scenes are not drawn meanwhile. */
-	public void render() {
-		advance();
-		final Camera camera = this.scene.camera;
-		camera.viewport(this.viewer.worldScene.camera.rect);
-		placeCamera(camera);
-		camera.update();
-		this.scene.startFrame();
-		this.scene.renderOpaque();
-		this.scene.renderTranslucent();
-	}
-
-	/** The in-game variant: the game's camera shows what the model's camera shows, in the place the model is put. */
+	/** The game's camera shows what the model's camera shows, in the place the model is put. */
 	public void placeWorldCamera() {
 		advance();
 		final Camera camera = this.viewer.worldScene.camera;
@@ -252,8 +258,8 @@ public final class ModelCinematic {
 			}
 			final float distance = Math.max(500f, this.model.bounds.r * 2f);
 			camera.perspective(DEFAULT_FOV, camera.getAspect(), DEFAULT_NEAR, DEFAULT_FAR);
-			this.eye.set(0, -distance, distance * 0.5f);
-			this.target.set(0, 0, 0);
+			this.eye.set(0, -distance, distance * 0.5f).add(this.origin);
+			this.target.set(this.origin);
 			camera.moveToAndFace(this.eye, this.target, this.worldUp);
 			return;
 		}
@@ -270,10 +276,8 @@ public final class ModelCinematic {
 		this.target.set(modelCamera.targetPosition[0] + this.targetOffset[0],
 				modelCamera.targetPosition[1] + this.targetOffset[1],
 				modelCamera.targetPosition[2] + this.targetOffset[2]);
-		if (this.inGame) {
-			this.eye.mul(this.facing).add(this.origin);
-			this.target.mul(this.facing).add(this.origin);
-		}
+		this.eye.mul(this.facing).add(this.origin);
+		this.target.mul(this.facing).add(this.origin);
 		camera.perspective(modelCamera.fieldOfView * MODEL_FOV_SCALE, camera.getAspect(),
 				Math.max(1f, modelCamera.nearClippingPlane),
 				Math.max(modelCamera.nearClippingPlane + 1f, modelCamera.farClippingPlane));
@@ -300,12 +304,5 @@ public final class ModelCinematic {
 
 	public void dispose() {
 		this.instance.detach();
-		if (!this.inGame) {
-			if (this.scene.audioContext != null) {
-				this.scene.disableAudio();
-			}
-			this.viewer.removeScene(this.scene);
-			this.scene.dispose();
-		}
 	}
 }

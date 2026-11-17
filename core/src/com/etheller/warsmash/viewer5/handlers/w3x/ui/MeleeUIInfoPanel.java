@@ -1294,7 +1294,7 @@ final class MeleeUIInfoPanel {
 						final IconUI iconUI = itemUI.getIconUI();
 						final CItemType itemType = item.getItemType();
 						// TODO: below we set menu=false, this is bad, item should be based on item abil
-						final boolean activelyUsed = itemType.isActivelyUsed() && inventoryEnabled;
+						final boolean activelyUsed = item.isActivelyUsed() && inventoryEnabled;
 						final boolean pawnable = item.isPawnable();
 						final String uberTip = iconUI.getUberTip();
 						this.recycleStringBuilder.setLength(0);
@@ -1419,7 +1419,8 @@ final class MeleeUIInfoPanel {
 				if (!gameUI.hasSkinField(skinLookupKey) && (attackType == CAttackType.SPELLS)) {
 					skinLookupKey = "InfoPanelIcon" + prefix + CAttackType.MAGIC.getCodeKey() + suffix;
 				}
-				final Texture suffixTexture = gameUI.loadTexture(gameUI.getSkinField(skinLookupKey));
+				final Texture suffixTexture = gameUI.loadTexture(gameUI.getSkinField(skinLookupKey),
+						suffix.isEmpty());
 				if (suffixTexture != null) {
 					this.damageBackdropTextures[index] = suffixTexture;
 				}

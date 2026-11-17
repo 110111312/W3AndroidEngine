@@ -36,6 +36,14 @@ public interface GestureListener {
 		return false;
 	}
 
+	/**
+	 * How many times the usual movement a press at this point may drift before it counts as a drag; a point whose drag
+	 * means more than its tap, such as an item slot, asks for more room so that an unsteady tap stays a tap.
+	 */
+	default float dragSlopFactor(final float x, final float y) {
+		return 1;
+	}
+
 	void panStart(float x, float y);
 
 	void pan(float x, float y);

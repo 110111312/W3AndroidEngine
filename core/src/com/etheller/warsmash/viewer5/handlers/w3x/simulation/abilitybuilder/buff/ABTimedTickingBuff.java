@@ -8,6 +8,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABAction;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABActionGuard;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABLocalStoreKeys;
 
 public class ABTimedTickingBuff extends ABTimedBuff {
@@ -37,9 +38,7 @@ public class ABTimedTickingBuff extends ABTimedBuff {
 	public void onTick(CSimulation game, CUnit unit) {
 		if (onTickActions != null) {
 			localStore.put(ABLocalStoreKeys.BUFF, this);
-			for (ABAction action : onTickActions) {
-				action.runAction(game, unit, localStore, castId);
-			}
+			ABActionGuard.runAll("buff tick", onTickActions, game, unit, localStore, castId);
 			localStore.remove(ABLocalStoreKeys.BUFF);
 		}
 		super.onTick(game, unit);

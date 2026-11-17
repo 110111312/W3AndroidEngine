@@ -72,11 +72,11 @@ public final class LauncherOptions {
 	 * The in-game graphics choices, in the order of {@link GraphicsSet}: the label, and the label when the game data
 	 * lacks the set's package.
 	 */
-	public static final String[][] GRAPHICS_SETS = { { "launcher_classic", "launcher_classic" },
+	public static final String[][] GRAPHICS_SETS = { { "options_graphics_sd", "options_graphics_sd" },
 		{ "options_graphics_hd", "options_graphics_hd_locked" }, { "options_graphics_de", "options_graphics_de_locked" } };
 	/** The texture size choices, in the order of {@link GraphicsSettings#TEXTURE_SIZES}. */
 	public static final String[] TEXTURE_SIZES = { "options_texture_512", "options_texture_1024",
-		"options_texture_full" };
+		"options_texture_2048", "options_texture_full" };
 
 	/** The render scale choices, in the order of {@link GraphicsSettings#RENDER_SCALES}. */
 	public static final String[] RENDER_SCALES = { "options_scale_100", "options_scale_85", "options_scale_70",

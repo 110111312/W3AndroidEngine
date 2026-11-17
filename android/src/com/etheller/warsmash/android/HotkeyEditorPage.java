@@ -14,6 +14,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -575,13 +576,18 @@ final class HotkeyEditorPage extends LauncherViews {
 		return drawable;
 	}
 
-	/** A key pressed on the keyboard while a command waits: a letter or digit binds, Esc gives up. */
+	/** A key pressed on the keyboard while a command waits: a letter, digit or punctuation mark binds, Esc gives up. */
 	boolean handleKey(final KeyEvent event) {
 		if ((this.capturing == null) || !current()) {
 			return false;
 		}
 		final int code = event.getKeyCode();
-		final String key = KeyEditor.keyOfAndroidCode(code);
+		String key = KeyEditor.keyOfAndroidCode(code);
+		if (key == null) {
+			// Punctuation binds by the character the key types without a modifier, so Shift does not change the key.
+			final int typed = event.getUnicodeChar(0) & KeyCharacterMap.COMBINING_ACCENT_MASK;
+			key = (typed > 0) && (typed < 0x80) ? KeyEditor.keyOfChar((char) typed) : null;
+		}
 		if ((key == null) && (code != KeyEvent.KEYCODE_ESCAPE)) {
 			return false;
 		}

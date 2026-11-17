@@ -32,6 +32,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbility
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.CWidgetAbilityTargetCheckReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTargetCheckReceiver;
+import com.etheller.interpreter.ast.function.JassNativeManager;
+import com.etheller.interpreter.ast.value.visitor.BooleanJassValueVisitor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -256,6 +258,7 @@ final class OrderNatives extends CommonNatives {
 							arguments.get(2).visit(IntegerJassValueVisitor.getInstance()),
 							nullable(arguments, 3, ObjectJassValueVisitor.getInstance())));
 				});
+		registerQueuedOrders();
 		jassProgramVisitor.getJassNativeManager().createNative("DoStopOrder",
 				(arguments, globalScope, triggerScope) -> {
 					final CUnit targetUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
@@ -264,6 +267,103 @@ final class OrderNatives extends CommonNatives {
 					}
 					return null;
 				});
+	}
+
+	/**
+	 * The Reforged orders that wait behind the current one, as a player shift-queues them: the same checks and
+	 * carrying out as the other script orders, queued.
+	 */
+	private void registerQueuedOrders() {
+		final JassNativeManager natives = jassProgramVisitor.getJassNativeManager();
+		natives.createNative("BlzQueueImmediateOrderById", (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			return BooleanJassValue.of((whichUnit != null) && issueImmediateOrder(whichUnit.getPlayerIndex(),
+					whichUnit, arguments.get(1).visit(IntegerJassValueVisitor.getInstance()), true));
+		});
+		final JassFunction queuePoint = (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			return BooleanJassValue.of((whichUnit != null) && issuePointOrder(whichUnit.getPlayerIndex(), whichUnit,
+					arguments.get(1).visit(IntegerJassValueVisitor.getInstance()),
+					arguments.get(2).visit(RealJassValueVisitor.getInstance()).floatValue(),
+					arguments.get(3).visit(RealJassValueVisitor.getInstance()).floatValue(), true));
+		};
+		natives.createNative("BlzQueuePointOrderById", queuePoint);
+		// The instant target only tells which unit a spell with a second target aims at; the order is the same.
+		natives.createNative("BlzQueueInstantPointOrderById", queuePoint);
+		natives.createNative("BlzQueueBuildOrderById", (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			final int unitId = arguments.get(1).visit(IntegerJassValueVisitor.getInstance());
+			if ((whichUnit == null) || !isUnitTypeId(unitId)) {
+				return BooleanJassValue.FALSE;
+			}
+			return BooleanJassValue.of(issuePointOrder(whichUnit.getPlayerIndex(), whichUnit, unitId,
+					arguments.get(2).visit(RealJassValueVisitor.getInstance()).floatValue(),
+					arguments.get(3).visit(RealJassValueVisitor.getInstance()).floatValue(), true));
+		});
+		final JassFunction queueTarget = (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			return BooleanJassValue.of((whichUnit != null) && issueTargetOrder(whichUnit.getPlayerIndex(), whichUnit,
+					arguments.get(1).visit(IntegerJassValueVisitor.getInstance()),
+					nullable(arguments, 2, ObjectJassValueVisitor.getInstance()), true));
+		};
+		natives.createNative("BlzQueueTargetOrderById", queueTarget);
+		natives.createNative("BlzQueueInstantTargetOrderById", queueTarget);
+		natives.createNative("BlzQueueNeutralImmediateOrderById", (arguments, globalScope, triggerScope) -> {
+			final CPlayer forWhichPlayer = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			final CUnit neutralStructure = nullable(arguments, 1, ObjectJassValueVisitor.getInstance());
+			return BooleanJassValue.of((forWhichPlayer != null) && (neutralStructure != null)
+					&& issueImmediateOrder(forWhichPlayer.getId(), neutralStructure,
+							arguments.get(2).visit(IntegerJassValueVisitor.getInstance()), true));
+		});
+		natives.createNative("BlzQueueNeutralPointOrderById", (arguments, globalScope, triggerScope) -> {
+			final CPlayer forWhichPlayer = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			final CUnit neutralStructure = nullable(arguments, 1, ObjectJassValueVisitor.getInstance());
+			return BooleanJassValue.of((forWhichPlayer != null) && (neutralStructure != null)
+					&& issuePointOrder(forWhichPlayer.getId(), neutralStructure,
+							arguments.get(2).visit(IntegerJassValueVisitor.getInstance()),
+							arguments.get(3).visit(RealJassValueVisitor.getInstance()).floatValue(),
+							arguments.get(4).visit(RealJassValueVisitor.getInstance()).floatValue(), true));
+		});
+		natives.createNative("BlzQueueNeutralTargetOrderById", (arguments, globalScope, triggerScope) -> {
+			final CPlayer forWhichPlayer = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
+			final CUnit neutralStructure = nullable(arguments, 1, ObjectJassValueVisitor.getInstance());
+			return BooleanJassValue.of((forWhichPlayer != null) && (neutralStructure != null)
+					&& issueTargetOrder(forWhichPlayer.getId(), neutralStructure,
+							arguments.get(2).visit(IntegerJassValueVisitor.getInstance()),
+							nullable(arguments, 3, ObjectJassValueVisitor.getInstance()), true));
+		});
+		// The orders the unit has: the one it is on and the ones waiting behind it.
+		natives.createNative("BlzGetUnitOrderCount", (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = inGame(nullable(arguments, 0, ObjectJassValueVisitor.<CUnit>getInstance()));
+			if (whichUnit == null) {
+				return IntegerJassValue.ZERO;
+			}
+			final boolean busy = (whichUnit.getCurrentOrder() != null)
+					&& (whichUnit.getCurrentOrder().getOrderId() != OrderIds.stop);
+			return IntegerJassValue.of((busy ? 1 : 0) + whichUnit.getOrderQueue().size());
+		});
+		// With onlyQueued the order the unit is on goes on; without, the unit stops as well.
+		natives.createNative("BlzUnitClearOrders", (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = inGame(nullable(arguments, 0, ObjectJassValueVisitor.<CUnit>getInstance()));
+			if (whichUnit != null) {
+				whichUnit.clearQueuedOrders(this.simulation);
+				if (!arguments.get(1).visit(BooleanJassValueVisitor.getInstance())) {
+					whichUnit.performDefaultBehavior(this.simulation);
+				}
+			}
+			return null;
+		});
+		// The unit stops at once whatever order it is on; the queue goes too on request.
+		natives.createNative("BlzUnitForceStopOrder", (arguments, globalScope, triggerScope) -> {
+			final CUnit whichUnit = inGame(nullable(arguments, 0, ObjectJassValueVisitor.<CUnit>getInstance()));
+			if (whichUnit != null) {
+				if (arguments.get(1).visit(BooleanJassValueVisitor.getInstance())) {
+					whichUnit.clearQueuedOrders(this.simulation);
+				}
+				whichUnit.performDefaultBehavior(this.simulation);
+			}
+			return null;
+		});
 	}
 
 	private void registerItemOrders() {
@@ -489,6 +589,11 @@ final class OrderNatives extends CommonNatives {
 
 	private boolean issuePointOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
 			final float x, final float y) {
+		return issuePointOrder(orderingPlayerIndex, whichUnit, orderId, x, y, false);
+	}
+
+	private boolean issuePointOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
+			final float x, final float y, final boolean queue) {
 		if (whichUnit.isLoaded() || CAbilityMirrorImage.isHidingCaster(whichUnit)) {
 			return false;
 		}
@@ -513,13 +618,18 @@ final class OrderNatives extends CommonNatives {
 		}
 		if (abilityHandleId != 0) {
 			this.simulation.getDefaultPlayerUnitOrderExecutor(orderingPlayerIndex).issuePointOrder(
-					whichUnit.getHandleId(), abilityHandleId, orderId, targetAsPoint.x, targetAsPoint.y, false);
+					whichUnit.getHandleId(), abilityHandleId, orderId, targetAsPoint.x, targetAsPoint.y, queue);
 		}
 		return abilityHandleId != 0;
 	}
 
 	private boolean issueTargetOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
-			CWidget whichTarget) {
+			final CWidget whichTarget) {
+		return issueTargetOrder(orderingPlayerIndex, whichUnit, orderId, whichTarget, false);
+	}
+
+	private boolean issueTargetOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
+			CWidget whichTarget, final boolean queue) {
 		if ((whichTarget == null) || (this.simulation.getWidget(whichTarget.getHandleId()) == null)
 				|| whichUnit.isLoaded() || CAbilityMirrorImage.isHidingCaster(whichUnit)) {
 			return false;
@@ -548,10 +658,10 @@ final class OrderNatives extends CommonNatives {
 			}
 			if (abilityHandleId != 0) {
 				this.simulation.getDefaultPlayerUnitOrderExecutor(orderingPlayerIndex).issueTargetOrder(
-						whichUnit.getHandleId(), abilityHandleId, orderId, whichTarget.getHandleId(), false);
+						whichUnit.getHandleId(), abilityHandleId, orderId, whichTarget.getHandleId(), queue);
 			}
 			else if (whichTarget.visit(AbilityTargetVisitor.UNIT) != null) {
-				return issueSpellPointOrderAtUnit(orderingPlayerIndex, whichUnit, orderId, whichTarget);
+				return issueSpellPointOrderAtUnit(orderingPlayerIndex, whichUnit, orderId, whichTarget, queue);
 			}
 		}
 		finally {
@@ -564,7 +674,7 @@ final class OrderNatives extends CommonNatives {
 	// Measured (1.29): a unit-target script order of a point-target spell (Dispel Magic,
 	// Disenchant, Flame Strike, Blizzard, Shockwave, Carrion Swarm) casts it at the unit.
 	private boolean issueSpellPointOrderAtUnit(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
-			final CWidget whichTarget) {
+			final CWidget whichTarget, final boolean queue) {
 		final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 		int abilityHandleId = 0;
 		AbilityPointTarget targetAsPoint = new AbilityPointTarget(whichTarget.getX(), whichTarget.getY());
@@ -588,7 +698,7 @@ final class OrderNatives extends CommonNatives {
 		}
 		if (abilityHandleId != 0) {
 			this.simulation.getDefaultPlayerUnitOrderExecutor(orderingPlayerIndex).issuePointOrder(
-					whichUnit.getHandleId(), abilityHandleId, orderId, targetAsPoint.x, targetAsPoint.y, false);
+					whichUnit.getHandleId(), abilityHandleId, orderId, targetAsPoint.x, targetAsPoint.y, queue);
 		}
 		return abilityHandleId != 0;
 	}
@@ -604,6 +714,11 @@ final class OrderNatives extends CommonNatives {
 	}
 
 	private boolean issueImmediateOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId) {
+		return issueImmediateOrder(orderingPlayerIndex, whichUnit, orderId, false);
+	}
+
+	private boolean issueImmediateOrder(final int orderingPlayerIndex, final CUnit whichUnit, final int orderId,
+			final boolean queue) {
 		if (whichUnit.isLoaded() || CAbilityMirrorImage.isHidingCaster(whichUnit)) {
 			return orderId == OrderIds.stop;
 		}
@@ -632,7 +747,7 @@ final class OrderNatives extends CommonNatives {
 		}
 		// Orders without an ability, such as stop, are still issued.
 		this.simulation.getDefaultPlayerUnitOrderExecutor(orderingPlayerIndex).issueImmediateOrder(
-				whichUnit.getHandleId(), abilityHandleId, orderId, false);
+				whichUnit.getHandleId(), abilityHandleId, orderId, queue);
 		// Measured on 1.29: stop is accepted (true) although no ability carries it.
 		return (abilityHandleId != 0) || ((orderId == OrderIds.stop) && !whichUnit.isDead());
 	}

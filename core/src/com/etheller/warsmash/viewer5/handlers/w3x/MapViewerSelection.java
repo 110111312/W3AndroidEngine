@@ -108,7 +108,7 @@ final class MapViewerSelection {
 
 		final Map<String, Terrain.Splat> splats = new HashMap<String, Terrain.Splat>();
 		for (final RenderWidget unit : units) {
-			if (unit.getSelectionScale() > 0) {
+			if ((unit.getSelectionScale() > 0) && viewer.scriptUiState.isSelectionCircleEnabled()) {
 				String allyKey = "n:";
 				final float selectionSize = unit.getSelectionScale();
 				String path = null;

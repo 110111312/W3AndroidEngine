@@ -191,5 +191,24 @@ public final class LanCommandValidator implements LanHost.CommandValidator {
 			number(x);
 			number(y);
 		}
+
+		@Override
+		public void syncData(final String prefix, final String data) {
+			notForReferee();
+		}
+
+		@Override
+		public void keyEvent(final int key, final int metaKey, final boolean down) {
+			notForReferee();
+		}
+
+		@Override
+		public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+			notForReferee();
+			number(value);
+			if ((frameId < 0) || (eventType < 0)) {
+				this.valid = false;
+			}
+		}
 	}
 }

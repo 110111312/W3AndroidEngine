@@ -22,6 +22,8 @@ public final class RenderFogGhost {
 	private final int fakePlayerIndex;
 	private final int colorIndex;
 	private final boolean minimapIconHidden;
+	private final boolean usesAltMinimapIcon;
+	private final int minimapLandmarkKind;
 	private final MdxComplexInstance instance;
 	private final float[] baseColor = new float[4];
 	private RenderUnit renderUnit;
@@ -42,6 +44,8 @@ public final class RenderFogGhost {
 		this.fakePlayerIndex = this.unit.getFakePlayerIndex();
 		this.colorIndex = source.playerIndex;
 		this.minimapIconHidden = this.unit.isHideMinimapIcon();
+		this.usesAltMinimapIcon = this.unit.isUsesAltMinimapIcon();
+		this.minimapLandmarkKind = RenderUnit.minimapLandmarkKindOf(this.unit);
 		this.buildingShadowFile = source.getTypeData().getBuildingShadow();
 		final MdxComplexInstance seen = source.instance;
 		this.instance = (MdxComplexInstance) ((MdxModel) seen.model).addInstance();
@@ -172,6 +176,14 @@ public final class RenderFogGhost {
 
 	public int getFakePlayerIndex() {
 		return this.fakePlayerIndex;
+	}
+
+	public boolean isUsesAltMinimapIcon() {
+		return this.usesAltMinimapIcon;
+	}
+
+	public int getMinimapLandmarkKind() {
+		return this.minimapLandmarkKind;
 	}
 
 	public boolean isMinimapIconHidden() {

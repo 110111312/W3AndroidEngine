@@ -29,35 +29,12 @@ public class DynamicShadowManager {
 		}
 	}
 
+	/**
+	 * No depth map is drawn: the terrain shaders do not read one, so a framebuffer cleared every frame only cost tile
+	 * based GPUs a render pass. Unit, building and doodad shadows are the ground splats and the terrain's shadow map.
+	 */
 	public boolean setup(final WebGL webGL) {
-		// The framebuffer, which regroups 0, 1, or more textures, and 0 or 1 depth
-		// buffer.
-		final GL30 gl = Gdx.gl30;
-		this.gl = gl;
-		this.framebufferName = 0;
-		this.framebufferName = gl.glGenFramebuffer();
-		gl.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.framebufferName);
-
-		this.depthTexture = gl.glGenTexture();
-		gl.glBindTexture(GL30.GL_TEXTURE_2D, this.depthTexture);
-		// OpenGL ES only accepts DEPTH_COMPONENT16 with an unsigned type.
-		gl.glTexImage2D(GL30.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT16, 1024, 1024, 0, GL30.GL_DEPTH_COMPONENT,
-				GL30.GL_UNSIGNED_SHORT, null);
-		gl.glTexParameteri(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_MAG_FILTER, GL30.GL_NEAREST);
-		gl.glTexParameteri(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_MIN_FILTER, GL30.GL_NEAREST);
-		gl.glTexParameteri(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_WRAP_S, GL30.GL_CLAMP_TO_EDGE);
-		gl.glTexParameteri(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_WRAP_T, GL30.GL_CLAMP_TO_EDGE);
-		Extensions.dynamicShadowExtension.glFramebufferTexture(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT,
-				this.depthTexture, 0);
-
-		Extensions.dynamicShadowExtension.glDrawBuffer(GL30.GL_NONE); // No color buffer is drawn to.
-
-		// Always check that our framebuffer is ok
-		if (gl.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER) != GL30.GL_FRAMEBUFFER_COMPLETE) {
-			return false;
-		}
-		Gdx.gl30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
-
+		prepareShadowMatrix();
 		return true;
 	}
 

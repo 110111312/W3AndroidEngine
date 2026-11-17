@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -56,6 +57,8 @@ public class MeleeUIMinimap {
 	private Pixmap fogPixmap;
 	private Texture fogTexture;
 	private long fogRefreshedMillis;
+	private final byte[] fogAlphaByCell = new byte[256];
+	private byte[] fogBytes;
 
 	public MeleeUIMinimap(final Rectangle displayArea, final Rectangle playableMapArea, final Texture minimapTexture,
 			final Texture[] teamColors, final Texture[] specialIcons) {
@@ -153,22 +156,40 @@ public class MeleeUIMinimap {
 			final long now = System.currentTimeMillis();
 			if ((now - this.fogRefreshedMillis) >= FOG_REFRESH_MILLIS) {
 				this.fogRefreshedMillis = now;
-				for (int y = 0; y < height; y++) {
-					for (int x = 0; x < width; x++) {
-						final CFogState state = fogOfWar.getFogState(game, x + minX, y + minY);
-						final int rgba;
-						// Measured on 1.29: fog leaves 75 % of the minimap's brightness, a partially visible mask 38 %.
-						if (CFogState.FOGGED.equals(state)) {
-							rgba = 0x0000003F;
-						} else if (CFogState.MASKED.equals(state)) {
-							rgba = this.maskedAreasPartiallyVisible ? 0x0000009F : 0x000000FF;
-						} else {
-							rgba = 0;
-						}
-						// Pixmap rows run top down, the minimap's fog cells bottom up.
-						this.fogPixmap.drawPixel(x, height - 1 - y, rgba);
+				// A put per pixel on the pixmap's direct buffer is slow on Android: the pixels are filled in a plain array
+				// and copied at once, and the settings-dependent look is worked out once per stored value, not per cell.
+				final byte[] cells = fogOfWar.getFogOfWarBuffer().array();
+				final int cellsWide = fogOfWar.getWidth();
+				for (int value = 0; value < 256; value++) {
+					final CFogState state = CFogState.getByMask(game.getFogStateFromSettings((byte) value));
+					// Measured on 1.29: fog leaves 75 % of the minimap's brightness, a partially visible mask 38 %.
+					if (CFogState.FOGGED.equals(state)) {
+						this.fogAlphaByCell[value] = (byte) 0x3F;
+					} else if (CFogState.MASKED.equals(state)) {
+						this.fogAlphaByCell[value] = this.maskedAreasPartiallyVisible ? (byte) 0x9F : (byte) 0xFF;
+					} else {
+						this.fogAlphaByCell[value] = 0;
 					}
 				}
+				if ((this.fogBytes == null) || (this.fogBytes.length != width * height * 4)) {
+					this.fogBytes = new byte[width * height * 4];
+				}
+				final byte[] fogBytes = this.fogBytes;
+				for (int y = 0; y < height; y++) {
+					// Pixmap rows run top down, the minimap's fog cells bottom up.
+					int offset = ((height - 1 - y) * width * 4) + 3;
+					final int row = (y + minY) * cellsWide;
+					for (int x = 0; x < width; x++) {
+						final int cell = row + x + minX;
+						fogBytes[offset] = (cell >= 0) && (cell < cells.length) ? this.fogAlphaByCell[cells[cell] & 0xFF]
+								: 0;
+						offset += 4;
+					}
+				}
+				final ByteBuffer fogPixels = this.fogPixmap.getPixels();
+				fogPixels.position(0);
+				fogPixels.put(fogBytes);
+				fogPixels.position(0);
 				this.fogTexture.draw(this.fogPixmap, 0, 0);
 			}
 			batch.setColor(1f, 1f, 1f, 1f);
@@ -191,14 +212,15 @@ public class MeleeUIMinimap {
 			if (!(simUnit.isHidden() || simUnit.isHideMinimapIcon() || simUnit.isDead())
 					&& (unitVisible || (!unit.hasShownFogGhost() && isExploredLandmark(game, simUnit,
 							unit.getMinimapLandmarkKind(), pathingGrid, fogOfWar, this.maskedAreasPartiallyVisible)))) {
-				addUnitIcon(game, simUnit, unit.getMinimapLandmarkKind(), simUnit.getFakePlayerIndex(),
+				addUnitIcon(game, simUnit, unit.getMinimapLandmarkKind(), simUnit.isUsesAltMinimapIcon(),
+						simUnit.isBuilding(), simUnit.getFakePlayerIndex(),
 						unit.location[0], unit.location[1], player, 1f);
 			}
 		}
 		for (int i = 0, n = fogGhosts.size(); i < n; i++) {
 			final RenderFogGhost ghost = fogGhosts.get(i);
 			if (!ghost.isMinimapIconHidden() && ghost.isShown()) {
-				addUnitIcon(game, ghost.getUnit(), RenderUnit.minimapLandmarkKindOf(ghost.getUnit()),
+				addUnitIcon(game, ghost.getUnit(), ghost.getMinimapLandmarkKind(), ghost.isUsesAltMinimapIcon(), true,
 						ghost.getFakePlayerIndex(), ghost.getX(), ghost.getY(), player, FOGGED_ICON_SHADE);
 			}
 		}
@@ -206,6 +228,7 @@ public class MeleeUIMinimap {
 	}
 
 	private void addUnitIcon(final CSimulation game, final CUnit simUnit, final int landmarkKind,
+			final boolean usesAltIcon, final boolean building,
 			final int fakePlayerIndex, final float x, final float y, final CPlayer player, final float shade) {
 		int dimensions = 4;
 		float red = 1f;
@@ -214,7 +237,7 @@ public class MeleeUIMinimap {
 		float alpha = 1f;
 		int layer = 1;
 		final Texture minimapIcon;
-		final Texture altIcon = simUnit.isUsesAltMinimapIcon() ? altIcon() : null;
+		final Texture altIcon = usesAltIcon ? altIcon() : null;
 		if (altIcon != null) {
 			minimapIcon = altIcon;
 			dimensions = 21;
@@ -243,7 +266,7 @@ public class MeleeUIMinimap {
 			minimapIcon = this.specialIcons[2];
 			dimensions = 28;
 		} else {
-			if (simUnit.isBuilding()) {
+			if (building) {
 				dimensions = 10;
 			}
 			layer = 0;

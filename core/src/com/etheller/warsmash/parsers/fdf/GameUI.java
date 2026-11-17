@@ -1760,7 +1760,15 @@ public final class GameUI extends AbstractUIFrame implements UIFrame {
 		return (nonFdfY / viewport.getWorldHeight()) * 0.6f;
 	}
 
-	public Texture loadTexture(String path) {
+	public Texture loadTexture(final String path) {
+		return loadTexture(path, true);
+	}
+
+	/**
+	 * @param reportMissing false when the caller has another file to try, so that the data error report lists only
+	 *                      what stays missing
+	 */
+	public Texture loadTexture(String path, final boolean reportMissing) {
 		Texture texture = this.pathToTexture.get(path);
 		if (texture == null) {
 			final String originalPath = path;
@@ -1778,7 +1786,9 @@ public final class GameUI extends AbstractUIFrame implements UIFrame {
 			}
 			catch (final Exception exc) {
 				// Callers fall back when there is no texture; the report lists the missing file once.
-				DataErrors.record(DataErrors.MISSING_ASSET, path);
+				if (reportMissing) {
+					DataErrors.record(DataErrors.MISSING_ASSET, path);
+				}
 			}
 		}
 		return texture;

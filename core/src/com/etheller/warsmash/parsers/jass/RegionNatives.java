@@ -482,7 +482,7 @@ final class RegionNatives extends CommonNatives {
 				});
 		// Only the map's own terrain pathing counts (not units, buildings or trees); outside the playable area
 		// every type except floatability is blocked, and ANY is always blocked.
-		jassProgramVisitor.getJassNativeManager().createNative("IsTerrainPathable",
+		final JassFunction isTerrainPathable =
 				(arguments, globalScope, triggerScope) -> {
 					final float x = arguments.get(0).visit(RealJassValueVisitor.getInstance()).floatValue();
 					final float y = arguments.get(1).visit(RealJassValueVisitor.getInstance()).floatValue();
@@ -529,7 +529,10 @@ final class RegionNatives extends CommonNatives {
 					default:
 						return BooleanJassValue.TRUE;
 					}
-				});
+				};
+		jassProgramVisitor.getJassNativeManager().createNative("IsTerrainPathable", isTerrainPathable);
+		// Reforged's variant reads the same terrain pathing.
+		jassProgramVisitor.getJassNativeManager().createNative("BlzIsTerrainPathableEx", isTerrainPathable);
 	}
 
 	private static boolean scriptOverride(final short flags, final short blocked, final short open,

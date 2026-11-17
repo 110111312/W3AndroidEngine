@@ -84,6 +84,7 @@ public abstract class Sd<TYPE> {
 
 	}
 
+	@SuppressWarnings("unchecked")
 	public Sd(final MdxModel model, final MdlxTimeline<TYPE> timeline, final SdArrayDescriptor<TYPE> arrayDescriptor) {
 		final List<Long> globalSequences = model.getGlobalSequences();
 		final int globalSequenceId = timeline.getGlobalSequenceId();
@@ -102,28 +103,45 @@ public abstract class Sd<TYPE> {
 		// type.
 		this.interpolationType = forcedInterp != null ? forcedInterp : timeline.getInterpolationType().ordinal();
 
-		final SdSequence.SharedKeys shared = SdSequence.sharedKeys(timeline);
+		final SdSequence.SharedKeys shared = SdSequence.sharedKeys(model.arrayPool, timeline);
 		if ((globalSequenceId != -1) && (globalSequences.size() > 0)) {
 			this.globalSequence = new SdSequence<TYPE>(this, 0, globalSequences.get(globalSequenceId).longValue(),
 					timeline, true, arrayDescriptor, shared);
 		}
 		else {
-			for (final Sequence sequence : model.getSequences()) {
-				final long[] interval = sequence.getInterval();
+			final long[] frames = timeline.getFrames();
+			final List<Sequence> modelSequences = model.getSequences();
+			for (int i = 0, l = modelSequences.size(); i < l; i++) {
+				final long[] interval = modelSequences.get(i).getInterval();
 
-				this.sequences.add(new SdSequence<TYPE>(this, interval[0], interval[1], timeline, false,
-						arrayDescriptor, shared));
+				if (!hasKeyIn(frames, interval[0], interval[1])) {
+					// One holder of the default value for every timeline of the model that has no key here.
+					this.sequences.add((SdSequence<TYPE>) model.defaultSdSequence(i, interval[0], interval[1]));
+				}
+				else {
+					this.sequences.add(new SdSequence<TYPE>(this, interval[0], interval[1], timeline, false,
+							arrayDescriptor, shared));
+				}
 			}
 		}
 	}
 
+	private static boolean hasKeyIn(final long[] frames, final long start, final long end) {
+		for (final long frame : frames) {
+			if ((frame >= start) && (frame <= end)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public int getValue(final TYPE out, final int sequence, final int frame, final int counter) {
 		if (this.globalSequence != null) {
-			return this.globalSequence.getValue(out,
-					this.globalSequence.end == 0 ? 0 : counter % this.globalSequence.end);
+			return this.globalSequence.getValue(this, out,
+					this.globalSequence.getEnd() == 0 ? 0 : counter % this.globalSequence.getEnd());
 		}
 		else if ((sequence != -1) && (this.sequences.size() > sequence)) {
-			return this.sequences.get(sequence).getValue(out, frame);
+			return this.sequences.get(sequence).getValue(this, out, frame);
 		}
 		else {
 			this.copy(out, this.defval);

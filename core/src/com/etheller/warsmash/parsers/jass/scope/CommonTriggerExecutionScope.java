@@ -99,6 +99,16 @@ public class CommonTriggerExecutionScope extends TriggerExecutionScope {
 	private Map<String, Object> triggerLocalStore; // warsmash only
 	private int triggerCastId; // Warsmash only
 	private float damageTaken;
+	private CDamageEvent damageEvent;
+	private String syncPrefix;
+	private String syncData;
+	private int keyCode;
+	private int keyMetaKeys;
+	private boolean keyDown;
+	private Object frame;
+	private int frameEventType;
+	private float frameValue;
+	private String frameText;
 	private CUnit damageSource;
 	private String chatString;
 	private String chatStringMatched;
@@ -194,6 +204,16 @@ public class CommonTriggerExecutionScope extends TriggerExecutionScope {
 		this.eventGameState = parentScope.eventGameState;
 		this.eventPlayerState = parentScope.eventPlayerState;
 		this.damageTaken = parentScope.damageTaken;
+		this.damageEvent = parentScope.damageEvent;
+		this.syncPrefix = parentScope.syncPrefix;
+		this.syncData = parentScope.syncData;
+		this.keyCode = parentScope.keyCode;
+		this.keyMetaKeys = parentScope.keyMetaKeys;
+		this.keyDown = parentScope.keyDown;
+		this.frame = parentScope.frame;
+		this.frameEventType = parentScope.frameEventType;
+		this.frameValue = parentScope.frameValue;
+		this.frameText = parentScope.frameText;
 		this.damageSource = parentScope.damageSource;
 		this.chatString = parentScope.chatString;
 		this.chatStringMatched = parentScope.chatStringMatched;
@@ -508,6 +528,50 @@ public class CommonTriggerExecutionScope extends TriggerExecutionScope {
 
 	public void setDamageTaken(final float damageTaken) {
 		this.damageTaken = damageTaken;
+		if (this.damageEvent != null) {
+			this.damageEvent.setDamage(damageTaken);
+		}
+	}
+
+	public CDamageEvent getDamageEvent() {
+		return this.damageEvent;
+	}
+
+	public String getSyncPrefix() {
+		return this.syncPrefix;
+	}
+
+	public String getSyncData() {
+		return this.syncData;
+	}
+
+	public int getKeyCode() {
+		return this.keyCode;
+	}
+
+	public int getKeyMetaKeys() {
+		return this.keyMetaKeys;
+	}
+
+	public boolean isKeyDown() {
+		return this.keyDown;
+	}
+
+	/** The frame of a frame event: the object the script frame handle wraps. */
+	public Object getFrame() {
+		return this.frame;
+	}
+
+	public int getFrameEventType() {
+		return this.frameEventType;
+	}
+
+	public float getFrameValue() {
+		return this.frameValue;
+	}
+
+	public String getFrameText() {
+		return this.frameText;
 	}
 
 	public CUnit getDamageSource() {
@@ -532,6 +596,39 @@ public class CommonTriggerExecutionScope extends TriggerExecutionScope {
 
 	public String getChatStringMatched() {
 		return this.chatStringMatched;
+	}
+
+	public static CommonTriggerExecutionScope playerSyncScope(final Trigger trigger, final CPlayerJass player,
+			final String prefix, final String data) {
+		final CommonTriggerExecutionScope scope = new CommonTriggerExecutionScope(trigger, TriggerExecutionScope.EMPTY);
+		scope.triggeringPlayer = player;
+		scope.triggerEventId = JassGameEventsWar3.EVENT_PLAYER_SYNC_DATA;
+		scope.syncPrefix = prefix;
+		scope.syncData = data;
+		return scope;
+	}
+
+	public static CommonTriggerExecutionScope playerKeyScope(final Trigger trigger, final CPlayerJass player,
+			final int keyCode, final int metaKeys, final boolean down) {
+		final CommonTriggerExecutionScope scope = new CommonTriggerExecutionScope(trigger, TriggerExecutionScope.EMPTY);
+		scope.triggeringPlayer = player;
+		scope.triggerEventId = down ? JassGameEventsWar3.EVENT_PLAYER_KEY_DOWN : JassGameEventsWar3.EVENT_PLAYER_KEY_UP;
+		scope.keyCode = keyCode;
+		scope.keyMetaKeys = metaKeys;
+		scope.keyDown = down;
+		return scope;
+	}
+
+	public static CommonTriggerExecutionScope frameScope(final Trigger trigger, final CPlayerJass player,
+			final Object frame, final int eventType, final float value, final String text) {
+		final CommonTriggerExecutionScope scope = new CommonTriggerExecutionScope(trigger, TriggerExecutionScope.EMPTY);
+		scope.triggeringPlayer = player;
+		scope.triggerEventId = JassGameEventsWar3.EVENT_GAME_CUSTOM_UI_FRAME;
+		scope.frame = frame;
+		scope.frameEventType = eventType;
+		scope.frameValue = value;
+		scope.frameText = text;
+		return scope;
 	}
 
 	public static CommonTriggerExecutionScope playerChatScope(final Trigger trigger, final CPlayerJass player,
@@ -1071,6 +1168,16 @@ public class CommonTriggerExecutionScope extends TriggerExecutionScope {
 		scope.damageTaken = damage;
 		scope.damageSource = source;
 		scope.triggeringUnit = damagedUnit;
+		return scope;
+	}
+
+	/** The scope of a damage event; the shared event object carries the hit's fields and the changes made to them. */
+	public static CommonTriggerExecutionScope unitDamageScope(final JassGameEventsWar3 triggerEventId,
+			final Trigger trigger, final CDamageEvent damageEvent, final CPlayerJass triggeringPlayer) {
+		final CommonTriggerExecutionScope scope = unitDamageTakenScope(triggerEventId, trigger,
+				damageEvent.getTarget(), damageEvent.getSource(), damageEvent.getDamage());
+		scope.damageEvent = damageEvent;
+		scope.triggeringPlayer = triggeringPlayer;
 		return scope;
 	}
 

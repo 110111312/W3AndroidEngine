@@ -58,6 +58,7 @@ import com.etheller.warsmash.parsers.fdf.frames.SimpleStatusBarFrame;
 import com.etheller.warsmash.parsers.fdf.frames.SpriteFrame;
 import com.etheller.warsmash.parsers.fdf.frames.StringFrame;
 import com.etheller.warsmash.parsers.fdf.frames.UIFrame;
+import com.etheller.warsmash.parsers.jass.OsKeys;
 import com.etheller.warsmash.parsers.jass.Jass2.RootFrameListener;
 import com.etheller.warsmash.units.DataTable;
 import com.etheller.warsmash.util.ImageUtils;
@@ -402,6 +403,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 	/** The game is played with the Reforged skin (the launcher's), which a replay's panel follows. */
 	private boolean reforgedSkin;
 	boolean userControlEnabled = true;
+	private boolean scriptCursorHidden;
 	/** EnableSelect, EnableDragSelect and EnablePreSelect: a state bit off stops the player's action, a UI bit off hides its feedback. */
 	static final int SELECT_OFF = 1;
 	static final int SELECT_UI_OFF = 2;
@@ -869,6 +871,14 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.uiViewport.unproject(screenCoordsVector);
 		this.cursorFrame.setFramePointX(FramePoint.LEFT, screenCoordsVector.x);
 		this.cursorFrame.setFramePointY(FramePoint.BOTTOM, screenCoordsVector.y);
+		if (!this.war3MapViewer.scriptUiState.isCursorEnabled()) {
+			this.cursorFrame.setVisible(false);
+			this.scriptCursorHidden = true;
+		}
+		else if (this.scriptCursorHidden) {
+			this.scriptCursorHidden = false;
+			this.cursorFrame.setVisible(true);
+		}
 
 		if (this.activeCommand != null) {
 			if (this.draggingItem != null) {
@@ -1397,7 +1407,33 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 	@Override
 	public boolean keyDown(final int keycode) {
+		sendScriptKeyEvent(keycode, true);
 		return this.input.keyDown(keycode);
+	}
+
+	@Override
+	public CPlayerUnitOrderListener getUnitOrderListener() {
+		return this.unitOrderListener;
+	}
+
+	@Override
+	public CUnit getMouseFocusUnit() {
+		return this.mouseOverUnit instanceof RenderUnit ? ((RenderUnit) this.mouseOverUnit).getSimulationUnit() : null;
+	}
+
+	/** A key the player presses reaches the key triggers of a script as a player command, like every input. */
+	private void sendScriptKeyEvent(final int keycode, final boolean down) {
+		final int localPlayerIndex = this.war3MapViewer.getLocalPlayerIndex();
+		if ((this.unitOrderListener == null) || (localPlayerIndex < 0)) {
+			return;
+		}
+		final int virtualKey = OsKeys.toVirtual(keycode);
+		final CPlayer player = this.war3MapViewer.simulation.getPlayer(localPlayerIndex);
+		if ((virtualKey >= 0) && (player != null)
+				&& player.hasPlayerEvents(down ? JassGameEventsWar3.EVENT_PLAYER_KEY_DOWN
+						: JassGameEventsWar3.EVENT_PLAYER_KEY_UP)) {
+			this.unitOrderListener.keyEvent(virtualKey, OsKeys.heldMetaKeys(Gdx.input), down);
+		}
 	}
 
 	public boolean keyTyped(final char character) {
@@ -1406,6 +1442,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 	@Override
 	public boolean keyUp(final int keycode) {
+		sendScriptKeyEvent(keycode, false);
 		return this.input.keyUp(keycode);
 	}
 
@@ -1949,9 +1986,18 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.resultShownOutside = resultShownOutside;
 	}
 
+	/**
+	 * Whether a game's end leaves its result to the launcher: only a campaign mission has it, on the campaign's page;
+	 * any other game, custom or loaded, shows the score screen here before it returns.
+	 */
+	static boolean resultShownByLauncher(final boolean launcherShowsResult, final int campaign) {
+		return launcherShowsResult && (campaign >= 0);
+	}
+
 	@Override
 	public void endGame(final boolean showScoreScreen) {
-		if (showScoreScreen && !this.resultShownOutside) {
+		if (showScoreScreen
+				&& !resultShownByLauncher(this.resultShownOutside, this.war3MapViewer.getCampaign())) {
 			this.war3MapViewer.gameEnded();
 			this.cinematics.updateInterfaceVisibility(false);
 			this.cinematicPanel.setVisible(false);

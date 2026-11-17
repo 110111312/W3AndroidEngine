@@ -133,4 +133,19 @@ final class CReplayCommands implements CPlayerUnitOrderListener {
 	public void mouseEvent(final int eventId, final float x, final float y, final int button) {
 		this.executor.mouseEvent(eventId, x, y, button);
 	}
+
+	@Override
+	public void syncData(final String prefix, final String data) {
+		this.executor.syncData(prefix, data);
+	}
+
+	@Override
+	public void keyEvent(final int key, final int metaKey, final boolean down) {
+		this.executor.keyEvent(key, metaKey, down);
+	}
+
+	@Override
+	public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+		this.executor.frameEvent(frameId, eventType, value, text);
+	}
 }

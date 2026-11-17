@@ -227,7 +227,7 @@ final class ItemNatives extends CommonNatives {
 					if (whichItem == null) {
 						return BooleanJassValue.FALSE;
 					}
-					return BooleanJassValue.of(whichItem.getItemType().isUseAutomaticallyWhenAcquired());
+					return BooleanJassValue.of(whichItem.isUseAutomaticallyWhenAcquired());
 				});
 		jassProgramVisitor.getJassNativeManager().createNative("IsItemSellable",
 				(arguments, globalScope, triggerScope) -> {
@@ -336,6 +336,9 @@ final class ItemNatives extends CommonNatives {
 					final CItem whichItem = nullable(arguments, 0, ObjectJassValueVisitor.getInstance());
 					if (whichItem == null) {
 						return JassType.STRING.getNullValue();
+					}
+					if (whichItem.getNameOverride() != null) {
+						return new StringJassValue(whichItem.getNameOverride());
 					}
 					final ItemUI itemUI = war3MapViewer.getAbilityDataUI().getItemUI(whichItem.getTypeId());
 					return new StringJassValue(itemUI.getName());

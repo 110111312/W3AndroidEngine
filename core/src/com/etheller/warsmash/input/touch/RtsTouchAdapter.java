@@ -20,6 +20,8 @@ public final class RtsTouchAdapter implements GestureListener {
 	private final TouchSettings settings;
 	private final boolean debugLog;
 	private static final int SHIFT_SLOT = 10;
+	/** A drag from an item slot picks the item up, so a tap there may drift further before it becomes one. */
+	private static final float INVENTORY_DRAG_SLOPS = 2.5f;
 	private volatile boolean longPressOrders = true;
 	private boolean aiming;
 	private boolean overlayDrag;
@@ -204,6 +206,13 @@ public final class RtsTouchAdapter implements GestureListener {
 		}
 		click(processor, x, y, Input.Buttons.RIGHT);
 		log("long press " + (int) x + "," + (int) y + " -> right click");
+	}
+
+	@Override
+	public float dragSlopFactor(final float x, final float y) {
+		final TouchTarget target = target();
+		return ((target != null) && target.isOverInventorySlot(Math.round(x), Math.round(y))) ? INVENTORY_DRAG_SLOPS
+				: 1;
 	}
 
 	@Override

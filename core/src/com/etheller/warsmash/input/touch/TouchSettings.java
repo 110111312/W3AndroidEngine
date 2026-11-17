@@ -57,7 +57,7 @@ public final class TouchSettings {
 	public static TouchSettings defaults(final float density, final ControlScheme platformScheme) {
 		return new TouchSettings(10 * density, 4 * density, 300, 300, 150, 250, 1.3f, 1.4f, 56 * density,
 				48 * density, 96 * density, PalmFilter.PenFingerPolicy.IGNORE, PalmFilter.SizeRejection.AUTO,
-				platformScheme, TouchStyle.TAP_HOLD, 250, 32 * density, PenButton.SHIFT);
+				platformScheme, TouchStyle.DOUBLE_TAP, 250, 32 * density, PenButton.SHIFT);
 	}
 
 	public static TouchSettings fromIni(final Element touch, final float density, final ControlScheme platformScheme) {

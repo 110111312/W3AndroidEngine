@@ -158,7 +158,11 @@ public class RenderUnitTypeData extends RenderWidgetTypeData<RenderUnitType> {
 		else {
 			specialArtModel = null;
 		}
-		final MdxModel model = this.mapViewer.loadModelMdx(path);
+		MdxModel model = this.mapViewer.loadModelMdx(path);
+		if (model == null) {
+			// A unit type without a model file (map dummies and casters) is a unit all the same, just not seen.
+			model = this.mapViewer.emptyModel();
+		}
 		final MdxModel portraitModel = getPortraitModel(path, model);
 
 		final ArgbImage buildingPathingPixelMap = getBuildingPathingPixelMap(row);

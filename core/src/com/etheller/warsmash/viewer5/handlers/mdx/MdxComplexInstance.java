@@ -24,6 +24,7 @@ import com.etheller.warsmash.viewer5.RenderBatch;
 import com.etheller.warsmash.viewer5.Scene;
 import com.etheller.warsmash.viewer5.SkeletalNode;
 import com.etheller.warsmash.viewer5.Texture;
+import com.etheller.warsmash.viewer5.WorldScene;
 import com.etheller.warsmash.viewer5.TextureMapper;
 import com.etheller.warsmash.viewer5.UpdatableObject;
 import com.etheller.warsmash.viewer5.gl.DataTexture;
@@ -40,6 +41,7 @@ public class MdxComplexInstance extends ModelInstance {
 	private static final float[] alphaHeap = new float[1];
 	private static final long[] textureIdHeap = new long[1];
 	private static final Vector3 intersectionHeap = new Vector3();
+	private static final Quaternion inverseRotationHeap = new Quaternion();
 
 	public List<LightInstance> lights = new ArrayList<>();
 	public List<AttachmentInstance> attachments = new ArrayList<>();
@@ -82,9 +84,10 @@ public class MdxComplexInstance extends ModelInstance {
 	private int packedStamp;
 	private int packedBase;
 	public Texture[] replaceableTextures = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
-	public Texture[] replaceableTextures_diffuse = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
-	public Texture[] replaceableTextures_normal = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
-	public Texture[] replaceableTextures_orm = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
+	// Only instances of a team colored or skinned HD model have these.
+	public Texture[] replaceableTextures_diffuse;
+	public Texture[] replaceableTextures_normal;
+	public Texture[] replaceableTextures_orm;
 	private float animationSpeed = 1.0f;
 	private float blendTime;
 	private float blendTimeRemaining;
@@ -406,7 +409,7 @@ public class MdxComplexInstance extends ModelInstance {
 					}
 					else {
 						localRotation.set(overrideWorldRotation);
-						localRotation.mulLeft(parent.inverseWorldRotation);
+						localRotation.mulLeft(parent.getInverseWorldRotation(inverseRotationHeap));
 					}
 				}
 
@@ -675,7 +678,30 @@ public class MdxComplexInstance extends ModelInstance {
 	}
 
 	@Override
-	public void updateAnimations(final float dt) {
+	public void advanceClock(final float dt) {
+		if (this.rendered && !this.paused) {
+			advanceSequenceClock(dt);
+		}
+	}
+
+	@Override
+	public boolean endsSequence() {
+		if ((this.sequence == -1) || this.sequenceEnded) {
+			return false;
+		}
+		switch (this.sequenceLoopMode) {
+		case ALWAYS_LOOP:
+		case LOOP_TO_NEXT_ANIMATION:
+			return false;
+		case MODEL_LOOP:
+			final MdxModel model = (MdxModel) this.model;
+			return (this.sequence < model.sequences.size()) && (model.sequences.get(this.sequence).getFlags() != 0);
+		default:
+			return true;
+		}
+	}
+
+	private void advanceSequenceClock(final float dt) {
 		final MdxModel model = (MdxModel) this.model;
 		final int sequenceId = this.sequence;
 
@@ -738,6 +764,13 @@ public class MdxComplexInstance extends ModelInstance {
 				this.sequenceEnded = false;
 			}
 		}
+	}
+
+	@Override
+	public void updateAnimations(final float dt) {
+		final int sequenceId = this.sequence;
+
+		advanceSequenceClock(dt);
 
 		final boolean forced = this.forced;
 
@@ -816,6 +849,11 @@ public class MdxComplexInstance extends ModelInstance {
 
 	@Override
 	public void setReplaceableTextureHD(final int replaceableTextureId, final String replaceableTextureFile) {
+		if (this.replaceableTextures_diffuse == null) {
+			this.replaceableTextures_diffuse = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
+			this.replaceableTextures_normal = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
+			this.replaceableTextures_orm = new Texture[WarsmashConstants.REPLACEABLE_TEXTURE_LIMIT];
+		}
 		this.replaceableTextures_diffuse[replaceableTextureId] = (Texture) this.model.viewer
 				.load(replaceableTextureFile + "_diffuse.dds", PathSolver.DEFAULT, null);
 		this.replaceableTextures_normal[replaceableTextureId] = (Texture) this.model.viewer
@@ -896,9 +934,16 @@ public class MdxComplexInstance extends ModelInstance {
 			resetEventEmitters();
 
 			this.forced = true;
+			trackClock();
 		}
 
 		return this;
+	}
+
+	private void trackClock() {
+		if (this.scene instanceof WorldScene) {
+			((WorldScene) this.scene).trackClock(this);
+		}
 	}
 
 	/**
@@ -908,6 +953,7 @@ public class MdxComplexInstance extends ModelInstance {
 	 */
 	public MdxComplexInstance setSequenceLoopMode(final SequenceLoopMode mode) {
 		this.sequenceLoopMode = mode;
+		trackClock();
 
 		return this;
 	}

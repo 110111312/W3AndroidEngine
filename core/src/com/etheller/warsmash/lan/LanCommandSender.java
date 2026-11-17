@@ -189,4 +189,22 @@ public final class LanCommandSender implements CPlayerUnitOrderListener {
 		this.encoder.mouseEvent(eventId, x, y, button);
 		send();
 	}
+
+	@Override
+	public void syncData(final String prefix, final String data) {
+		this.encoder.syncData(prefix, data);
+		send();
+	}
+
+	@Override
+	public void keyEvent(final int key, final int metaKey, final boolean down) {
+		this.encoder.keyEvent(key, metaKey, down);
+		send();
+	}
+
+	@Override
+	public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+		this.encoder.frameEvent(frameId, eventType, value, text);
+		send();
+	}
 }

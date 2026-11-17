@@ -139,11 +139,23 @@ public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
 
 	/** Measured on 1.29: a spell cast from an item has no cast point, it takes effect once the unit faces the target. */
 	private float castPointSeconds() {
-		final CAbilityInventory inventory = this.unit.getInventoryData();
-		if ((inventory != null) && inventory.isItemSpellCast(this.ability)) {
+		if (isItemSpellCast()) {
 			return 0;
 		}
 		return this.unit.getUnitType().getCastPoint();
+	}
+
+	private boolean isItemSpellCast() {
+		final CAbilityInventory inventory = this.unit.getInventoryData();
+		return (inventory != null) && inventory.isItemSpellCast(this.ability);
+	}
+
+	/** An item spell has no backswing either (1.29: the hero acts at once after Finger of Pain from a Crown). */
+	private float backswingEndSeconds() {
+		if (isItemSpellCast()) {
+			return 0;
+		}
+		return this.unit.getUnitType().getCastPoint() + this.unit.getUnitType().getCastBackswingPoint();
 	}
 
 	/**
@@ -154,8 +166,7 @@ public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
 		if (this.backswing == null) {
 			this.backswing = new CExactExpiry();
 		}
-		this.backswing.start(simulation,
-				this.unit.getUnitType().getCastPoint() + this.unit.getUnitType().getCastBackswingPoint());
+		this.backswing.start(simulation, backswingEndSeconds());
 	}
 
 	private void cancelBackswing(final CSimulation simulation) {

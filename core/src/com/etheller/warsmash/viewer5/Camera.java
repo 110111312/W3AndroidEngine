@@ -185,19 +185,6 @@ public class Camera {
 		this.dirty = true;
 	}
 
-	public void setRotationAround(final Quaternion rotation, final Vector3 point) {
-		this.setRotation(rotation);
-		;
-
-		final float length = vectorHeap.set(this.location).sub(point).len();
-
-		quatHeap.conjugate(); // TODO ?????????
-		vectorHeap.set(RenderMathUtils.VEC3_UNIT_Z);
-		quatHeap.transform(vectorHeap);
-		vectorHeap.scl(length);
-		this.location.set(vectorHeap.add(point));
-	}
-
 	public void face(final Vector3 point, final Vector3 worldUp) {
 		matHeap.setToLookAt(this.location, point, worldUp);
 		matHeap.getRotation(this.rotation);
@@ -280,10 +267,6 @@ public class Camera {
 			}
 		}
 		return true;
-	}
-
-	public Vector3 cameraToWorld(final Vector3 out, final Vector3 v) {
-		return out.set(v).prj(this.inverseViewMatrix);
 	}
 
 	public Vector3 worldToCamera(final Vector3 out, final Vector3 v) {

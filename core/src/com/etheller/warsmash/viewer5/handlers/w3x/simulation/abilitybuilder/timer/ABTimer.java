@@ -6,6 +6,7 @@ import java.util.Map;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABAction;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABActionGuard;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.core.ABLocalStoreKeys;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 
@@ -36,11 +37,7 @@ public class ABTimer extends CTimer {
 	public void onFire(CSimulation simulation) {
 		if (alive) {
 			localStore.put(ABLocalStoreKeys.FIRINGTIMER, this);
-			if (actions != null) {
-				for (ABAction action : actions) {
-					action.runAction(simulation, caster, localStore, castId);
-				}
-			}
+			ABActionGuard.runAll("timer", actions, simulation, caster, localStore, castId);
 			if (localStore != null)
 				localStore.remove(ABLocalStoreKeys.FIRINGTIMER);
 		}

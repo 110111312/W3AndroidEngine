@@ -32,6 +32,9 @@ public final class CPlayerCommandCodec {
 	public static final byte MINIMAP_SIGNAL = 19;
 	public static final byte TRACKABLE_EVENT = 20;
 	public static final byte MOUSE_EVENT = 21;
+	public static final byte SYNC_DATA = 22;
+	public static final byte KEY_EVENT = 23;
+	public static final byte FRAME_EVENT = 24;
 
 	/** A network packet holds a command, so the text of one stays well under its size. */
 	public static final int MAX_STRING_BYTES = 512;
@@ -281,6 +284,30 @@ public final class CPlayerCommandCodec {
 			putFloat(y);
 			putInt(button);
 		}
+
+		@Override
+		public void syncData(final String prefix, final String data) {
+			type(SYNC_DATA);
+			putString(prefix);
+			putString(data);
+		}
+
+		@Override
+		public void keyEvent(final int key, final int metaKey, final boolean down) {
+			type(KEY_EVENT);
+			putInt(key);
+			putInt(metaKey);
+			putBoolean(down);
+		}
+
+		@Override
+		public void frameEvent(final int frameId, final int eventType, final float value, final String text) {
+			type(FRAME_EVENT);
+			putInt(frameId);
+			putInt(eventType);
+			putFloat(value);
+			putString(text);
+		}
 	}
 
 	/**
@@ -425,6 +452,24 @@ public final class CPlayerCommandCodec {
 			final float x = buffer.getFloat();
 			final float y = buffer.getFloat();
 			listener.mouseEvent(eventId, x, y, buffer.getInt());
+			break;
+		}
+		case SYNC_DATA: {
+			final String prefix = getString(buffer);
+			listener.syncData(prefix, getString(buffer));
+			break;
+		}
+		case KEY_EVENT: {
+			final int key = buffer.getInt();
+			final int metaKey = buffer.getInt();
+			listener.keyEvent(key, metaKey, getBoolean(buffer));
+			break;
+		}
+		case FRAME_EVENT: {
+			final int frameId = buffer.getInt();
+			final int eventType = buffer.getInt();
+			final float value = buffer.getFloat();
+			listener.frameEvent(frameId, eventType, value, getString(buffer));
 			break;
 		}
 		default:

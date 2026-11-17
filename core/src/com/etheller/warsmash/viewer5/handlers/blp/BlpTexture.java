@@ -35,9 +35,10 @@ public class BlpTexture extends RawOpenGLTextureResource {
 		try {
 			final byte[] bytes = IOUtils.toByteArray(src);
 			final ByteBuffer data = ByteBuffer.wrap(bytes);
-			final int limit = this.viewer.getTextureSizeLimit();
+			final boolean shadow = isShadowTexture();
+			final int limit = shadow ? 0 : this.viewer.getTextureSizeLimit();
 			final boolean dds = DdsDecoder.isDds(data);
-			if (this.viewer.isTextureCompression() && (dds || BlpDecoder.isBlp(data))) {
+			if (this.viewer.isTextureCompression() && !shadow && (dds || BlpDecoder.isBlp(data))) {
 				final CompressedMips blocks = TextureTranscoder.transcode(this.fetchUrl, bytes, limit,
 						() -> dds ? DdsDecoder.decode(data, limit, true).getLevels()
 								: BlpDecoder.decode(data, limit, true).getLevels(),
@@ -50,13 +51,13 @@ public class BlpTexture extends RawOpenGLTextureResource {
 			if (dds) {
 				// A missing .blp can resolve to its .dds. Classic data stores the same colors in
 				// both, so the .dds takes the plain RGBA format of the .blp below.
-				update(DdsDecoder.decode(data, this.viewer.getTextureSizeLimit(), true).getLevels(), false);
+				update(DdsDecoder.decode(data, limit, true).getLevels(), false);
 				return;
 			}
 			if (BlpDecoder.isBlp(data)) {
 				// The ImageIO plugin reads these colors as linear and the sRGB texture format
 				// undoes that, so the raw colors in a plain RGBA texture match it.
-				update(BlpDecoder.decode(data, this.viewer.getTextureSizeLimit(), true).getLevels(), false);
+				update(BlpDecoder.decode(data, limit, true).getLevels(), false);
 				return;
 			}
 			if (!ImageUtils.IMAGE_IO_AVAILABLE) {

@@ -8,8 +8,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 /**
  * Game data with graphics packages laid over the Classic files: a path the package has is read from the package, every
@@ -30,13 +29,14 @@ public final class LayeredDataSource implements DataSource {
 	 */
 	private static final String[] OTHER_PICTURES = { "-cinematic-border." };
 	private static final String DIFFUSE_SUFFIX = "_diffuse";
-	private static final String NOT_LAYERED = "";
+	private static final int NOT_LAYERED = -1;
+	private static final int UNKNOWN = -2;
 
 	private final DataSource data;
 	private final GraphicsSet graphics;
 	private final String[] layers;
-	/** The path in the data that each asked path reads, or NOT_LAYERED for the path itself. */
-	private final Map<String, String> resolved = new ConcurrentHashMap<>();
+	/** For each asked path the layer it reads from, twice over, plus one for the "_diffuse" name; or NOT_LAYERED. */
+	private final PathCache resolved = new PathCache();
 
 	/**
 	 * @param graphics the in-game graphics; its packages the data lacks are left out
@@ -80,36 +80,45 @@ public final class LayeredDataSource implements DataSource {
 		if (filepath == null) {
 			return null;
 		}
-		final String found = this.resolved.get(filepath);
-		if (found != null) {
-			return found == NOT_LAYERED ? filepath : found;
+		int found = this.resolved.get(filepath, UNKNOWN);
+		if (found == UNKNOWN) {
+			found = findLayered(filepath);
+			this.resolved.put(filepath, found);
 		}
-		final String layered = findLayered(filepath);
-		this.resolved.put(filepath, layered == null ? NOT_LAYERED : layered);
-		return layered == null ? filepath : layered;
+		if (found == NOT_LAYERED) {
+			return filepath;
+		}
+		final String path = filepath.replace('/', '\\');
+		final String layer = this.layers[found >> 1];
+		return (found & 1) == 0 ? layer + path : layer + diffuseName(path);
 	}
 
-	private String findLayered(final String filepath) {
+	private static String diffuseName(final String path) {
+		return path.substring(0, path.length() - 4) + DIFFUSE_SUFFIX + ".dds";
+	}
+
+	/** @return twice the index of the layer that has the path, plus one for its "_diffuse" name; or NOT_LAYERED */
+	private int findLayered(final String filepath) {
 		final String path = filepath.replace('/', '\\');
 		final String lower = path.toLowerCase(Locale.US);
 		if (lower.startsWith(HD_PACKAGE) || lower.startsWith(DE_PACKAGE)) {
-			return null;
+			return NOT_LAYERED;
 		}
 		if (lower.startsWith(INTERFACE_FOLDER) && isOtherPicture(lower)) {
-			return null;
+			return NOT_LAYERED;
 		}
-		final String diffuse = lower.endsWith(".dds") && !lower.endsWith(DIFFUSE_SUFFIX + ".dds")
-				? path.substring(0, path.length() - 4) + DIFFUSE_SUFFIX + ".dds"
+		final String diffuse = lower.endsWith(".dds") && !lower.endsWith(DIFFUSE_SUFFIX + ".dds") ? diffuseName(path)
 				: null;
-		for (final String layer : this.layers) {
+		for (int i = 0; i < this.layers.length; i++) {
+			final String layer = this.layers[i];
 			if (this.data.has(layer + path)) {
-				return layer + path;
+				return i << 1;
 			}
 			if ((diffuse != null) && this.data.has(layer + diffuse)) {
-				return layer + diffuse;
+				return (i << 1) | 1;
 			}
 		}
-		return null;
+		return NOT_LAYERED;
 	}
 
 	private static boolean isOtherPicture(final String lowerPath) {
@@ -122,7 +131,15 @@ public final class LayeredDataSource implements DataSource {
 	}
 
 	private boolean isLayered(final String filepath) {
-		return resolve(filepath) != filepath;
+		if (filepath == null) {
+			return false;
+		}
+		int found = this.resolved.get(filepath, UNKNOWN);
+		if (found == UNKNOWN) {
+			found = findLayered(filepath);
+			this.resolved.put(filepath, found);
+		}
+		return found != NOT_LAYERED;
 	}
 
 	@Override
@@ -169,6 +186,11 @@ public final class LayeredDataSource implements DataSource {
 	@Override
 	public Collection<String> getListfile() {
 		return this.data.getListfile();
+	}
+
+	@Override
+	public Collection<String> getListfile(final Predicate<String> accept) {
+		return this.data.getListfile(accept);
 	}
 
 	@Override

@@ -61,6 +61,22 @@ class BuildInfoTest {
 	}
 
 	@Test
+	void buildIdTellsDirtyTreesApart() {
+		final BuildInfo clean = BuildInfo.parse(
+				properties("versionName", "0.3.12", "commit", "abc1234", "dirty", "false", "tree", "0123456789ab"));
+		assertEquals("abc1234", clean.getBuildId());
+		final BuildInfo dirty = BuildInfo.parse(
+				properties("versionName", "0.3.12", "commit", "abc1234", "dirty", "true", "tree", "0123456789AB"));
+		assertEquals("abc1234+0123456789ab", dirty.getBuildId());
+		final BuildInfo other = BuildInfo.parse(
+				properties("versionName", "0.3.12", "commit", "abc1234", "dirty", "true", "tree", "ba9876543210"));
+		assertFalse(dirty.getBuildId().equals(other.getBuildId()));
+		assertEquals("v0.3.12 (abc1234+)", dirty.displayVersion());
+		final BuildInfo noGit = BuildInfo.parse(properties("versionName", "0.3.12", "dirty", "true"));
+		assertEquals(BuildInfo.UNKNOWN_COMMIT, noGit.getBuildId());
+	}
+
+	@Test
 	void fingerprintsCompareWithoutSeparatorsOrCase() {
 		assertEquals("abcd01", BuildInfo.normalizeFingerprint("AB:CD:01"));
 		assertEquals("", BuildInfo.normalizeFingerprint(null));

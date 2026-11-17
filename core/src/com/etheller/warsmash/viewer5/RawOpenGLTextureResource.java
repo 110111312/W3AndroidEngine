@@ -251,6 +251,14 @@ public abstract class RawOpenGLTextureResource extends Texture {
 	}
 
 	private boolean keepsPixels() {
+		return isShadowTexture();
+	}
+
+	/**
+	 * The terrain's shadow textures are read pixel by pixel into the shadow map, one pixel for one map cell, so they
+	 * are neither scaled down to the texture size limit nor stored as blocks.
+	 */
+	protected final boolean isShadowTexture() {
 		return (this.fetchUrl != null) && this.fetchUrl.toLowerCase(Locale.ROOT).contains("shadows");
 	}
 

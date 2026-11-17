@@ -153,6 +153,8 @@ public final class GlobalScope {
 		this.functionBoolExprs.put(instructionPtr, boolExpr);
 	}
 
+	private HandleIdSource handleIdSource;
+
 	public GlobalScope() {
 		this.handleType = registerHandleType("handle");// the handle type
 		registerPrimitiveType(JassType.BOOLEAN);
@@ -196,6 +198,14 @@ public final class GlobalScope {
 
 	public void popJassStack() {
 		this.jassStack.pop();
+	}
+
+	public HandleIdSource getHandleIdSource() {
+		return this.handleIdSource;
+	}
+
+	public void setHandleIdSource(final HandleIdSource handleIdSource) {
+		this.handleIdSource = handleIdSource;
 	}
 
 	public void setLineNumber(final int lineNo) {
@@ -336,6 +346,7 @@ public final class GlobalScope {
 		this.instructions.add(begin);
 		final InstructionAppendingJassStatementVisitor visitor = new InstructionAppendingJassStatementVisitor(
 				this.instructions, scope, function.getParameters());
+		visitor.setReturnType(function.getReturnType());
 		for (final JassStatement statement : visitor.cleanStatements(statements)) {
 			statement.accept(visitor);
 		}
@@ -775,13 +786,6 @@ public final class GlobalScope {
 		return this.currentThread;
 	}
 
-	public void yieldCurrentThread() {
-		if (this.currentThread != null) {
-			this.currentThread.setSleeping(true);
-			this.yieldedCurrentThread = true;
-		}
-	}
-
 	public RemovableTriggerEvent registerVariableEvent(final Trigger trigger, final String varName,
 			final CLimitOp limitOp, final double doubleValue) {
 		final VariableEvent variableEvent = new VariableEvent(trigger, limitOp, doubleValue);
@@ -809,15 +813,6 @@ public final class GlobalScope {
 				}
 			}
 			trigger.fire(this, evaluateScope, executeScope);
-		}
-	}
-
-	public void replayQueuedTriggers() {
-		this.runningTriggerQueue.clear();
-		this.runningTriggerQueue.addAll(this.triggerQueue);
-		this.triggerQueue.clear();
-		for (final QueuedCallback trigger : this.runningTriggerQueue) {
-			trigger.fire(this);
 		}
 	}
 
@@ -879,6 +874,7 @@ public final class GlobalScope {
 		this.types.putAll(other.types);
 		this.modules.clear();
 		this.modules.putAll(other.modules);
+		this.handleIdSource = other.handleIdSource;
 	}
 
 }

@@ -244,6 +244,10 @@ public class CUnit extends CWidget {
 	static final float SLEEP_AFTER_WAKE_SECONDS = 2.0f;
 	private Boolean canSleepOverride;
 	private String nameOverride;
+	// The skin a script gave the unit (BlzSetUnitSkin); null is the unit's own type.
+	private War3ID scriptSkinId;
+	private int scriptPauseCount;
+	private boolean heroGlowAllowed = true;
 	static final float DEFAULT_RESCUE_RANGE = 414.5f;
 	static final int RESCUE_REPEAT_TICKS = CTimer.wholeSteps(1);
 	private COrder scriptAnimationOrder = null;
@@ -1273,12 +1277,22 @@ public class CUnit extends CWidget {
 	/** A guarding unit (a creep at its camp) goes back to its spot like the original game's creeps do. */
 	public void setGuardPosition(final float x, final float y) {
 		this.aggro.guarding = true;
+		this.aggro.guardPositionRemoved = false;
 		this.aggro.guardX = x;
 		this.aggro.guardY = y;
 	}
 
+	/**
+	 * Measured on 1.29: a computer player's AI leaves a unit whose guard position a script removed alone (it does not
+	 * send it to work, to a guard post or into a captain), also when the call came after the AI started.
+	 */
 	public void removeGuardPosition() {
 		this.aggro.guarding = false;
+		this.aggro.guardPositionRemoved = true;
+	}
+
+	public boolean isGuardPositionRemoved() {
+		return this.aggro.guardPositionRemoved;
 	}
 
 	public boolean isGuarding() {
@@ -1689,6 +1703,43 @@ public class CUnit extends CWidget {
 		this.computeUnitState(null, StateModBuffType.PAUSED);
 	}
 
+	/** PauseUnit from a script: a pause that stops an unpaused unit also separates it from units it overlaps. */
+	public void pauseByScript(final boolean paused, final CSimulation game) {
+		final boolean wasPaused = this.paused;
+		setPaused(paused);
+		if (paused && !wasPaused && this.paused) {
+			CUnitPlacement.separateFromOverlapping(this, game);
+		}
+	}
+
+	/** BlzPauseUnitEx: pauses add up, and the unit runs again when every one of them was taken back. */
+	public void pauseCounted(final boolean paused, final CSimulation game) {
+		if (paused) {
+			if (this.scriptPauseCount++ == 0) {
+				pauseByScript(true, game);
+			}
+		}
+		else if ((this.scriptPauseCount > 0) && (--this.scriptPauseCount == 0)) {
+			setPaused(false);
+		}
+	}
+
+	public boolean isHeroGlowAllowed() {
+		return this.heroGlowAllowed;
+	}
+
+	public void setHeroGlowAllowed(final boolean heroGlowAllowed) {
+		this.heroGlowAllowed = heroGlowAllowed;
+	}
+
+	public War3ID getScriptSkinId() {
+		return this.scriptSkinId;
+	}
+
+	public void setScriptSkinId(final War3ID scriptSkinId) {
+		this.scriptSkinId = scriptSkinId;
+	}
+
 	public boolean isPaused() {
 		return this.paused;
 	}
@@ -1794,6 +1845,11 @@ public class CUnit extends CWidget {
 	/** Teleports this unit to a random fitting spot round the structure. */
 	public void placeAroundStructure(final CSimulation simulation, final CUnit structure) {
 		CUnitPlacement.placeAroundStructure(this, simulation, structure);
+	}
+
+	/** Jumps this unit out from under a structure that has just been started. */
+	public void pushOutOfNewStructure(final CSimulation simulation, final CUnit structure) {
+		CUnitPlacement.pushOutOfNewStructure(this, simulation, structure);
 	}
 
 	public void placeTrainedUnit(final CSimulation simulation, final CUnit trainer, final AbilityTarget rallyPoint) {
@@ -1996,6 +2052,10 @@ public class CUnit extends CWidget {
 				((CAbilityOverlayedMine) ability).setGold(goldAmount);
 			}
 		}
+	}
+
+	public void clearQueuedOrders(final CSimulation game) {
+		CUnitOrders.clearQueuedOrders(this, game);
 	}
 
 	public Queue<COrder> getOrderQueue() {

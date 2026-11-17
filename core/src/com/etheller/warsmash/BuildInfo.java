@@ -27,15 +27,17 @@ public final class BuildInfo {
 	private final int versionCode;
 	private final String commit;
 	private final boolean dirty;
+	private final String tree;
 	private final boolean official;
 	private final String officialCertificate;
 
 	private BuildInfo(final String versionName, final int versionCode, final String commit, final boolean dirty,
-			final boolean official, final String officialCertificate) {
+			final String tree, final boolean official, final String officialCertificate) {
 		this.versionName = versionName;
 		this.versionCode = versionCode;
 		this.commit = commit;
 		this.dirty = dirty;
+		this.tree = dirty ? tree : "";
 		this.official = official && !dirty && !UNKNOWN_COMMIT.equals(commit);
 		this.officialCertificate = officialCertificate;
 	}
@@ -63,7 +65,7 @@ public final class BuildInfo {
 		final BuildInfo info = current();
 		final boolean match = (info.officialCertificate != null) && !info.officialCertificate.isEmpty()
 				&& info.officialCertificate.equals(normalizeFingerprint(sha256));
-		current = new BuildInfo(info.versionName, info.versionCode, info.commit, info.dirty, match,
+		current = new BuildInfo(info.versionName, info.versionCode, info.commit, info.dirty, info.tree, match,
 				info.officialCertificate);
 	}
 
@@ -95,8 +97,12 @@ public final class BuildInfo {
 		if (!commit.matches("[0-9a-f]{4,40}")) {
 			commit = UNKNOWN_COMMIT;
 		}
+		String tree = properties.getProperty("tree", "").trim().toLowerCase(Locale.ROOT);
+		if (!tree.matches("[0-9a-f]{4,64}")) {
+			tree = "";
+		}
 		return new BuildInfo(version.isEmpty() ? "dev" : version, code, commit,
-				Boolean.parseBoolean(properties.getProperty("dirty", "false").trim()),
+				Boolean.parseBoolean(properties.getProperty("dirty", "false").trim()), tree,
 				Boolean.parseBoolean(properties.getProperty("official", "false").trim()),
 				normalizeFingerprint(properties.getProperty("officialCertSha256", "")));
 	}
@@ -121,6 +127,17 @@ public final class BuildInfo {
 
 	public boolean isDirty() {
 		return this.dirty;
+	}
+
+	/**
+	 * The commit, and for a tree with uncommitted changes a hash of those changes after a "+": replays and LAN games
+	 * compare it, since two builds of one commit with different uncommitted changes play the rules differently.
+	 */
+	public String getBuildId() {
+		if (!this.dirty || UNKNOWN_COMMIT.equals(this.commit)) {
+			return this.commit;
+		}
+		return this.commit + "+" + this.tree;
 	}
 
 	public boolean isOfficial() {

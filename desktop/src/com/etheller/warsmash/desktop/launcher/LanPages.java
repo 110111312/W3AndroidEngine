@@ -183,7 +183,7 @@ final class LanPages {
 		}
 	}
 
-	/** Enter: Join or Create Game, Start Game for the host, Ready for a guest. */
+	/** Enter: Join or Create Game, Ready / Start Game for the host, Ready for a guest. */
 	void mainAction() {
 		switch (this.model.mode()) {
 		case JOIN:
@@ -204,7 +204,7 @@ final class LanPages {
 				break;
 			}
 			if (view.iAmHost) {
-				this.model.startGame();
+				this.model.hostPrimary();
 			}
 			else if (this.model.canReady()) {
 				this.model.setReady(view.mine == null || !view.mine.ready);
@@ -835,11 +835,20 @@ final class LanPages {
 				this.s.playClick();
 				this.s.dialog = LauncherScreen.Dialog.LAN_MAP;
 			}
-			if (g.button("lanStart", countdown ? "Starting… " + this.model.countdownSeconds() : "Start Game", pri[0],
-					b.backY, pri[1], b.backH, t ? 36 : 30,
-					!view.canStart() || countdown ? Gui.TONE_OFF : this.s.art.reforged ? Gui.TONE_CONFIRM : Gui.TONE_DOWN)) {
+			final LanLobbyView.HostAction action = view.hostAction();
+			final String label = countdown ? "Starting… " + this.model.countdownSeconds()
+					: action == LanLobbyView.HostAction.START ? "Start Game"
+							: action == LanLobbyView.HostAction.NOT_READY ? "Not Ready" : "Ready";
+			final boolean usable = !countdown && ((action == LanLobbyView.HostAction.START) || this.model.canReady());
+			if (g.button("lanStart", label, pri[0], b.backY, pri[1], b.backH, t ? 36 : 30,
+					!usable ? Gui.TONE_OFF
+							: action == LanLobbyView.HostAction.START
+									? (this.s.art.reforged ? Gui.TONE_CONFIRM : Gui.TONE_DOWN)
+									: action == LanLobbyView.HostAction.NOT_READY ? Gui.TONE_DOWN : Gui.TONE_NORMAL)) {
 				this.s.playClick();
-				this.model.startGame();
+				if (usable) {
+					this.model.hostPrimary();
+				}
 			}
 		}
 		else {

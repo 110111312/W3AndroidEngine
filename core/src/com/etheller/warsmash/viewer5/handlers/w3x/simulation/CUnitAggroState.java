@@ -11,6 +11,7 @@ final class CUnitAggroState {
 	int fleeMoveResetCount = -1;
 	CUnit.CreepCamp creepCamp;
 	boolean guarding;
+	boolean guardPositionRemoved;
 	float guardX;
 	float guardY;
 	int lastCombatTick;

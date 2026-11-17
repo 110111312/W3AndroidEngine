@@ -233,10 +233,9 @@ public final class MapListCache {
 		final List<GameCatalog.MapEntry> entries = new ArrayList<>();
 		final List<Skipped> skipped = new ArrayList<>();
 		final Set<String> seen = new HashSet<>();
-		for (final String path : data.getListfile()) {
+		for (final String path : data.getListfile(MapListContainer::isListedMap)) {
 			// Several data sources can list the same file, also spelled with other case or separators.
-			if (!MapListContainer.isListedMap(path)
-					|| !seen.add(path.replace('\\', '/').toLowerCase(Locale.ROOT))) {
+			if (!seen.add(path.replace('\\', '/').toLowerCase(Locale.ROOT))) {
 				continue;
 			}
 			Problem problem = Problem.UNREADABLE;

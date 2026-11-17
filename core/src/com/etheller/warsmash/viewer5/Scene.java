@@ -154,6 +154,7 @@ public abstract class Scene {
 					y = instance.worldLocation.y;
 				}
 				instanceMoved(instance, x, y);
+				instanceAdded(instance);
 				return true;
 			}
 		}
@@ -162,6 +163,9 @@ public abstract class Scene {
 	}
 
 	public abstract void instanceMoved(ModelInstance instance, float x, float y);
+
+	protected void instanceAdded(final ModelInstance instance) {
+	}
 
 	public boolean removeInstance(final ModelInstance instance) {
 		if (instance.scene == this) {

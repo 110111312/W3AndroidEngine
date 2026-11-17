@@ -275,7 +275,7 @@ public class CUpgradeData {
 					}
 				}
 				else {
-					if (!"_".equals(effectIdString)) {
+					if (!"_".equals(effectIdString) && !effectIdString.isEmpty()) {
 						Log.warn("Not 4 len: " + effectIdString);
 					}
 				}

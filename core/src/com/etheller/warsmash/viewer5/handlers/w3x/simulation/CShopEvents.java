@@ -23,7 +23,9 @@ public final class CShopEvents {
 						event.getTrigger(), shop, soldUnit, buyingUnit));
 			}
 		}
-		game.getPlayer(shop.getPlayerIndex()).firePlayerUnitEvents(shop,
+		// The filter of a sell event sees the sold unit, like that of a train-finish event (D-1209): the melee script
+		// recognises a hired hero by it and hands it its Scroll of Town Portal.
+		game.getPlayer(shop.getPlayerIndex()).firePlayerUnitEvents(soldUnit,
 				(eventType, trigger, unit) -> CommonTriggerExecutionScope.unitSellScope(eventType, trigger, shop,
 						soldUnit, buyingUnit),
 				JassGameEventsWar3.EVENT_PLAYER_UNIT_SELL);

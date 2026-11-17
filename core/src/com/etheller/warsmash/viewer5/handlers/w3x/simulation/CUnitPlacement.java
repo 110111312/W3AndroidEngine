@@ -17,6 +17,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.region.CRegionManag
  */
 final class CUnitPlacement {
 	private static final int STRUCTURE_PLACE_ATTEMPTS = 24;
+	private static final int STRUCTURE_PUSH_MIN_BEYOND_EDGE = 145;
+	private static final int STRUCTURE_PUSH_SPREAD = 34;
 
 	private CUnitPlacement() {
 	}
@@ -90,6 +92,23 @@ final class CUnitPlacement {
 		}
 		setPoint(self, outputX, outputY, collision, game.getRegionManager());
 		game.unitRepositioned(self);
+	}
+
+	/**
+	 * Measured (1.29): a unit that stands over others when it is paused by a script, or when it is idle and takes a
+	 * stop, hold, move or smart order, goes at once (same tick) to the first free cell of the placement spiral from
+	 * its own cell; a unit that fits stays. Units are handled in the order the calls come, each against the current
+	 * places of the rest.
+	 */
+	static void separateFromOverlapping(final CUnit self, final CSimulation game) {
+		if (self.removedFromGame || self.isDead() || self.isHidden() || self.isBuilding() || self.movement.pathingDisabled
+				|| (self.getMovementType() == MovementType.FLY)) {
+			return;
+		}
+		final float[] free = findFreePoint(self, self.getX(), self.getY(), game);
+		if ((free[0] != self.getX()) || (free[1] != self.getY())) {
+			setPointAndCheckUnstuck(self, free[0], free[1], game);
+		}
 	}
 
 	/**
@@ -231,6 +250,34 @@ final class CUnitPlacement {
 				collisionSize, movementType);
 		setPoint(self, free[0], free[1], collision, game.getRegionManager());
 		game.unitRepositioned(self);
+	}
+
+	/**
+	 * A unit standing where a structure is started (by a builder walking to the site) is not nudged to the nearest
+	 * free cell. Measured on 1.29 (Footman and Knight under a Farm): it jumps along the axis it lies nearest to (the
+	 * vertical one when level, upwards on the centre line) to a point 209 to 242 from the structure's centre, 145 to
+	 * 178 beyond the edge of a 4 cell structure, keeping its place across that axis plus 0 to 31. A point that does not
+	 * fit goes through the ordinary free-cell search.
+	 */
+	static void pushOutOfNewStructure(final CUnit self, final CSimulation game, final CUnit structure) {
+		final ArgbImage pathing = structure.getUnitType().getBuildingPathingPixelMap();
+		final int cellsX = pathing == null ? 4 : Math.max(1, pathing.getWidth());
+		final int cellsY = pathing == null ? 4 : Math.max(1, pathing.getHeight());
+		final float offsetX = self.getX() - structure.getX();
+		final float offsetY = self.getY() - structure.getY();
+		final boolean alongX = Math.abs(offsetX) > Math.abs(offsetY);
+		final Random random = game.getSeededRandom();
+		final float distance = ((alongX ? cellsX : cellsY) * 16f) + STRUCTURE_PUSH_MIN_BEYOND_EDGE
+				+ random.nextInt(STRUCTURE_PUSH_SPREAD);
+		final float across = random.nextInt(32);
+		if (alongX) {
+			setPointAndCheckUnstuck(self, structure.getX() + (offsetX < 0 ? -distance : distance), self.getY() + across,
+					game);
+		}
+		else {
+			setPointAndCheckUnstuck(self, self.getX() + across, structure.getY() + (offsetY < 0 ? -distance : distance),
+					game);
+		}
 	}
 
 	static void setPoint(final CUnit self, final float newX, final float newY, final CWorldCollision collision,

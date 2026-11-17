@@ -6,7 +6,7 @@
 
 <p align="center">
   <img alt="Platform: Windows and Android" src="https://img.shields.io/badge/platform-Windows%20%7C%20Android%208.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Version 0.3.8" src="https://img.shields.io/badge/version-0.3.8-blue">
+  <img alt="Version 0.3.156" src="https://img.shields.io/badge/version-0.3.156-blue">
   <img alt="Licence: AGPL-3.0" src="https://img.shields.io/badge/licence-AGPL--3.0-orange">
   <img alt="Engine: Warsmash" src="https://img.shields.io/badge/engine-Warsmash-8a2be2">
   <img alt="Languages: Java 17, JASS2, GLSL" src="https://img.shields.io/badge/code-Java%2017%20%7C%20JASS2%20%7C%20GLSL-lightgrey">
@@ -81,15 +81,15 @@ Legend: **Working** — used in the regular test runs or played on real devices 
 |---|---|---|---|
 | Game data | Game data folder screen and check on first start | Working | CASC install or extracted files; 1.31 and newer, including Reforged |
 | Game data | Import ZIP of prepared data | Working | Classic data plus the graphics set ZIPs |
-| Launcher | Home, player profiles, Options, Help | Working | Classic and Reforged look |
+| Launcher | Home, player profiles, Options, Help | Working | Classic and Reforged look; on Android profiles, progress and saves can be kept after uninstall |
 | Launcher | Campaign and mission lists | Working | Reign of Chaos and The Frozen Throne, grouped by game; campaign version and difficulty |
 | Launcher | Custom Game, Load Game | Working | Save filter on Load Game |
-| Launcher | Result page after every campaign mission, Continue to the next | Working | Scores, hero, time and difficulty; both looks |
+| Launcher | Result page after every campaign mission, Continue to the next or Restart after a defeat | Working | Scores, hero, time and difficulty; both looks |
 | Launcher | Windows launcher | Working | Same pages and recorded scenes as on Android |
-| Launcher | View Replay | In progress | Page is there; recording and playback are being built |
+| Launcher | View Replay | Working | Games are recorded automatically; playback on Android and Windows with any graphics set |
 | Game | Campaigns: cinematics, missions, victory and defeat, carry-over to the next mission | Working | Every Reign of Chaos and The Frozen Throne mission can be completed; tweaking required |
 | Game | Forsaken Kingdom campaigns | Planned | Listed as coming soon; needs Reforged 3.0 data |
-| Game | Custom games against computer players | Working | Full melee AI (expanding, buying items, attack waves) is planned |
+| Game | Custom games against computer players | Working | Score screen at the end; full melee AI (expanding, buying items, attack waves) is planned |
 | Game | Save and load, also from the main menu | Working | |
 | Game | Cinematics: campaign intro, opening and ending movies | Working | Windows x64 and Android |
 | Graphics | Classic, HD and Reforged graphics sets | Working | Custom games use the chosen set; campaigns follow the campaign version |
@@ -245,7 +245,7 @@ docs/images/            images used in this file
 
 ## Status and roadmap
 
-Current version: **v0.3.90**
+Current version: **v0.3.156**
 
 - **Custom games:** work end-to-end.
 - **Campaigns:** Reign of Chaos and The Frozen Throne can be completed to the end. Tweaking required.

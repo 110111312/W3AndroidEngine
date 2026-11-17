@@ -1,8 +1,6 @@
 package com.etheller.warsmash.parsers.fdf.frames;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
 import com.badlogic.gdx.graphics.Color;
@@ -208,15 +206,6 @@ public class ListBoxFrame extends ControlFrame
 		if ((gameUI != null) && (viewport != null) && (this.gameUI != null)) {
 			updateUI(gameUI, viewport);
 		}
-	}
-
-	public void sortItems() {
-		Collections.sort(this.listItems, new Comparator<AbstractListItemProperty>() {
-			@Override
-			public int compare(AbstractListItemProperty arg0, AbstractListItemProperty arg1) {
-				return arg0.compare(arg1);
-			}
-		});
 	}
 
 	public void setSelectedIndex(final int selectedIndex) {

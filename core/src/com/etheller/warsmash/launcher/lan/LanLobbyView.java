@@ -178,6 +178,19 @@ public final class LanLobbyView {
 		return LanPortraitId.decode(state.portraits.get(participantId), reforgedSkin);
 	}
 
+	/** What the host's main button does now. */
+	public enum HostAction {
+		READY, NOT_READY, START
+	}
+
+	/** Start once everyone is ready; until then the button is the host's own ready mark, like a guest's. */
+	public HostAction hostAction() {
+		if (canStart()) {
+			return HostAction.START;
+		}
+		return (this.mine != null) && this.mine.ready ? HostAction.NOT_READY : HostAction.READY;
+	}
+
 	/** The host may start: every person who plays is ready (the host's own mark counts), and someone plays. */
 	public boolean canStart() {
 		return this.iAmHost && (this.humans > 0) && (this.readyHumans == this.humans);

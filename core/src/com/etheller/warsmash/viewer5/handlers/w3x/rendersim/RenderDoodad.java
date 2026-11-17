@@ -34,7 +34,6 @@ public class RenderDoodad {
 	private CFogState fogState;
 	private byte lastFogStateColor;
 	private final float[] vertexColorBase;
-	private final float[] vertexColorFogged;
 
 	/**
 	 * A non-looping sequence a script chose stays on its last frame (a banner that died stays gone); the stand
@@ -109,8 +108,6 @@ public class RenderDoodad {
 		}
 		this.vertexColorBase = new float[] { ((MdxComplexInstance) instance).vertexColor[0],
 				((MdxComplexInstance) instance).vertexColor[1], ((MdxComplexInstance) instance).vertexColor[2] };
-		this.vertexColorFogged = new float[] { this.vertexColorBase[0] / 2, this.vertexColorBase[1] / 2,
-				this.vertexColorBase[2] / 2 };
 		final float pitchSampleForwardX = this.x + (SAMPLE_RADIUS * (float) Math.cos(facingRadians));
 		final float pitchSampleForwardY = this.y + (SAMPLE_RADIUS * (float) Math.sin(facingRadians));
 		final float pitchSampleBackwardX = this.x - (SAMPLE_RADIUS * (float) Math.cos(facingRadians));

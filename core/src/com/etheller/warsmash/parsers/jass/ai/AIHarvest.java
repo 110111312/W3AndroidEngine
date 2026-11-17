@@ -74,8 +74,8 @@ final class AIHarvest {
 	static void assignHarvesters(final AIController ai) {
 		final List<CUnit> workers = new ArrayList<>();
 		for (final CUnit unit : ai.simulation.getUnits()) {
-			if (ai.isOurs(unit) && !ai.isBuildJobWorker(unit) && !ai.attackCaptain.getMembers().contains(unit)
-					&& (canHarvestGold(unit) || canHarvestLumber(unit))) {
+			if (ai.isOurs(unit) && !unit.isGuardPositionRemoved() && !ai.isBuildJobWorker(unit)
+					&& !ai.attackCaptain.getMembers().contains(unit) && (canHarvestGold(unit) || canHarvestLumber(unit))) {
 				workers.add(unit);
 			}
 		}

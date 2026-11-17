@@ -731,7 +731,7 @@ final class LauncherKit {
 	 */
 	static final class Pictogram extends Drawable {
 		enum Kind {
-			TAP, DRAG, HOLD, SHIFT, TWO, PINCH, MINIMAP, COMPUTER, ZIP, FOLDER
+			TAP, DOUBLE, DRAG, HOLD, SHIFT, TWO, PINCH, MINIMAP, COMPUTER, ZIP, FOLDER
 		}
 
 		private static final int MARK = Color.rgb(0xFC, 0xD3, 0x12);
@@ -831,6 +831,11 @@ final class LauncherKit {
 			switch (this.kind) {
 			case TAP:
 				ring(canvas, 12);
+				break;
+			case DOUBLE:
+				ring(canvas, 9);
+				ring(canvas, 16);
+				label(canvas, "2x", 66, 22, 16);
 				break;
 			case DRAG:
 				ring(canvas, 9);

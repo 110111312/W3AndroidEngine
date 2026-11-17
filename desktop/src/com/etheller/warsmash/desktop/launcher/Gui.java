@@ -66,7 +66,6 @@ final class Gui {
 	boolean justPressed;
 	boolean justReleased;
 	boolean rightReleased;
-	boolean doubleClicked;
 	boolean mouseDown;
 	int wheel;
 	private Object pressedId;
@@ -184,7 +183,6 @@ final class Gui {
 		this.justPressed = false;
 		this.justReleased = false;
 		this.rightReleased = false;
-		this.doubleClicked = false;
 		this.wheel = 0;
 		this.typed.setLength(0);
 		this.keys.clear();

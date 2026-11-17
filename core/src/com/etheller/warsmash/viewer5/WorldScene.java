@@ -26,6 +26,8 @@ public class WorldScene extends Scene {
 	public FogFilter fogFilter;
 	private final InstanceProcessor instanceProcessor = new InstanceProcessor();
 	private final List<ModelInstance> cellInstances = new ArrayList<>();
+	/** Instances whose sequence stops at its end; they keep their clock while out of view. */
+	private final List<ModelInstance> clockInstances = new ArrayList<>();
 
 	public WorldScene(final ModelViewer viewer, final SceneLightManager lightManager) {
 		super(viewer, lightManager);
@@ -35,6 +37,11 @@ public class WorldScene extends Scene {
 	@Override
 	public void instanceMoved(final ModelInstance instance, final float x, final float y) {
 		this.grid.moved(instance, x, y);
+	}
+
+	@Override
+	protected void instanceAdded(final ModelInstance instance) {
+		trackClock(instance);
 	}
 
 	@Override
@@ -76,7 +83,31 @@ public class WorldScene extends Scene {
 				}
 			}
 		}
-}
+		advanceClocksOutOfView(dt, frame);
+	}
+
+	/** Keeps the clock of an instance running while it is out of view, until its sequence ends. */
+	public void trackClock(final ModelInstance instance) {
+		if (!instance.clockTracked && instance.endsSequence()) {
+			instance.clockTracked = true;
+			this.clockInstances.add(instance);
+		}
+	}
+
+	private void advanceClocksOutOfView(final float dt, final int frame) {
+		for (int i = this.clockInstances.size() - 1; i >= 0; i--) {
+			final ModelInstance instance = this.clockInstances.get(i);
+			if ((instance.scene != this) || !instance.endsSequence()) {
+				instance.clockTracked = false;
+				final int last = this.clockInstances.size() - 1;
+				this.clockInstances.set(i, this.clockInstances.get(last));
+				this.clockInstances.remove(last);
+			}
+			else if ((instance.updateFrame < frame) && instance.rendered && !instance.paused) {
+				instance.advanceClock(dt);
+			}
+		}
+	}
 
 	/**
 	 * Models attached to a hidden one (a unit out of sight) are hidden with it, and effects of the world only show

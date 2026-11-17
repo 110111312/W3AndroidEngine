@@ -91,10 +91,7 @@ public class MapListContainer {
 
 	private List<AbstractListItemProperty> openedMaps() {
 		final List<AbstractListItemProperty> items = new ArrayList<>();
-		for (final String file : this.dataSource.getListfile()) {
-			if (!isListedMap(file)) {
-				continue;
-			}
+		for (final String file : this.dataSource.getListfile(MapListContainer::isListedMap)) {
 			try {
 				items.add(AbstractListItemProperty.createFromType(file, ListItemEnum.ITEM_MAP, this.rootFrame,
 						this.dataSource));
@@ -152,9 +149,19 @@ public class MapListContainer {
 	 * maps.
 	 */
 	public static boolean isListedMap(final String file) {
+		if (!hasMapExtension(file)) {
+			return false;
+		}
 		final String lower = file.toLowerCase().replace('/', '\\');
 		return (lower.endsWith(".w3x") || lower.endsWith(".w3m"))
 				&& ((!lower.contains("\\")) || lower.startsWith("maps\\")) && !isTestMap(lower);
+	}
+
+	/** The cheap part of {@link #isListedMap}, which every path of the game data goes through. */
+	private static boolean hasMapExtension(final String file) {
+		final int length = file.length();
+		return (length >= 4) && (file.charAt(length - 4) == '.')
+				&& (file.regionMatches(true, length - 3, "w3x", 0, 3) || file.regionMatches(true, length - 3, "w3m", 0, 3));
 	}
 
 	/** Whether a file lies in a folder of test maps, at any depth. */

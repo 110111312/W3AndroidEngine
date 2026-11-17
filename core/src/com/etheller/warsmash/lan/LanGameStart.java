@@ -336,7 +336,7 @@ public final class LanGameStart {
 	}
 
 	public static String localCommit() {
-		return BuildInfo.current().getCommit() + (BuildInfo.current().isDirty() ? "+" : "");
+		return BuildInfo.current().getBuildId();
 	}
 
 	public static boolean localOfficial() {

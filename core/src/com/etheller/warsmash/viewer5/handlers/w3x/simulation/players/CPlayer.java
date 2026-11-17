@@ -16,6 +16,7 @@ import com.etheller.interpreter.ast.scope.trigger.Trigger;
 import com.etheller.interpreter.ast.scope.trigger.TriggerBooleanExpression;
 import com.etheller.interpreter.ast.scope.variableevent.CLimitOp;
 import com.etheller.warsmash.parsers.jass.JassAIEnvironment;
+import com.etheller.warsmash.parsers.jass.scope.CDamageEvent;
 import com.etheller.warsmash.parsers.jass.scope.CommonTriggerExecutionScope;
 import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
@@ -68,7 +69,7 @@ public class CPlayer extends CBasePlayer {
 	private boolean givesBounty = false;
 	// Measured: 1.29 keeps any integer here and Blizzard.j's allied victory checks compare it to 1.
 	private int alliedVictory;
-	private int gameResult;
+	private int gameResult = CPlayerGameResult.NEUTRAL.ordinal();
 	private CPlayerGameResult removedResult;
 	private int placed;
 	private int lastCreepOpeningCastTick = Integer.MIN_VALUE / 2;
@@ -611,6 +612,43 @@ public class CPlayer extends CBasePlayer {
 		}
 	}
 
+	public RemovableTriggerEvent addSyncEvent(final GlobalScope globalScope, final Trigger whichTrigger,
+			final String prefix) {
+		final CPlayerEvent playerEvent = new CPlayerSyncEvent(globalScope, this, whichTrigger, prefix);
+		getOrCreateEventList(JassGameEventsWar3.EVENT_PLAYER_SYNC_DATA).add(playerEvent);
+		return playerEvent;
+	}
+
+	public RemovableTriggerEvent addKeyEvent(final GlobalScope globalScope, final Trigger whichTrigger, final int key,
+			final int metaKey, final boolean keyDown) {
+		final CPlayerEvent playerEvent = new CPlayerKeyEvent(globalScope, this, whichTrigger, key, metaKey, keyDown);
+		getOrCreateEventList(playerEvent.getEventType()).add(playerEvent);
+		return playerEvent;
+	}
+
+	public void fireSyncEvents(final String prefix, final String data) {
+		final List<CPlayerEvent> eventList = getEventList(JassGameEventsWar3.EVENT_PLAYER_SYNC_DATA);
+		if (eventList != null) {
+			for (final CPlayerEvent event : new ArrayList<>(eventList)) {
+				if (event instanceof CPlayerSyncEvent) {
+					((CPlayerSyncEvent) event).fireSync(prefix, data);
+				}
+			}
+		}
+	}
+
+	public void fireKeyEvents(final int key, final int metaKey, final boolean down) {
+		final List<CPlayerEvent> eventList = getEventList(
+				down ? JassGameEventsWar3.EVENT_PLAYER_KEY_DOWN : JassGameEventsWar3.EVENT_PLAYER_KEY_UP);
+		if (eventList != null) {
+			for (final CPlayerEvent event : new ArrayList<>(eventList)) {
+				if (event instanceof CPlayerKeyEvent) {
+					((CPlayerKeyEvent) event).fireKey(key, metaKey, down);
+				}
+			}
+		}
+	}
+
 	public void fireChatEvents(final String message) {
 		final List<CPlayerEvent> eventList = getEventList(JassGameEventsWar3.EVENT_PLAYER_CHAT);
 		if (eventList != null) {
@@ -720,6 +758,17 @@ public class CPlayer extends CBasePlayer {
 			for (final CPlayerEvent event : new ArrayList<>(eventList)) {
 				event.fire(decayingUnit, CommonTriggerExecutionScope.unitDecayScope(
 						JassGameEventsWar3.EVENT_PLAYER_UNIT_DECAY, event.getTrigger(), decayingUnit, this));
+			}
+		}
+	}
+
+	/** The damaging and damaged events of a unit this player owns; both of them take the unit's hit. */
+	public void fireUnitDamageEvents(final CDamageEvent damageEvent, final JassGameEventsWar3 type) {
+		final List<CPlayerEvent> eventList = getEventList(type);
+		if (eventList != null) {
+			for (final CPlayerEvent event : new ArrayList<>(eventList)) {
+				event.fire(damageEvent.getTarget(),
+						CommonTriggerExecutionScope.unitDamageScope(type, event.getTrigger(), damageEvent, this));
 			}
 		}
 	}

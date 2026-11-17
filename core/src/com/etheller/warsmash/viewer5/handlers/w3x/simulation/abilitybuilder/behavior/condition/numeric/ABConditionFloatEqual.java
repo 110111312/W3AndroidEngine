@@ -18,7 +18,7 @@ public class ABConditionFloatEqual extends ABCondition {
 		Float v1 = value1.callback(game, caster, localStore, castId);
 		Float v2 = value2.callback(game, caster, localStore, castId);
 		
-		return v1.equals(v2);
+		return floatValue(v1) == floatValue(v2);
 	}
 
 	@Override

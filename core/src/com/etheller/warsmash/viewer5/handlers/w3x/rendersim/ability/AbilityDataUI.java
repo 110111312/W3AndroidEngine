@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
@@ -132,6 +133,7 @@ public class AbilityDataUI {
 	private final GameUI gameUI;
 	private final Map<COrderButton, OrderButtonUI> buttonToRenderPeer = new HashMap<>();
 	private final CustomKeys customKeys = playerKeys();
+	private final UnaryOperator<String> uberTipReader;
 
 	public AbilityDataUI(final Warcraft3MapRuntimeObjectData allObjectData, final GameUI gameUI,
 			final War3MapViewer viewer) {
@@ -141,6 +143,7 @@ public class AbilityDataUI {
 		final ObjectData itemData = allObjectData.getItems();
 		final ObjectData upgradeData = allObjectData.getUpgrades();
 		this.gameUI = gameUI;
+		this.uberTipReader = text -> parseUbertip(allObjectData, text);
 		this.disabledPrefix = gameUI.getSkinField("CommandButtonDisabledArtPath");
 		for (final String alias : abilityData.keySet()) {
 			if (alias.length() != 4) {
@@ -155,8 +158,7 @@ public class AbilityDataUI {
 			final char iconTurnOffHotkey = getHotkey(abilityTypeData, ABILITY_HOTKEY_TURNOFF);
 			final String iconResearchTip = retip(abilityTypeData, ABILITY_HOTKEY_LEARN, 0,
 					abilityTypeData.getFieldAsString(ABILITY_RESEARCH_TIP, 0));
-			final String iconResearchUberTip = parseUbertip(allObjectData,
-					abilityTypeData.getFieldAsString(ABILITY_RESEARCH_UBER_TIP, 0));
+			final String iconResearchUberTip = abilityTypeData.getFieldAsString(ABILITY_RESEARCH_UBER_TIP, 0);
 			final char iconResearchHotkey = getHotkey(abilityTypeData, ABILITY_HOTKEY_LEARN);
 			final int iconResearchX = abilityTypeData.getFieldAsInteger(ICON_RESEARCH_XY, 0);
 			final int iconResearchY = abilityTypeData.getFieldAsInteger(ICON_RESEARCH_XY, 1);
@@ -177,17 +179,15 @@ public class AbilityDataUI {
 			for (int i = 0; i < levels; i++) {
 				final String iconTip = retip(abilityTypeData, ABILITY_HOTKEY_NORMAL, 0,
 						abilityTypeData.getFieldAsString(ABILITY_TIP, i));
-				final String iconUberTip = parseUbertip(allObjectData,
-						abilityTypeData.getFieldAsString(ABILITY_UBER_TIP, i));
+				final String iconUberTip = abilityTypeData.getFieldAsString(ABILITY_UBER_TIP, i);
 				final String iconTurnOffTip = retip(abilityTypeData, ABILITY_HOTKEY_TURNOFF, 0,
 						abilityTypeData.getFieldAsString(ABILITY_UN_TIP, i));
-				final String iconTurnOffUberTip = parseUbertip(allObjectData,
-						abilityTypeData.getFieldAsString(ABILITY_UN_UBER_TIP, i));
+				final String iconTurnOffUberTip = abilityTypeData.getFieldAsString(ABILITY_UN_UBER_TIP, i);
 
 				normalIconUIs.add(new IconUI(iconNormal, iconNormalDisabled, iconNormalX, iconNormalY, iconTip,
-						iconUberTip, iconHotkey));
+						iconUberTip, uberTipParser(iconUberTip), iconHotkey));
 				turnOffIconUIs.add(new IconUI(iconTurnOff, iconTurnOffDisabled, iconTurnOffX, iconTurnOffY,
-						iconTurnOffTip, iconTurnOffUberTip, iconTurnOffHotkey));
+						iconTurnOffTip, iconTurnOffUberTip, uberTipParser(iconTurnOffUberTip), iconTurnOffHotkey));
 			}
 
 			final List<EffectAttachmentUI> casterArt = new ArrayList<>();
@@ -261,7 +261,8 @@ public class AbilityDataUI {
 			this.rawcodeToUI.put(War3ID.fromString(alias),
 					new AbilityUI(
 							new IconUI(iconResearch, iconResearchDisabled, iconResearchX, iconResearchY,
-									iconResearchTip, iconResearchUberTip, iconResearchHotkey),
+									iconResearchTip, iconResearchUberTip, uberTipParser(iconResearchUberTip),
+									iconResearchHotkey),
 							normalIconUIs, turnOffIconUIs, casterArt, targetArt, specialArt, effectArt, areaEffectArt,
 							missileArt, LightningEffects, effectSound, effectSoundLooped));
 		}
@@ -272,8 +273,7 @@ public class AbilityDataUI {
 			final GameObject abilityTypeData = buffData.get(alias);
 			final String iconNormalPath = gameUI.trySkinField(abilityTypeData.getFieldAsString(BUFF_ICON_NORMAL, 0));
 			final String iconTip = abilityTypeData.getFieldAsString(BUFF_ABILITY_TIP, 0);
-			final String iconUberTip = parseUbertip(allObjectData,
-					abilityTypeData.getFieldAsString(BUFF_ABILITY_UBER_TIP, 0));
+			final String iconUberTip = abilityTypeData.getFieldAsString(BUFF_ABILITY_UBER_TIP, 0);
 			final IconTexture iconNormal = new IconTexture(gameUI, iconNormalPath);
 			final IconTexture iconNormalDisabled = new IconTexture(gameUI, disable(iconNormalPath, this.disabledPrefix));
 
@@ -327,7 +327,8 @@ public class AbilityDataUI {
 			final String effectSoundLooped = abilityTypeData.getFieldAsString(BUFF_ABILITY_EFFECT_SOUND_LOOPED, 0);
 
 			final BuffUI buffUI = new BuffUI(
-					new IconUI(iconNormal, iconNormalDisabled, 0, 0, iconTip, iconUberTip, '\0'), targetArt,
+					new IconUI(iconNormal, iconNormalDisabled, 0, 0, iconTip, iconUberTip,
+							uberTipParser(iconUberTip), '\0'), targetArt,
 					specialArt, effectArt, missileArt, lightningEffects, effectSound, effectSoundLooped);
 			this.rawcodeToBuffUI.put(War3ID.fromString(alias), buffUI);
 			this.lowerCaseRawcodeToBuffUI.put(alias.toLowerCase(), buffUI);
@@ -340,12 +341,13 @@ public class AbilityDataUI {
 			final String iconTip = retip(abilityTypeData, UNIT_HOTKEY, 0, abilityTypeData.getFieldAsString(UNIT_TIP, 0));
 			final String reviveTip = abilityTypeData.getFieldAsString(UNIT_REVIVE_TIP, 0);
 			final String awakenTip = abilityTypeData.getFieldAsString(UNIT_AWAKEN_TIP, 0);
-			final String iconUberTip = parseUbertip(allObjectData, abilityTypeData.getFieldAsString(UNIT_UBER_TIP, 0));
+			final String iconUberTip = abilityTypeData.getFieldAsString(UNIT_UBER_TIP, 0);
 			final char iconHotkey = getHotkey(abilityTypeData, UNIT_HOTKEY);
 			final IconTexture iconNormal = new IconTexture(gameUI, iconNormalPath);
 			final IconTexture iconNormalDisabled = new IconTexture(gameUI, disable(iconNormalPath, this.disabledPrefix));
 			this.rawcodeToUnitUI.put(War3ID.fromString(alias), new UnitIconUI(iconNormal, iconNormalDisabled,
-					iconNormalX, iconNormalY, iconTip, iconUberTip, iconHotkey, reviveTip, awakenTip));
+					iconNormalX, iconNormalY, iconTip, iconUberTip, uberTipParser(iconUberTip), iconHotkey, reviveTip,
+					awakenTip));
 		}
 		for (final String alias : itemData.keySet()) {
 			final GameObject abilityTypeData = itemData.get(alias);
@@ -353,7 +355,7 @@ public class AbilityDataUI {
 			final int iconNormalX = abilityTypeData.getFieldAsInteger(ITEM_ICON_NORMAL_XY, 0);
 			final int iconNormalY = abilityTypeData.getFieldAsInteger(ITEM_ICON_NORMAL_XY, 1);
 			final String iconTip = retip(abilityTypeData, ITEM_HOTKEY, 0, abilityTypeData.getFieldAsString(ITEM_TIP, 0));
-			final String iconUberTip = parseUbertip(allObjectData, abilityTypeData.getFieldAsString(ITEM_UBER_TIP, 0));
+			final String iconUberTip = abilityTypeData.getFieldAsString(ITEM_UBER_TIP, 0);
 			final String iconDescription = abilityTypeData.getFieldAsString(ITEM_DESCRIPTION, 0);
 			final char iconHotkey = getHotkey(abilityTypeData, ITEM_HOTKEY);
 			final IconTexture iconNormal = new IconTexture(gameUI, iconNormalPath);
@@ -362,7 +364,7 @@ public class AbilityDataUI {
 					.put(War3ID.fromString(alias),
 							new ItemUI(
 									new IconUI(iconNormal, iconNormalDisabled, iconNormalX, iconNormalY, iconTip,
-											iconUberTip, iconHotkey),
+											iconUberTip, uberTipParser(iconUberTip), iconHotkey),
 									abilityTypeData.getName(), iconDescription, iconNormalPath));
 		}
 		for (final String alias : upgradeData.keySet()) {
@@ -374,15 +376,14 @@ public class AbilityDataUI {
 			for (int upgradeLevelValue = 0; upgradeLevelValue < upgradeLevels; upgradeLevelValue++) {
 				final String iconTip = retip(upgradeTypeData, UPGRADE_HOTKEY, upgradeLevelValue,
 						upgradeTypeData.getFieldAsString(UPGRADE_TIP, upgradeLevelValue));
-				final String iconUberTip = parseUbertip(allObjectData,
-						upgradeTypeData.getFieldAsString(UPGRADE_UBER_TIP, upgradeLevelValue));
+				final String iconUberTip = upgradeTypeData.getFieldAsString(UPGRADE_UBER_TIP, upgradeLevelValue);
 				final String iconNormalPath = gameUI
 						.trySkinField(upgradeTypeData.getFieldAsString(UPGRADE_ICON_NORMAL, upgradeLevelValue));
 				final char iconHotkey = getHotkey(upgradeTypeData, UPGRADE_HOTKEY, upgradeLevelValue);
 				final IconTexture iconNormal = new IconTexture(gameUI, iconNormalPath);
 				final IconTexture iconNormalDisabled = new IconTexture(gameUI, disable(iconNormalPath, this.disabledPrefix));
 				upgradeIconsByLevel.add(new IconUI(iconNormal, iconNormalDisabled, iconNormalX, iconNormalY, iconTip,
-						iconUberTip, iconHotkey));
+						iconUberTip, uberTipParser(iconUberTip), iconHotkey));
 			}
 			this.rawcodeToUpgradeUI.put(War3ID.fromString(alias), upgradeIconsByLevel);
 		}
@@ -405,6 +406,11 @@ public class AbilityDataUI {
 		this.rallyUI = createBuiltInIconUI(gameUI, "CmdRally", this.disabledPrefix);
 		this.selectSkillUI = createBuiltInIconUI(gameUI, "CmdSelectSkill", this.disabledPrefix);
 		this.neutralInteractUI = getUI(War3ID.fromString("Anei")).getOnIconUI(0);
+	}
+
+	/** The ubertip's references to object data are read when the tip is first shown, as hardly any are. */
+	private UnaryOperator<String> uberTipParser(final String uberTip) {
+		return uberTip.indexOf('<') == -1 ? null : this.uberTipReader;
 	}
 
 	private static String parseUbertip(final Warcraft3MapRuntimeObjectData allObjectData, final String originalText) {
@@ -475,6 +481,11 @@ public class AbilityDataUI {
 	private static String buttonPlaceField(final String hotkeyField) {
 		return ABILITY_HOTKEY_LEARN.equals(hotkeyField) ? ICON_RESEARCH_XY
 				: ABILITY_HOTKEY_TURNOFF.equals(hotkeyField) ? ICON_TURN_OFF_XY : ICON_NORMAL_XY;
+	}
+
+	/** Whether the player chose the grid layout in the hotkey editor; the buttons' keys already follow it. */
+	public boolean isGridLayout() {
+		return this.customKeys.grid();
 	}
 
 	/** The player's CustomKeys.txt in the engine's own folder and their hotkey layout; none without a game. */

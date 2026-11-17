@@ -32,10 +32,6 @@ public class Bounds {
 		return Intersector.intersectRayBounds(ray, this.boundingBox, intersection);
 	}
 
-	public boolean intersectRayFast(final Ray ray) {
-		return Intersector.intersectRayBoundsFast(ray, this.boundingBox);
-	}
-
 	public BoundingBox getBoundingBox() {
 		return this.boundingBox;
 	}

@@ -9,7 +9,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CodingErrorAction;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -244,110 +243,6 @@ public final class War3ObjectDataChangeset {
 			return this.version >= 2;
 		}
 		return true;
-	}
-
-	public void renameids(final ObjectMap map, final boolean isOriginal) {
-		final War3ID nameId = getNameField();
-		final List<War3ID> idsToRemoveFromMap = new ArrayList<>();
-		final Map<War3ID, ObjectDataChangeEntry> idsToObjectsForAddingToMap = new HashMap<>();
-		for (final Iterator<Map.Entry<War3ID, ObjectDataChangeEntry>> iterator = map.iterator(); iterator.hasNext();) {
-			final Map.Entry<War3ID, ObjectDataChangeEntry> entry = iterator.next();
-			final ObjectDataChangeEntry current = entry.getValue();
-			final List<Change> nameEntry = current.getChanges().get(nameId);
-			if ((nameEntry != null) && !nameEntry.isEmpty()) {
-				final Change firstNameChange = nameEntry.get(0);
-				int pos = firstNameChange.getStrval().lastIndexOf("::");
-				if ((pos != -1) && (firstNameChange.getStrval().length() > (pos + 2))) {
-					String rest = firstNameChange.getStrval().substring(pos + 2);
-					if (rest.length() == 4) {
-						final War3ID newId = War3ID.fromString(rest);
-						final ObjectDataChangeEntry existingObjectWithMatchingId = map.get(newId);
-						if (isOriginal) {// obj.cpp: update id and name
-							current.setOldId(newId);
-						}
-						else {
-							current.setNewId(newId);
-						}
-						firstNameChange.setStrval(firstNameChange.getStrval().substring(0, pos));
-						if (existingObjectWithMatchingId != null) {
-							// obj.cpp: carry over all changes
-							final Iterator<Map.Entry<War3ID, List<Change>>> changeIterator = current.getChanges()
-									.iterator();
-							while (changeIterator.hasNext()) {
-								final Map.Entry<War3ID, List<Change>> changeIteratorNext = changeIterator.next();
-								final War3ID copiedChangeId = changeIteratorNext.getKey();
-								List<Change> changeListForFieldToOverwrite = existingObjectWithMatchingId.getChanges()
-										.get(copiedChangeId);
-								if (changeListForFieldToOverwrite == null) {
-									changeListForFieldToOverwrite = new ArrayList<>();
-								}
-								for (final Change changeToCopy : changeIteratorNext.getValue()) {
-									final Iterator<Change> replaceIterator = changeListForFieldToOverwrite.iterator();
-									boolean didOverwrite = false;
-									while (replaceIterator.hasNext()) {
-										final Change changeToOverwrite = replaceIterator.next();
-										if (changeToOverwrite.getLevel() != changeToCopy.getLevel()) {
-											// obj.cpp: we can only replace
-											// changes with the same
-											// level/variation
-											continue;
-										}
-										if (copiedChangeId.equals(nameId)) {
-											// obj.cpp: carry over further
-											// references
-											pos = changeToOverwrite.getStrval().lastIndexOf("::");
-											if ((pos != -1) && (changeToOverwrite.getStrval().length() > (pos + 2))) {
-												rest = changeToOverwrite.getStrval().substring(pos + 2);
-												if ((rest.length() == 4) || "REMOVE".equals(rest)) {
-													changeToCopy.setStrval(changeToCopy.getStrval() + "::" + rest);
-													// so if this is a peasant, whose name was "Peasant::hfoo"
-													// and when we copied his data onto the footman, we found
-													// that the footman was named "Footman::hkni", then at that
-													// point we set the peasant's name to be "Peasant::hkni"
-													// because we are about to copy it onto the footman.
-													// And, we already set it to just "Peasant", so
-													// appending the "::" and the 'rest' variable is enough.
-													// Then, on a further loop iteration, in theory
-													// we will copoy the footman who is named Peasant
-													// onto the knight.
-													//
-													// TODO but what if we already copied the footman onto the knight?
-													// did PitzerMike consider this in obj.cpp?
-												}
-											}
-										}
-										changeToOverwrite.copyFrom(changeToCopy);
-										didOverwrite = true;
-										break;
-									}
-									if (!didOverwrite) {
-										changeListForFieldToOverwrite.add(changeToCopy);
-										if (changeListForFieldToOverwrite.size() == 1) {
-											existingObjectWithMatchingId.getChanges().add(copiedChangeId,
-													changeListForFieldToOverwrite);
-										}
-									}
-								}
-							}
-						}
-						else { // obj.cpp: an object with that id didn't exist
-							idsToRemoveFromMap.add(entry.getKey());
-							idsToObjectsForAddingToMap.put(newId, current.clone());
-						}
-					}
-					else if ("REMOVE".equals(rest)) { // obj.cpp: want to remove the object
-						idsToRemoveFromMap.add(entry.getKey());
-					} // obj.cpp: in all other cases keep it untouched
-				}
-			}
-
-		}
-		for (final War3ID id : idsToRemoveFromMap) {
-			map.remove(id);
-		}
-		for (final Map.Entry<War3ID, ObjectDataChangeEntry> entry : idsToObjectsForAddingToMap.entrySet()) {
-			map.put(entry.getKey(), entry.getValue());
-		}
 	}
 
 	// ' ' - '/'

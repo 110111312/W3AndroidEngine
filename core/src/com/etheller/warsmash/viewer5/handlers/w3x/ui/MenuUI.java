@@ -473,6 +473,10 @@ public class MenuUI {
 	}
 
 	/** The menu with the error dialog, for a map that could not be started or loaded. */
+	public int mapLoadErrorCount() {
+		return this.mapStart.mapLoadErrorCount();
+	}
+
 	public void showMapLoadError() {
 		this.mapStart.showMapLoadError();
 	}
@@ -1086,7 +1090,8 @@ public class MenuUI {
 	private String replayProblem(final String name) {
 		try {
 			final CReplay replay = GameReplays.load(GameReplays.folder().child(name + GameReplays.EXTENSION));
-			return GameReplays.unplayableReason(replay, this.gameData != null ? this.gameData : this.dataSource);
+			return GameReplays.unplayableReason(replay, this.gameData != null ? this.gameData : this.dataSource,
+					this.warsmashIni);
 		}
 		catch (final IOException | RuntimeException e) {
 			return REPLAY_DAMAGED;

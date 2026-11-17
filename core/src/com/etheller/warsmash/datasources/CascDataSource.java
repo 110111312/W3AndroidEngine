@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.ByteBuffer;
@@ -28,18 +29,19 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import com.etheller.warsmash.util.Log;
+import com.etheller.warsmash.util.PerfStats;
 import com.hiveworkshop.blizzard.casc.info.Info;
 import com.hiveworkshop.blizzard.casc.io.WarcraftIIICASC;
 import com.hiveworkshop.blizzard.casc.io.WarcraftIIICASC.FileSystem;
@@ -49,8 +51,6 @@ import com.hiveworkshop.json.JSONTokener;
 
 public class CascDataSource implements DataSource {
 	private final String[] prefixes;
-	private static final String NOT_READABLE = new String("<not readable>");
-	private final Map<String, String> readablePaths = new ConcurrentHashMap<>();
 	private final Mount mount;
 	private Map<String, String> fileAliases = Collections.emptyMap();
 	private boolean closed;
@@ -119,6 +119,8 @@ public class CascDataSource implements DataSource {
 		}
 	}
 
+	private static final byte READABLE = 1;
+	private static final byte UNREADABLE = 2;
 	private static final int PARSED_ALIASES_KEPT = 4;
 	private static final int WRITE_CHUNK = 1 << 16;
 	/**
@@ -185,32 +187,24 @@ public class CascDataSource implements DataSource {
 
 	/**
 	 * The path in the file system that a request is answered from: the first prefix (or no prefix) under which the
-	 * file can be read, or null. What is readable does not change while the storage is mounted, and the same paths
-	 * are asked for again by every source above this one.
+	 * file can be read, or null. What is readable does not change while the storage is mounted, and the lookups are
+	 * answered from the index of listed paths, so the answer is not kept for each path asked.
 	 */
 	private String findReadable(final String filepath) {
-		final String cached = this.readablePaths.get(filepath);
-		if (cached != null) {
-			return cached == NOT_READABLE ? null : cached;
-		}
 		String path = normalizePath(filepath);
 		final String resolvedAlias = this.fileAliases.get(path);
 		if (resolvedAlias != null) {
 			path = resolvedAlias;
 		}
-		String found = null;
 		for (final String prefix : this.prefixes) {
-			final String tempFilepath = prefix + "\\" + path;
-			if (isReadable(tempFilepath)) {
-				found = tempFilepath;
-				break;
+			if (isReadable(prefix, path)) {
+				return prefix + "\\" + path;
 			}
 		}
-		if ((found == null) && isReadable(path)) {
-			found = path;
+		if (isReadable(null, path)) {
+			return path;
 		}
-		this.readablePaths.put(filepath, found == null ? NOT_READABLE : found);
-		return found;
+		return null;
 	}
 
 	/** The path as the storage names files: lower case, with backslashes. */
@@ -387,13 +381,13 @@ public class CascDataSource implements DataSource {
 		}
 		for (final String prefix : this.prefixes) {
 			for (int i = 0; i < resolvedPaths.length; i++) {
-				if (isReadable(prefix + "\\" + resolvedPaths[i])) {
+				if (isReadable(prefix, resolvedPaths[i])) {
 					return filepaths[i];
 				}
 			}
 		}
 		for (int i = 0; i < resolvedPaths.length; i++) {
-			if (isReadable(resolvedPaths[i])) {
+			if (isReadable(null, resolvedPaths[i])) {
 				return filepaths[i];
 			}
 		}
@@ -407,30 +401,27 @@ public class CascDataSource implements DataSource {
 	 * paths, as walking the file system for each of them was slow.
 	 */
 	private boolean isReadable(final String tempFilepath) {
-		if (!this.mount.paths.contains(listedForm(tempFilepath))) {
+		return isReadable(null, tempFilepath);
+	}
+
+	private boolean isReadable(final String prefix, final String path) {
+		final int index = this.mount.index.indexOf(prefix, path);
+		if (index == -1) {
 			return false;
 		}
-		final Boolean cached = this.mount.readableCache.get(tempFilepath);
-		if (cached != null) {
-			return cached;
+		final byte known = this.mount.readable[index];
+		if (known != 0) {
+			return known == READABLE;
 		}
 		try {
-			final boolean readable = this.mount.fileSystem.isReadableFile(tempFilepath);
-			this.mount.readableCache.put(tempFilepath, readable);
+			final boolean readable = this.mount.fileSystem
+					.isReadableFile(prefix == null ? path : prefix + "\\" + path);
+			this.mount.readable[index] = readable ? READABLE : UNREADABLE;
 			return readable;
 		}
 		catch (final IOException e) {
-			throw new RuntimeException("CASC parser error for: " + tempFilepath, e);
+			throw new RuntimeException("CASC parser error for: " + (prefix == null ? path : prefix + "\\" + path), e);
 		}
-	}
-
-	/** The path as the file system lists it: lower case, and without the trailing separators it ignores. */
-	private static String listedForm(final String path) {
-		int end = path.length();
-		while ((end > 0) && (path.charAt(end - 1) == '\\')) {
-			end--;
-		}
-		return path.substring(0, end).toLowerCase(Locale.ROOT);
 	}
 
 	@Override
@@ -466,8 +457,9 @@ public class CascDataSource implements DataSource {
 		private final WarcraftIIICASC warcraftIIICASC;
 		final FileSystem fileSystem;
 		final List<String> listFile;
-		final Set<String> paths;
-		final Map<String, Boolean> readableCache = new ConcurrentHashMap<>();
+		final PathIndex index;
+		/** Whether each listed path can be read, once asked: 0 for not yet. Bytes are written whole, so no lock. */
+		final byte[] readable;
 		final Map<String, File> extractedFiles = new ConcurrentHashMap<>();
 		/** Paths of the extracted files, oldest first; guarded by this mount like the byte count. */
 		final ArrayDeque<String> extractionOrder = new ArrayDeque<>();
@@ -493,19 +485,66 @@ public class CascDataSource implements DataSource {
 				final boolean old131Format) throws IOException {
 			this.key = key;
 			this.buildInfo = buildInfo;
-			// Plain reads are as fast as mapping here, and a mapping per read can exhaust a 32-bit address space.
-			this.warcraftIIICASC = new WarcraftIIICASC(installPath, false, product, old131Format);
+			final long opening = System.nanoTime();
+			// The saved list of paths does not need the storage, so it is read and indexed while the storage opens.
+			final FutureTask<Listed> saved = new FutureTask<>(() -> {
+				final List<String> paths = readSavedListFile(key, buildInfo);
+				return paths == null ? null : new Listed(paths);
+			});
+			final Thread reader = new Thread(saved, "casc-listfile");
+			reader.setDaemon(true);
+			reader.start();
+			try {
+				// Plain reads are as fast as mapping here, and a mapping per read can exhaust a 32-bit address space.
+				this.warcraftIIICASC = new WarcraftIIICASC(installPath, false, product, old131Format);
+			}
+			catch (final IOException | RuntimeException e) {
+				saved.cancel(true);
+				throw e;
+			}
+			final long storageOpened = System.nanoTime();
 			try {
 				this.fileSystem = this.warcraftIIICASC.getRootFileSystem();
-				this.listFile = Collections.unmodifiableList(listFile(key, buildInfo, this.fileSystem));
-				this.paths = new HashSet<>(this.listFile.size() * 2);
-				for (final String path : this.listFile) {
-					this.paths.add(path.toLowerCase(Locale.ROOT));
+				Listed listed = awaitSaved(saved);
+				final boolean listSaved = listed != null;
+				if (listed == null) {
+					final List<String> paths = this.fileSystem.enumerateFiles();
+					writeListFile(savedListFile(key), listFileStamp(key, buildInfo), paths);
+					listed = new Listed(paths);
 				}
+				this.listFile = listed.paths;
+				this.index = listed.index;
+				this.readable = new byte[this.listFile.size()];
+				PerfStats.cascOpened(opening, storageOpened, System.nanoTime(), this.listFile.size(), listSaved);
 			}
 			catch (final IOException | RuntimeException e) {
 				this.warcraftIIICASC.close();
 				throw e;
+			}
+		}
+
+		private static final class Listed {
+			final List<String> paths;
+			final PathIndex index;
+
+			Listed(final List<String> paths) {
+				this.paths = Collections.unmodifiableList(paths);
+				this.index = new PathIndex(this.paths);
+			}
+		}
+
+		/** @return the saved list read in the background, or null when there is none to use */
+		private static Listed awaitSaved(final FutureTask<Listed> saved) throws IOException {
+			try {
+				return saved.get();
+			}
+			catch (final InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new InterruptedIOException("interrupted while reading the list of paths");
+			}
+			catch (final ExecutionException e) {
+				// read again from the storage
+				return null;
 			}
 		}
 
@@ -559,13 +598,21 @@ public class CascDataSource implements DataSource {
 			}
 		}
 
-		private static List<String> listFile(final String key, final byte[] buildInfo, final FileSystem fileSystem)
-				throws IOException {
-			final String stamp = LISTFILE_FORMAT + "|" + key + "|" + hex(digest(buildInfo));
-			final File cached = new File(INDEX_FOLDER, hex(digest(key.getBytes(StandardCharsets.UTF_8))) + ".gz");
+		private static String listFileStamp(final String key, final byte[] buildInfo) {
+			return LISTFILE_FORMAT + "|" + key + "|" + hex(digest(buildInfo));
+		}
+
+		private static File savedListFile(final String key) {
+			return new File(INDEX_FOLDER, hex(digest(key.getBytes(StandardCharsets.UTF_8))) + ".gz");
+		}
+
+		/** @return the paths saved for this game data, or null when none are saved or they cannot be used */
+		private static List<String> readSavedListFile(final String key, final byte[] buildInfo) {
+			final String stamp = listFileStamp(key, buildInfo);
+			final File cached = savedListFile(key);
 			if (cached.isFile()) {
 				try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-						new GZIPInputStream(new FileInputStream(cached), 65536), StandardCharsets.UTF_8))) {
+						new GZIPInputStream(new FileInputStream(cached), 65536), StandardCharsets.UTF_8), 65536)) {
 					if (stamp.equals(reader.readLine())) {
 						final int count = Integer.parseInt(reader.readLine());
 						final List<String> paths = new ArrayList<>(count);
@@ -579,12 +626,10 @@ public class CascDataSource implements DataSource {
 					}
 				}
 				catch (final IOException | RuntimeException e) {
-					// read again from the storage below
+					// read again from the storage
 				}
 			}
-			final List<String> paths = fileSystem.enumerateFiles();
-			writeListFile(cached, stamp, paths);
-			return paths;
+			return null;
 		}
 
 		private static void writeListFile(final File target, final String stamp, final List<String> paths) {

@@ -1417,6 +1417,9 @@ public class Terrain {
 		final int x0 = (int) Math.floor((v - centerOffset[0]) / 32.0) - x01;
 		final int y0 = (int) Math.floor((v2 - centerOffset[1]) / 32.0) + y01;
 		final boolean[] mask = getShadowMask(texture, width, height);
+		if (mask == null) {
+			return;
+		}
 		for (int y = 0; y < height; ++y) {
 			if (((y0 - y) < 0) || ((y0 - y) >= rows)) {
 				continue;
@@ -1437,8 +1440,12 @@ public class Terrain {
 	private boolean[] getShadowMask(final RawOpenGLTextureResource texture, final int width, final int height) {
 		boolean[] mask = this.shadowMasks.get(texture);
 		if (mask == null) {
-			mask = new boolean[width * height];
 			final ByteBuffer data = texture.getData();
+			// A texture that did not load, or whose pixels are gone, shades nothing and is asked again next time.
+			if ((data == null) || (data.capacity() < (width * height * 4))) {
+				return null;
+			}
+			mask = new boolean[width * height];
 			for (int i = 0; i < mask.length; i++) {
 				mask[i] = data.get((i * 4) + 3) != 0;
 			}

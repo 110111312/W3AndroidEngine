@@ -42,10 +42,10 @@ public class CRegionManager {
 	public void checkRegions(final Rectangle area, final CRegionEnumFunction enumFunction) {
 		this.regionTree.intersect(area, this.regionChecker.reset(enumFunction));
 		if (this.regionChecker.includesComplex) {
-			final int minX = this.pathingGrid.getCellX(area.x);
-			final int minY = this.pathingGrid.getCellY(area.y);
-			final int maxX = this.pathingGrid.getCellX(area.x + area.width);
-			final int maxY = this.pathingGrid.getCellY(area.y + area.height);
+			final int minX = cellX(area.x);
+			final int minY = cellY(area.y);
+			final int maxX = cellX(area.x + area.width);
+			final int maxY = cellY(area.y + area.height);
 			for (int x = minX; x <= maxX; x++) {
 				for (int y = minY; y <= maxY; y++) {
 					final List<CRegion> cellRegionsAtPoint = this.cellRegions[y][x];
@@ -82,11 +82,20 @@ public class CRegionManager {
 
 	}
 
+	/** A region may end exactly on the map edge, one cell past the last. */
+	private int cellX(final float x) {
+		return Math.max(0, Math.min(this.pathingGrid.getWidth() - 1, this.pathingGrid.getCellX(x)));
+	}
+
+	private int cellY(final float y) {
+		return Math.max(0, Math.min(this.pathingGrid.getHeight() - 1, this.pathingGrid.getCellY(y)));
+	}
+
 	public void addComplexRegionCells(final CRegion region, final Rectangle currentBounds) {
-		final int minX = this.pathingGrid.getCellX(currentBounds.x);
-		final int minY = this.pathingGrid.getCellY(currentBounds.y);
-		final int maxX = this.pathingGrid.getCellX(currentBounds.x + currentBounds.width);
-		final int maxY = this.pathingGrid.getCellY(currentBounds.y + currentBounds.height);
+		final int minX = cellX(currentBounds.x);
+		final int minY = cellY(currentBounds.y);
+		final int maxX = cellX(currentBounds.x + currentBounds.width);
+		final int maxY = cellY(currentBounds.y + currentBounds.height);
 		for (int x = minX; x <= maxX; x++) {
 			for (int y = minY; y <= maxY; y++) {
 				List<CRegion> list = this.cellRegions[y][x];
@@ -99,10 +108,10 @@ public class CRegionManager {
 	}
 
 	public void removeComplexRegionCells(final CRegion region, final Rectangle currentBounds) {
-		final int minX = this.pathingGrid.getCellX(currentBounds.x);
-		final int minY = this.pathingGrid.getCellY(currentBounds.y);
-		final int maxX = this.pathingGrid.getCellX(currentBounds.x + currentBounds.width);
-		final int maxY = this.pathingGrid.getCellY(currentBounds.y + currentBounds.height);
+		final int minX = cellX(currentBounds.x);
+		final int minY = cellY(currentBounds.y);
+		final int maxX = cellX(currentBounds.x + currentBounds.width);
+		final int maxY = cellY(currentBounds.y + currentBounds.height);
 		for (int x = minX; x <= maxX; x++) {
 			for (int y = minY; y <= maxY; y++) {
 				final List<CRegion> list = this.cellRegions[y][x];
@@ -114,10 +123,10 @@ public class CRegionManager {
 	}
 
 	public void computeNewMinimumComplexRegionBounds(final CRegion region, final Rectangle complexRegionBounds) {
-		final int minX = this.pathingGrid.getCellX(complexRegionBounds.x);
-		final int minY = this.pathingGrid.getCellY(complexRegionBounds.y);
-		final int maxX = this.pathingGrid.getCellX(complexRegionBounds.x + complexRegionBounds.width);
-		final int maxY = this.pathingGrid.getCellY(complexRegionBounds.y + complexRegionBounds.height);
+		final int minX = cellX(complexRegionBounds.x);
+		final int minY = cellY(complexRegionBounds.y);
+		final int maxX = cellX(complexRegionBounds.x + complexRegionBounds.width);
+		final int maxY = cellY(complexRegionBounds.y + complexRegionBounds.height);
 		float newMinX = this.pathingGrid.getWorldX(this.pathingGrid.getWidth() - 1);
 		float newMaxX = this.pathingGrid.getWorldX(0);
 		float newMinY = this.pathingGrid.getWorldY(this.pathingGrid.getHeight() - 1);
@@ -154,8 +163,8 @@ public class CRegionManager {
 
 	public void addComplexRegionCell(final CRegion region, final float x, final float y,
 			final Rectangle boundsToUpdate) {
-		final int cellX = this.pathingGrid.getCellX(x);
-		final int cellY = this.pathingGrid.getCellY(y);
+		final int cellX = cellX(x);
+		final int cellY = cellY(y);
 		List<CRegion> list = this.cellRegions[cellY][cellX];
 		if (list == null) {
 			this.cellRegions[cellY][cellX] = list = new ArrayList<>();
@@ -170,8 +179,8 @@ public class CRegionManager {
 
 	public void clearComplexRegionCell(final CRegion region, final float x, final float y,
 			final Rectangle boundsToUpdate) {
-		final int cellX = this.pathingGrid.getCellX(x);
-		final int cellY = this.pathingGrid.getCellY(y);
+		final int cellX = cellX(x);
+		final int cellY = cellY(y);
 		final List<CRegion> list = this.cellRegions[cellY][cellX];
 		if (list != null) {
 			list.remove(region);
@@ -180,8 +189,8 @@ public class CRegionManager {
 	}
 
 	public boolean isPointInComplexRegion(final CRegion region, final float x, final float y) {
-		final int cellX = this.pathingGrid.getCellX(x);
-		final int cellY = this.pathingGrid.getCellY(y);
+		final int cellX = cellX(x);
+		final int cellY = cellY(y);
 		final List<CRegion> list = this.cellRegions[cellY][cellX];
 		if (list != null) {
 			return list.contains(region);

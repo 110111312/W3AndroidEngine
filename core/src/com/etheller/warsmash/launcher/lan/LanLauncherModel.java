@@ -802,6 +802,22 @@ public final class LanLauncherModel {
 		}
 	}
 
+	/**
+	 * The host's big button: starts the game once everyone is ready, else toggles the host's own ready mark.
+	 * Pressing while the start is not allowed never starts anything.
+	 */
+	public void hostPrimary() {
+		if (this.lobby == null) {
+			return;
+		}
+		if (this.lobby.hostAction() == LanLobbyView.HostAction.START) {
+			startGame();
+		}
+		else {
+			setReady((this.lobby.mine == null) || !this.lobby.mine.ready);
+		}
+	}
+
 	public void slotRequest(final int slot, final int race, final int team, final int color, final int handicap) {
 		final LanClient client = client();
 		if (client != null) {
@@ -1017,18 +1033,6 @@ public final class LanLauncherModel {
 		for (final LanAttention.Event e : events) {
 			this.attention.onEvent(e);
 		}
-		readyHost();
-	}
-
-	/** The host decides when to start; its own mark is never what holds the game back. */
-	private void readyHost() {
-		if (this.hosting && (this.lobby != null) && (this.lobby.mine != null) && !this.lobby.mine.ready && mapReady()
-				&& (this.mode == Mode.LOBBY)) {
-			final LanClient client = client();
-			if (client != null) {
-				client.setReady(true);
-			}
-		}
 	}
 
 	private void controlSchemeLines(final LanMessages.LobbyState before, final LanMessages.LobbyState after,
@@ -1197,8 +1201,7 @@ public final class LanLauncherModel {
 				LanLauncherModel.this.attention.onEvent(LanAttention.Event.MAP_FAILED);
 			}
 			rebuildLobby();
-			readyHost();
-		}
+			}
 
 		@Override
 		public void onMapProgress(final long done, final int total) {

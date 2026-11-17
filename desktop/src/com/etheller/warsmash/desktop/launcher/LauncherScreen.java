@@ -32,6 +32,7 @@ import com.etheller.warsmash.WarsmashGdxMapScreen;
 import com.etheller.warsmash.WarsmashGdxMenuScreen;
 import com.etheller.warsmash.WarsmashGdxMultiScreenGame;
 import com.etheller.warsmash.datasources.DataSource;
+import com.etheller.warsmash.datasources.GpuMemory;
 import com.etheller.warsmash.datasources.GraphicsSet;
 import com.etheller.warsmash.datasources.GraphicsSettings;
 import com.etheller.warsmash.launcher.CampaignChoice;
@@ -1437,7 +1438,8 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		float mx = tx;
 		if (result != null) {
 			final float continueW = t ? 340 : 170;
-			if (g.button("continue", upper(glue("CONTINUE", "Continue")), mx, menuY, continueW, menuH, text,
+			final String[] button = CampaignResult.buttonLabel(result);
+			if (g.button("continue", upper(GlueText.plain(glue(button[0], button[1]))), mx, menuY, continueW, menuH, text,
 					Gui.TONE_NORMAL)) {
 				playClick();
 				continueAfter(entry, result);
@@ -1592,7 +1594,8 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			g.text(glue(difficulty[1], difficulty[2]), l.contentX, l.difficultyY, l.contentW, l.difficultyH,
 					l.difficultySize, g.palette.text2, Align.center);
 		}
-		if (g.button("continue", glue("CONTINUE", "Continue"), l.buttonX, l.buttonY, l.buttonW, l.buttonH,
+		final String[] button = CampaignResult.buttonLabel(result);
+		if (g.button("continue", GlueText.plain(glue(button[0], button[1])), l.buttonX, l.buttonY, l.buttonW, l.buttonH,
 				b.buttonText, Gui.TONE_NORMAL)) {
 			playClick();
 			continueAfter(entry, result);
@@ -2805,7 +2808,7 @@ public final class LauncherScreen implements Screen, InputProcessor {
 			sizeNames[i] = s(LauncherOptions.TEXTURE_SIZES[i]);
 		}
 		rows.add(radioRow(rowY, index, x, w, controlX, s("options_texture_size"), sizeNames, null,
-				LauncherOptions.textureSizeChoice(textureSize()), choice -> this.preferences.edit()
+				LauncherOptions.textureSizeChoice(shownTextureSize()), choice -> this.preferences.edit()
 						.putInt(LauncherKeys.KEY_TEXTURE_SIZE, GraphicsSettings.TEXTURE_SIZES[choice]).apply()));
 		rows.add(radioRow(rowY, index, x, w, controlX, s("options_display_mode"),
 				new String[] { s("options_window"), s("options_fullscreen") }, null, Gdx.graphics.isFullscreen() ? 1 : 0,
@@ -3236,9 +3239,20 @@ public final class LauncherScreen implements Screen, InputProcessor {
 		return GraphicsSet.fromIniName(this.preferences.getString(LauncherKeys.KEY_GRAPHICS, null));
 	}
 
-	/** The desktop has the memory for every texture at its full size unless the player sets a limit. */
+	/**
+	 * The limit the player chose, -1 while they have not: Classic then has no limit and the HD and DE graphics the
+	 * default of this GPU, see {@link GraphicsSettings#textureSize(DataTable, GraphicsSet, java.util.function.IntSupplier)}.
+	 */
 	private int textureSize() {
-		return this.preferences.getInt(LauncherKeys.KEY_TEXTURE_SIZE, 0);
+		return this.preferences.contains(LauncherKeys.KEY_TEXTURE_SIZE)
+				? this.preferences.getInt(LauncherKeys.KEY_TEXTURE_SIZE, 0)
+				: -1;
+	}
+
+	/** The limit the Options page marks: the player's choice, else the default the HD and DE graphics get. */
+	private int shownTextureSize() {
+		final int chosen = textureSize();
+		return chosen >= 0 ? chosen : GpuMemory.desktopDefaultTextureSize();
 	}
 
 	/** The desktop draws the world at the full size of its window unless the player lowers it. */

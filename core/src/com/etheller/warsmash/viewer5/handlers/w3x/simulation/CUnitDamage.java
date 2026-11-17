@@ -2,7 +2,9 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.etheller.warsmash.parsers.jass.scope.CDamageEvent;
 import com.etheller.warsmash.parsers.jass.scope.CommonTriggerExecutionScope;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.listeners.CUnitAbilityEffectReactionListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
@@ -162,6 +164,34 @@ final class CUnitDamage {
 		return false;
 	}
 
+	/**
+	 * Runs the triggers of the damaging events (the unit's and its owner's) and returns what they were told and
+	 * left, or null when none listens.
+	 */
+	private static CDamageEvent fireDamagingEvents(final CUnit self, final CSimulation simulation, final CUnit source,
+			final CDamageFlags flags, final CAttackType attackType, final CDamageType damageType,
+			final String weaponSoundType, final float damage) {
+		final List<CWidgetEvent> eventList = self.getEventList(JassGameEventsWar3.EVENT_UNIT_DAMAGING);
+		final CPlayer owner = simulation.getPlayer(self.getPlayerIndex());
+		final boolean playerListens = (owner != null)
+				&& owner.hasPlayerEvents(JassGameEventsWar3.EVENT_PLAYER_UNIT_DAMAGING);
+		if (((eventList == null) || eventList.isEmpty()) && !playerListens) {
+			return null;
+		}
+		final CDamageEvent damagingEvent = new CDamageEvent(self, source, true, (flags != null) && flags.isAttack(),
+				(flags != null) && flags.isRanged(), damage, attackType, damageType, weaponSoundType);
+		if (eventList != null) {
+			for (final CWidgetEvent event : new ArrayList<>(eventList)) {
+				event.fire(self, CommonTriggerExecutionScope.unitDamageScope(JassGameEventsWar3.EVENT_UNIT_DAMAGING,
+						event.getTrigger(), damagingEvent, null));
+			}
+		}
+		if (playerListens) {
+			owner.fireUnitDamageEvents(damagingEvent, JassGameEventsWar3.EVENT_PLAYER_UNIT_DAMAGING);
+		}
+		return damagingEvent;
+	}
+
 	static float damage(final CUnit self, final CSimulation simulation, final CUnit source, final CDamageFlags flags,
 			final CAttackType attackType, final CDamageType damageType, final String weaponSoundType,
 			final float damage) {
@@ -169,8 +199,8 @@ final class CUnitDamage {
 	}
 
 	static float damage(final CUnit self, final CSimulation simulation, final CUnit source, final CDamageFlags flags,
-			final CAttackType attackType, final CDamageType damageType, final String weaponSoundType,
-			final float damage, final float bonusDamage) {
+			CAttackType attackType, CDamageType damageType, String weaponSoundType, float damage,
+			float bonusDamage) {
 		final boolean wasDead = self.isDead();
 		if (wasDead) {
 			return 0;
@@ -183,6 +213,18 @@ final class CUnitDamage {
 				&& simulation.getGameplayConstants().isInvulnerableSummonsTakeDispelDamage()
 				&& self.isUnitType(CUnitTypeJass.SUMMONED))))) {
 
+			// The damaging event runs before armor and resistance: its triggers may change the amount and the types.
+			final CDamageEvent damagingEvent = fireDamagingEvents(self, simulation, source, flags, attackType,
+					damageType, weaponSoundType, damage + bonusDamage);
+			if (damagingEvent != null) {
+				if (damagingEvent.getDamage() != (damage + bonusDamage)) {
+					damage = damagingEvent.getDamage();
+					bonusDamage = 0;
+				}
+				attackType = damagingEvent.getAttackType();
+				damageType = damagingEvent.getDamageType();
+				weaponSoundType = damagingEvent.getWeaponSoundType();
+			}
 			final CUnitAttackDamageTakenModificationListenerDamageModResult result = new CUnitAttackDamageTakenModificationListenerDamageModResult(
 					damage, bonusDamage);
 			for (final CUnitAttackDamageTakenModificationListener listener : self.damageTakenModificationListeners) {
@@ -226,14 +268,23 @@ final class CUnitDamage {
 
 			CUnitAggro.acquireAttackerOnHit(self, simulation, source, damage + bonusDamage);
 			final List<CWidgetEvent> eventList = self.getEventList(JassGameEventsWar3.EVENT_UNIT_DAMAGED);
-			if (eventList != null) {
-				for (final CWidgetEvent event : eventList) {
-					final CommonTriggerExecutionScope damageScope = CommonTriggerExecutionScope.unitDamageTakenScope(
-							JassGameEventsWar3.EVENT_UNIT_DAMAGED, event.getTrigger(), self, source, trueDamage);
-					event.fire(self, damageScope);
-					// BlzSetEventDamage in a damage trigger changes the damage this hit deals.
-					trueDamage = damageScope.getDamageTaken();
+			final CPlayer owner = simulation.getPlayer(self.getPlayerIndex());
+			final boolean playerListens = (owner != null) && owner.hasPlayerEvents(JassGameEventsWar3.EVENT_PLAYER_UNIT_DAMAGED);
+			if (((eventList != null) && !eventList.isEmpty()) || playerListens) {
+				final CDamageEvent damagedEvent = new CDamageEvent(self, source, false,
+						(flags != null) && flags.isAttack(), (flags != null) && flags.isRanged(), trueDamage,
+						attackType, damageType, weaponSoundType);
+				if (eventList != null) {
+					for (final CWidgetEvent event : new ArrayList<>(eventList)) {
+						event.fire(self, CommonTriggerExecutionScope.unitDamageScope(
+								JassGameEventsWar3.EVENT_UNIT_DAMAGED, event.getTrigger(), damagedEvent, null));
+					}
 				}
+				if (playerListens) {
+					owner.fireUnitDamageEvents(damagedEvent, JassGameEventsWar3.EVENT_PLAYER_UNIT_DAMAGED);
+				}
+				// BlzSetEventDamage in a damage trigger changes the damage this hit deals.
+				trueDamage = damagedEvent.getDamage();
 			}
 
 			final boolean wasAboveMax = self.life > self.stats.maximumLife;

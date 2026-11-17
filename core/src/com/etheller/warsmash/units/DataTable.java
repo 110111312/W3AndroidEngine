@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -153,7 +154,20 @@ public class DataTable implements ObjectData {
 		if (txt == null) {
 			return;
 		}
-		final BufferedReader reader = new BufferedReader(new InputStreamReader(txt, "utf-8"));
+		final StringBuilder content = new StringBuilder();
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(txt, "utf-8"))) {
+			final char[] buffer = new char[8192];
+			int read;
+			while ((read = in.read(buffer)) != -1) {
+				content.append(buffer, 0, read);
+			}
+		}
+		final String text = content.toString();
+		if (hasRowsStartingAfterTheKey(text)) {
+			readSLKCells(text);
+			return;
+		}
+		final BufferedReader reader = new BufferedReader(new StringReader(text));
 
 		String input = "";
 		Element currentUnit = null;
@@ -336,6 +350,121 @@ public class DataTable implements ObjectData {
 		}
 
 		reader.close();
+	}
+
+	/**
+	 * Map optimizers write SLK rows in either direction, so a row may end with its key cell; every cell then has to be
+	 * placed by its own coordinates.
+	 */
+	private static boolean hasRowsStartingAfterTheKey(final String text) {
+		final int[] position = { 1, 1 };
+		int row = 1;
+		boolean rowStartedOffKey = false;
+		final BufferedReader reader = new BufferedReader(new StringReader(text));
+		try {
+			String record;
+			while ((record = reader.readLine()) != null) {
+				if (record.startsWith("E")) {
+					break;
+				}
+				if ((record.startsWith("C;") || record.startsWith("F;")) && slkPosition(record, position)) {
+					if (position[1] != row) {
+						row = position[1];
+						rowStartedOffKey = (row > 1) && (position[0] != 1);
+					}
+					else if (rowStartedOffKey && (position[0] == 1)) {
+						return true;
+					}
+				}
+			}
+		}
+		catch (final IOException e) {
+			throw new RuntimeException(e);
+		}
+		return false;
+	}
+
+	/** Moves position (x, y) by the record's X and Y fields; returns whether the record holds a value. */
+	private static boolean slkPosition(final String record, final int[] position) {
+		final int valueIndex = record.indexOf(";K");
+		final String[] fields = (valueIndex == -1 ? record : record.substring(0, valueIndex)).split(";");
+		for (int i = 1; i < fields.length; i++) {
+			final String field = fields[i];
+			if ((field.length() > 1) && ((field.charAt(0) == 'X') || (field.charAt(0) == 'Y'))) {
+				try {
+					position[field.charAt(0) == 'X' ? 0 : 1] = Integer.parseInt(field.substring(1));
+				}
+				catch (final NumberFormatException e) {
+					// not a coordinate
+				}
+			}
+		}
+		return record.startsWith("C;") && (valueIndex != -1);
+	}
+
+	private void readSLKCells(final String text) throws IOException {
+		final Map<Integer, String> columnNames = new LinkedHashMap<>();
+		final Map<Integer, Map<Integer, String>> rows = new LinkedHashMap<>();
+		final int[] position = { 1, 1 };
+		final BufferedReader reader = new BufferedReader(new StringReader(text));
+		String record;
+		while ((record = reader.readLine()) != null) {
+			if (record.startsWith("E")) {
+				break;
+			}
+			if (!record.startsWith("C;") && !record.startsWith("F;")) {
+				continue;
+			}
+			if (!slkPosition(record, position)) {
+				continue;
+			}
+			final String value = record.substring(record.indexOf(";K") + 2);
+			if (position[1] == 1) {
+				columnNames.put(position[0], unquote(value));
+			}
+			else {
+				Map<Integer, String> cells = rows.get(position[1]);
+				if (cells == null) {
+					cells = new LinkedHashMap<>();
+					rows.put(position[1], cells);
+				}
+				cells.put(position[0], value);
+			}
+		}
+		for (final Map<Integer, String> cells : rows.values()) {
+			final String key = cells.containsKey(1) ? unquote(cells.get(1)) : "";
+			if (key.isEmpty()) {
+				continue;
+			}
+			Element element = this.dataTable.get(new StringKey(key));
+			if (element == null) {
+				element = new Element(key, this);
+				this.dataTable.put(new StringKey(key), element);
+			}
+			for (final Map.Entry<Integer, String> cell : cells.entrySet()) {
+				final String name = columnNames.get(cell.getKey());
+				if ((cell.getKey() == 1) || (name == null)) {
+					continue;
+				}
+				final String fieldValue = unquote(cell.getValue());
+				if (fieldValue.indexOf(',') != -1) {
+					final String[] chunks = fieldValue.split(",");
+					for (int i = 0; i < chunks.length; i++) {
+						element.setField(name, chunks[i], i);
+					}
+				}
+				else {
+					element.setField(name, fieldValue);
+				}
+			}
+		}
+	}
+
+	private static String unquote(final String value) {
+		if ((value.length() > 1) && value.startsWith("\"") && value.endsWith("\"")) {
+			return value.substring(1, value.length() - 1);
+		}
+		return value;
 	}
 
 	private static int slkColumn(final String record) {

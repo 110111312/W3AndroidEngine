@@ -13,6 +13,8 @@ public abstract class Node extends GenericNode {
 	protected static final Vector3 locationHeap = new Vector3();
 	protected static final Quaternion rotationHeap = new Quaternion();
 	protected static final Vector3 scalingHeap = new Vector3();
+	protected static final Quaternion inverseRotationHeap = new Quaternion();
+	protected static final Vector3 inverseScaleHeap = new Vector3();
 
 	public Node() {
 		this.pivot = new Vector3();
@@ -22,9 +24,6 @@ public abstract class Node extends GenericNode {
 		this.worldLocation = new Vector3();
 		this.worldRotation = new Quaternion();
 		this.worldScale = new Vector3(1, 1, 1);
-		this.inverseWorldLocation = new Vector3();
-		this.inverseWorldRotation = new Quaternion();
-		this.inverseWorldScale = new Vector3();
 		this.localMatrix = new Matrix4();
 		this.worldMatrix = new Matrix4();
 		this.parent = null;
@@ -138,13 +137,13 @@ public abstract class Node extends GenericNode {
 
 	public Node setParent(final GenericNode parent) {
 		if (this.parent != null) {
-			this.parent.children.remove(this);
+			this.parent.removeChild(this);
 		}
 
 		this.parent = parent;
 
 		if (parent != null) {
-			parent.children.add(this);
+			parent.addChild(this);
 		}
 
 		this.dirty = true;
@@ -183,7 +182,7 @@ public abstract class Node extends GenericNode {
 					computedRotation = rotationHeap;
 
 					computedRotation.set(this.localRotation);
-					computedRotation.mul(parent.inverseWorldRotation);
+					computedRotation.mul(parent.getInverseWorldRotation(inverseRotationHeap));
 				}
 				else {
 					computedRotation = this.localRotation;
@@ -192,7 +191,7 @@ public abstract class Node extends GenericNode {
 				if (this.dontInheritScaling) {
 					computedScaling = scalingHeap;
 
-					final Vector3 parentInverseScale = parent.inverseWorldScale;
+					final Vector3 parentInverseScale = parent.getInverseWorldScale(inverseScaleHeap);
 					computedScaling.x = parentInverseScale.x * this.localScale.x;
 					computedScaling.y = parentInverseScale.y * this.localScale.y;
 					computedScaling.z = parentInverseScale.z * this.localScale.z;
@@ -229,26 +228,10 @@ public abstract class Node extends GenericNode {
 			}
 		}
 
-		// Inverse world rotation
-		this.inverseWorldRotation.x = -this.worldRotation.x;
-		this.inverseWorldRotation.y = -this.worldRotation.y;
-		this.inverseWorldRotation.z = -this.worldRotation.z;
-		this.inverseWorldRotation.w = this.worldRotation.w;
-
-		// Inverse world scale
-		this.inverseWorldScale.x = 1 / this.worldScale.x;
-		this.inverseWorldScale.y = 1 / this.worldScale.y;
-		this.inverseWorldScale.z = 1 / this.worldScale.z;
-
 		// World location
 		this.worldLocation.x = this.worldMatrix.val[Matrix4.M03];
 		this.worldLocation.y = this.worldMatrix.val[Matrix4.M13];
 		this.worldLocation.z = this.worldMatrix.val[Matrix4.M23];
-
-		// Inverse world location
-		this.inverseWorldLocation.x = -this.worldLocation.x;
-		this.inverseWorldLocation.y = -this.worldLocation.y;
-		this.inverseWorldLocation.z = -this.worldLocation.z;
 
 	}
 

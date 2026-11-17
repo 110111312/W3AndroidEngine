@@ -384,22 +384,11 @@ final class MeleeUIInput {
 		}
 		final String keyString = Input.Keys.toString(keycode);
 		final char c = keyString.length() == 1 ? keyString.charAt(0) : ' ';
+		final boolean grid = this.ui.war3MapViewer.getAbilityDataUI().isGridLayout();
 		for (int j = 0; j < MeleeUI.COMMAND_CARD_HEIGHT; j++) {
 			for (int i = 0; i < MeleeUI.COMMAND_CARD_WIDTH; i++) {
-				boolean match = false;
-				switch (this.ui.war3MapViewer.getGameData().getInputHotkeyMode()) {
-				case 0:
-					if (this.ui.commandCard[j][i].checkHotkey(c, keycode)) {
-						match = true;
-					}
-					break;
-				case 1:
-
-					if (keycode == this.ui.commandCardGridHotkeys[j][i]) {
-						match = true;
-					}
-					break;
-				}
+				final boolean match = slotMatches(grid, this.ui.commandCard[j][i].getHotkey(), c, keycode,
+						this.ui.commandCardGridHotkeys[j][i]);
 				if (match) {
 					this.ui.commandCard[j][i].onClick(Input.Buttons.LEFT);
 					this.ui.war3MapViewer.getUiSounds().getSound("InterfaceClick")
@@ -409,6 +398,19 @@ final class MeleeUIInput {
 			}
 		}
 		return this.ui.cameraManager.keyDown(keycode);
+	}
+
+	/**
+	 * Whether a key presses a command card button. The buttons carry the keys the player chose in the hotkey editor (the
+	 * grid layout already gives each its place's key), so a button with a key answers to that key only; one without a key
+	 * answers to its place's key in the grid layout.
+	 */
+	static boolean slotMatches(final boolean grid, final char hotkey, final char c, final int keycode,
+			final int gridKeycode) {
+		if (hotkey != 0) {
+			return CommandCardIcon.hotkeyMatches(hotkey, c, keycode);
+		}
+		return grid && (keycode == gridKeycode);
 	}
 
 	static int virtualKeyToKeycode(final int virtualKey) {
@@ -1061,8 +1063,11 @@ final class MeleeUIInput {
 		this.ui.simpleInfoPanelItemDetail.setVisible(true);
 		final War3ID typeId = selectedItem.getSimulationItem().getTypeId();
 		final ItemUI itemUI = this.ui.war3MapViewer.getAbilityDataUI().getItemUI(typeId);
-		this.ui.rootFrame.setText(this.ui.simpleItemNameValue, itemUI.getName());
-		this.ui.rootFrame.setText(this.ui.simpleItemDescriptionValue, itemUI.getDescription());
+		final CItem item = selectedItem.getSimulationItem();
+		this.ui.rootFrame.setText(this.ui.simpleItemNameValue,
+				item.getNameOverride() != null ? item.getNameOverride() : itemUI.getName());
+		this.ui.rootFrame.setText(this.ui.simpleItemDescriptionValue,
+				item.getDescriptionOverride() != null ? item.getDescriptionOverride() : itemUI.getDescription());
 	}
 
 	private void selectDestructable(final RenderDestructable selectedItem) {

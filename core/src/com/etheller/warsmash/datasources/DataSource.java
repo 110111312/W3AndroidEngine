@@ -4,7 +4,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Predicate;
 
 public interface DataSource {
 	/**
@@ -69,6 +73,26 @@ public interface DataSource {
 	 * @return a list of data source contents, or null if no list is provided
 	 */
 	Collection<String> getListfile();
+
+	/**
+	 * The listed paths that the filter accepts. A data source made of several others answers this without merging
+	 * their whole lists, which for the game data are some hundred thousand paths.
+	 *
+	 * @return the accepted paths, none twice
+	 */
+	default Collection<String> getListfile(final Predicate<String> accept) {
+		final Collection<String> listfile = getListfile();
+		if (listfile == null) {
+			return Collections.emptyList();
+		}
+		final List<String> accepted = new ArrayList<>();
+		for (final String path : listfile) {
+			if (accept.test(path)) {
+				accepted.add(path);
+			}
+		}
+		return accepted;
+	}
 
 	void close() throws IOException;
 }

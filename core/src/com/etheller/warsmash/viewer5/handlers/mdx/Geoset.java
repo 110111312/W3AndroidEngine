@@ -1,5 +1,9 @@
 package com.etheller.warsmash.viewer5.handlers.mdx;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.nio.FloatBuffer;
 import java.util.Arrays;
 
 import com.badlogic.gdx.graphics.GL20;
@@ -35,11 +39,13 @@ public class Geoset {
 	private final int boneCountOffsetBytes;
 	public final boolean unselectable;
 	/**
-	 * Only what picking and sorting read stays on the heap once the geometry is in the GPU buffers: the normals,
-	 * tangents, skin and texture coordinates of HD models are several times larger and do not fit a phone's heap.
+	 * Only what picking and sorting read stays once the geometry is in the GPU buffers: the normals, tangents, skin
+	 * and texture coordinates of HD models are several times larger and do not fit a phone's heap. The positions and
+	 * faces of the models of a map are tens of megabytes, which only a ray test reads: they are kept in native
+	 * memory, outside the Java heap.
 	 */
-	public final float[] pickVertices;
-	public final char[] pickFaces;
+	public final FloatBuffer pickVertices;
+	public final CharBuffer pickFaces;
 	public final float centerZ;
 
 	public Geoset(final MdxModel model, final int index, final int fileIndex, final int positionOffset,
@@ -62,12 +68,17 @@ public class Geoset {
 		this.skinStride = skinStride;
 		this.boneCountOffsetBytes = boneCountOffsetBytes;
 		this.unselectable = unselectable;
-		this.pickVertices = mdlxGeoset.getVertices();
+		final float[] allVertices = mdlxGeoset.getVertices();
 		final int[] faces = mdlxGeoset.getFaces();
-		this.pickFaces = new char[faces.length];
+		final char[] pickFaces = new char[faces.length];
 		for (int i = 0; i < faces.length; i++) {
-			this.pickFaces[i] = (char) faces[i];
+			pickFaces[i] = (char) faces[i];
 		}
+		final float[] pickVertices = uniquePositions(allVertices, pickFaces);
+		this.pickFaces = ByteBuffer.allocateDirect(pickFaces.length * 2).order(ByteOrder.nativeOrder()).asCharBuffer()
+				.put(pickFaces);
+		this.pickVertices = ByteBuffer.allocateDirect(pickVertices.length * 4).order(ByteOrder.nativeOrder())
+				.asFloatBuffer().put(pickVertices);
 		this.centerZ = (mdlxGeoset.extent.max[2] + mdlxGeoset.extent.min[2]) / 2;
 
 		for (final GeosetAnimation geosetAnimation : model.getGeosetAnimations()) {
@@ -107,6 +118,61 @@ public class Geoset {
 		this.hasAlphaAnim = hasAlphaAnim;
 		this.hasColorAnim = hasColorAnim;
 		this.hasObjectAnim = hasAlphaAnim || hasColorAnim;
+	}
+
+	/**
+	 * The vertices of a model repeat a position for each normal and texture seam, which picking does not need; the
+	 * faces are renumbered to the positions in place. The triangles stay the same ones.
+	 */
+	static float[] uniquePositions(final float[] vertices, final char[] faces) {
+		final int count = vertices.length / 3;
+		if (((vertices.length % 3) != 0) || (count < 2)) {
+			return vertices;
+		}
+		for (final char face : faces) {
+			if (face >= count) {
+				return vertices;
+			}
+		}
+		int capacity = Integer.highestOneBit(count * 2 - 1) << 1;
+		final int[] table = new int[capacity];
+		Arrays.fill(table, -1);
+		final int mask = capacity - 1;
+		final int[] renumbered = new int[count];
+		final float[] unique = new float[vertices.length];
+		int uniqueCount = 0;
+		for (int i = 0; i < count; i++) {
+			final int x = Float.floatToRawIntBits(vertices[i * 3]);
+			final int y = Float.floatToRawIntBits(vertices[(i * 3) + 1]);
+			final int z = Float.floatToRawIntBits(vertices[(i * 3) + 2]);
+			int slot = (((x * 31) + y) * 31 + z) * 0x9E3779B1 >>> 7 & mask;
+			int found = -1;
+			while (table[slot] != -1) {
+				final int other = table[slot];
+				if ((Float.floatToRawIntBits(unique[other * 3]) == x)
+						&& (Float.floatToRawIntBits(unique[(other * 3) + 1]) == y)
+						&& (Float.floatToRawIntBits(unique[(other * 3) + 2]) == z)) {
+					found = other;
+					break;
+				}
+				slot = (slot + 1) & mask;
+			}
+			if (found == -1) {
+				found = uniqueCount++;
+				unique[found * 3] = vertices[i * 3];
+				unique[(found * 3) + 1] = vertices[(i * 3) + 1];
+				unique[(found * 3) + 2] = vertices[(i * 3) + 2];
+				table[slot] = found;
+			}
+			renumbered[i] = found;
+		}
+		if (uniqueCount == count) {
+			return vertices;
+		}
+		for (int i = 0; i < faces.length; i++) {
+			faces[i] = (char) renumbered[faces[i]];
+		}
+		return Arrays.copyOf(unique, uniqueCount * 3);
 	}
 
 	public int getAlpha(final float[] out, final int sequence, final int frame, final int counter) {

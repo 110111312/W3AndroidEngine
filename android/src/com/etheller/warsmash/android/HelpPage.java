@@ -6,6 +6,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import com.etheller.warsmash.input.touch.TouchStyle;
 import com.etheller.warsmash.launcher.LauncherBoard;
 import com.etheller.warsmash.launcher.SkinArt;
 
@@ -58,9 +59,11 @@ final class HelpPage extends LauncherViews {
 	/** One card per gesture in a 4 x 2 grid: the pictogram, the gesture's name and what it does. */
 	private void gestureCards(final FrameLayout panel, final float x, final float y, final float w, final float h) {
 		final LauncherBoard b = this.activity.board;
+		final boolean doubleTap = new EngineSettings(this.activity).touchStyle() == TouchStyle.DOUBLE_TAP;
 		final Object[][] gestures = { { LauncherKit.Pictogram.Kind.TAP, R.string.help_tap, R.string.help_tap_line },
 			{ LauncherKit.Pictogram.Kind.DRAG, R.string.help_drag, R.string.help_drag_line },
-			{ LauncherKit.Pictogram.Kind.HOLD, R.string.help_hold, R.string.help_hold_line },
+			doubleTap ? new Object[] { LauncherKit.Pictogram.Kind.DOUBLE, R.string.help_double, R.string.help_double_line }
+					: new Object[] { LauncherKit.Pictogram.Kind.HOLD, R.string.help_hold, R.string.help_hold_line },
 			{ LauncherKit.Pictogram.Kind.SHIFT, R.string.help_shift, R.string.help_shift_line },
 			{ LauncherKit.Pictogram.Kind.TWO, R.string.help_two, R.string.help_two_line },
 			{ LauncherKit.Pictogram.Kind.PINCH, R.string.help_pinch, R.string.help_pinch_line },
