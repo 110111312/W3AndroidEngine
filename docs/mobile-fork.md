@@ -64,6 +64,12 @@ connected device:
 The source is `wc3/Files_1.29.2/Warcraft III`; `-PgameDataDir=<folder>` points at another copy. The shell needs
 `JAVA_HOME` and `ANDROID_HOME`; Android Studio sets them for its own builds only.
 
+The copy goes over whatever `adb` is connected to, which can be a device on another network (`adb connect
+<host>:<port>` for wireless debugging). Each top-level entry is pushed on its own and compared against its local size,
+and a failed entry is retried, because a long copy over a remote link tends to drop near the end — a single bulk
+`adb push` of the whole folder does not survive that. `Movies/` is skipped unless `-PwithMovies` is given: it is
+193 MB of cinematic archives, and 1.29's are not what the engine plays.
+
 ### What this removed
 
 - `DataFolderActivity` (the folder screen: SAF folder picker, ZIP import, all-files-access prompt, readability walk),

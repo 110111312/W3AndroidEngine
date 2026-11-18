@@ -123,17 +123,67 @@ def adbExecutable = {
     return adb.isFile() ? adb.absolutePath : new File(sdk, "platform-tools/adb").absolutePath
 }
 
-tasks.register("pushGameData", Exec) {
-    description = "Copies the game files into the app's own folder on the connected device."
+// adb is run from here rather than through an Exec task: a device reached over the network can drop a long copy, so
+// each entry is pushed on its own and checked against its local size before the task gives up.
+def adbRun = { List<String> args, boolean capture = false ->
+    def output = new ByteArrayOutputStream()
+    def result = services.get(ExecOperations).exec {
+        commandLine([adbExecutable()] + args)
+        if (capture) {
+            standardOutput = output
+            errorOutput = output
+        }
+        ignoreExitValue = true
+    }
+    return [code: result.exitValue, text: capture ? output.toString("UTF-8") : ""]
+}
+
+tasks.register("pushGameData") {
+    description = "Copies the game files into the app's own folder on the connected device. Movies/ is skipped " +
+            "unless -PwithMovies is given; it is 193 MB of cinematics."
     group = "install"
-    doFirst {
+    doLast {
         if (!gameDataDir.isDirectory()) {
             throw new GradleException("No game files in ${gameDataDir}; set -PgameDataDir=<folder>.")
         }
-        logger.lifecycle("Copying ${gameDataDir} to the device; the first copy takes a while.")
+        if (adbRun(["get-state"], true).code != 0) {
+            throw new GradleException("No device; connect one with adb connect <host>:<port> first.")
+        }
+
+        def remoteDir = "/sdcard/Android/data/${android.defaultConfig.applicationId}/files/data"
+        def withMovies = project.hasProperty("withMovies")
+        def entries = (gameDataDir.listFiles() ?: []).findAll { withMovies || it.name != "Movies" }.sort {
+            it.name.toLowerCase()
+        }
+        logger.lifecycle("Copying ${entries.size()} entries from ${gameDataDir} to ${remoteDir}")
+        adbRun(["shell", "mkdir -p ${remoteDir}"])
+
+        def failed = []
+        entries.each { entry ->
+            def remote = "${remoteDir}/${entry.name}".toString()
+            def expected = entry.isDirectory() ? null : entry.length()
+            def copied = false
+            for (int attempt = 1; attempt <= 3 && !copied; attempt++) {
+                logger.lifecycle("  ${entry.name}${attempt > 1 ? " (attempt ${attempt})" : ""}")
+                adbRun(["push", entry.absolutePath, "${remoteDir}/".toString()])
+                if (expected == null) {
+                    copied = adbRun(["shell", "test -d ${remote}"], true).code == 0
+                } else {
+                    def stat = adbRun(["shell", "stat -c %s ${remote}"], true)
+                    def match = (stat.text =~ /(\d+)/)
+                    copied = match.find() && (match.group(1) as long) == expected
+                }
+            }
+            if (!copied) {
+                failed << entry.name
+            }
+        }
+        if (!failed) {
+            logger.lifecycle("Done; ${remoteDir} now holds the game files.")
+        } else {
+            throw new GradleException("Could not copy ${failed.join(", ")}; connect again and re-run.")
+        }
     }
-    commandLine adbExecutable(), "push", "${gameDataDir.absolutePath}/.",
-            "/sdcard/Android/data/${android.defaultConfig.applicationId}/files/data/"
 }
 
 // The folder has to exist before the copy, and only an installed app has it.
