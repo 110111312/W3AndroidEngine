@@ -112,6 +112,8 @@ If a screen ever does need 1.31+ files, put an installed CASC or an extracted 1.
 
 ## 4. Open work
 
+- **Hero mode** — playing as one hero with the army following, instead of the RTS console. This is the gameplay the
+  fork exists for; its design, its open decisions and where it lands in the code are in `docs/hero-mode.md`.
 - **A build that carries its own game data.** `GameData` is the only place that knows where the data is, so the
   remaining step is to ship the game folder as APK assets behind a Gradle flag and copy it into `files/data` on first
   start. `installWithGameData`/`pushGameData` are then only needed for iteration.
