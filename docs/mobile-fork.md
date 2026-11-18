@@ -81,30 +81,39 @@ and a failed entry is retried, because a long copy over a remote link tends to d
 `MANAGE_EXTERNAL_STORAGE` stays in the manifest: the player's own content folder (`[CustomContent]`) can still be
 picked outside the app's folder.
 
-## 3. Game data version: 1.29 is not supported upstream
+## 3. Game data version: 1.29.2 works
 
-Upstream's `README.md` says: *"Older releases that ship MPQ archives (1.29 and earlier) are not supported."* The
-engine is built for 1.31 and newer (CASC, `_locales`, the HD/DE graphics sets, the Reforged web UI files).
+Upstream's `README.md` says: *"Older releases that ship MPQ archives (1.29 and earlier) are not supported."* The engine is
+built for 1.31 and newer (CASC, `_locales`, the HD/DE graphics sets, the Reforged web UI files), and the 1.29.2 copy
+this branch was written against is four MPQ archives plus loose `Maps/`, `Campaigns/` and `Movies/` folders.
 
-The local copy in `wc3/` is 1.29.2, i.e. four MPQ archives and loose `Maps/`, `Campaigns/`, `Movies/` folders. The
-archives do open with the engine's own reader (`core/src/mpq/`) and hold the classic data the engine reads
-(`units\UnitData.slk`, `Units\UnitUI.slk`, `Doodads\Doodads.slk`, `Units\UnitAbilities.slk`, `scripts\common.j`,
-`Scripts\blizzard.j`, `UI\FrameDef\UI\ConsoleUI.fdf`, …), but files the launcher and the campaign screens ask for were
-only added later (`UI\CampaignInfoClassic.txt`, `UI\CampaignInfoReforged.txt`).
+In practice, on a Realme RMX3357 (Android 13, arm64) with the 1.29.2 archives:
 
-So with 1.29.2: **melee and custom maps are expected to work; the campaign list and parts of the launcher art are
-expected not to.** This has not been run on a device yet.
+- the archives open with the engine's own reader (`core/src/mpq/`) and supply the classic data it asks for
+  (`units\UnitData.slk`, `Units\UnitUI.slk`, `Doodads\Doodads.slk`, `Units\UnitAbilities.slk`, `scripts\common.j`,
+  `Scripts\blizzard.j`, `UI\FrameDef\UI\ConsoleUI.fdf`, …)
+- the menu builds, the campaign list opens, and the Night Elf opening mission runs at ~57 FPS with terrain, units,
+  the briefing panel and Maiev's dialogue
+- nothing is logged as missing by the engine process
 
-If that turns out to be a problem, the fix is to supply 1.31+ data (installed CASC or files extracted with the
-`W3-Android-prep-tool` the upstream README links) into the same `files/data` folder. `GameData` writes the CASC
-configuration already, so nothing else has to change.
+**The one crash seen on the way there was ours, not the data's.** `GameData.ensure` wrote the `[DataSources]` section
+before unpacking the engine's own resources, and `DataFolderCheck.mpqDataSourcesSection` only lists a folder that
+already exists — so the first run's ini named the four archives and `Maps` but not `files/resources` or `files/engine`.
+`SmashFrameDef.toc` lives in `resources/UI/FrameDef/`, so `GameUI.loadTOCFile` got a null stream and
+`MenuUI.mainSkins` threw an NPE on the GL thread. Two fixes: the resources are unpacked before the section is written,
+and the ini is now **compared** against what the folder implies and rewritten when it differs, instead of merely being
+tested for existence. That second one matters for every future build: without it an ini left by an earlier build keeps
+the game on the wrong sources for good.
+
+What 1.29 data cannot give: the Reforged/HD art and the web UI files, so anything that asks for those will show the
+classic fallback or fail to find the file. `Movies/` is the 1.29 cinematic archives and is not part of the default copy.
+If a screen ever does need 1.31+ files, put an installed CASC or an extracted 1.31 tree in the same `files/data` folder:
+`GameData` writes that configuration too, so nothing else has to change.
 
 ## 4. Open work
 
 - **A build that carries its own game data.** `GameData` is the only place that knows where the data is, so the
   remaining step is to ship the game folder as APK assets behind a Gradle flag and copy it into `files/data` on first
   start. `installWithGameData`/`pushGameData` are then only needed for iteration.
-- `PrepPage`'s "Choose another source" button and the options' *Game Data* button now show where the data is read
-  from; the first one is a leftover of the folder screen and could be dropped.
 - Upstream's README still describes Windows builds and the folder screen; it is left untouched until this branch has
   a README of its own.

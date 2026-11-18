@@ -158,31 +158,41 @@ tasks.register("pushGameData") {
         logger.lifecycle("Copying ${entries.size()} entries from ${gameDataDir} to ${remoteDir}")
         adbRun(["shell", "mkdir -p ${remoteDir}"])
 
+        // "pushed" is not "there": a copy over a long link can report its byte count and leave nothing behind, so
+        // every entry is checked against the local file instead of against adb's exit code.
+        def isPresent = { File entry ->
+            def remote = "${remoteDir}/${entry.name}".toString()
+            if (entry.isDirectory()) {
+                int count = 0
+                entry.eachFileRecurse { if (it.isFile()) count++ }
+                def match = (adbRun(["shell", "find ${remote} -type f 2>/dev/null | wc -l"], true).text =~ /(\d+)/)
+                return match.find() && (match.group(1) as int) == count
+            }
+            def match = (adbRun(["shell", "stat -c %s ${remote}"], true).text =~ /(\d+)/)
+            return match.find() && (match.group(1) as long) == entry.length()
+        }
+
         def failed = []
         entries.each { entry ->
-            def remote = "${remoteDir}/${entry.name}".toString()
-            def expected = entry.isDirectory() ? null : entry.length()
-            def copied = false
-            for (int attempt = 1; attempt <= 3 && !copied; attempt++) {
+            if (isPresent(entry)) {
+                logger.lifecycle("  ${entry.name} is already there")
+                return
+            }
+            for (int attempt = 1; attempt <= 3; attempt++) {
                 logger.lifecycle("  ${entry.name}${attempt > 1 ? " (attempt ${attempt})" : ""}")
                 adbRun(["push", entry.absolutePath, "${remoteDir}/".toString()])
-                if (expected == null) {
-                    copied = adbRun(["shell", "test -d ${remote}"], true).code == 0
-                } else {
-                    def stat = adbRun(["shell", "stat -c %s ${remote}"], true)
-                    def match = (stat.text =~ /(\d+)/)
-                    copied = match.find() && (match.group(1) as long) == expected
+                if (isPresent(entry)) {
+                    return
                 }
             }
-            if (!copied) {
-                failed << entry.name
-            }
+            failed << entry.name
         }
-        if (!failed) {
-            logger.lifecycle("Done; ${remoteDir} now holds the game files.")
-        } else {
-            throw new GradleException("Could not copy ${failed.join(", ")}; connect again and re-run.")
+
+        def missing = entries.findAll { !isPresent(it) }
+        if (missing) {
+            throw new GradleException("Not on the device: ${missing*.name.join(", ")}; connect again and re-run.")
         }
+        logger.lifecycle("Done; ${remoteDir} holds all ${entries.size()} entries.")
     }
 }
 

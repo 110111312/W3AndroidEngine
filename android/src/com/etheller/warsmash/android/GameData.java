@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,19 +52,22 @@ final class GameData {
 	 */
 	static boolean ensure(final Context context) {
 		final File iniFile = SkinCache.iniFile(context);
-		if (iniFile.isFile() && hasGameData(iniFile)) {
-			return true;
-		}
-		final String dataSources = dataSources(context, folder(context));
-		if (dataSources == null) {
-			Log.e(TAG, "No game data in " + folder(context));
-			return false;
-		}
 		try {
+			// Both folders have to exist before the section is written: a Folder source is only listed when it does, and
+			// the engine's own resources carry files the game data does not (SmashFrameDef.toc and friends).
 			EngineResources.ensureCurrent(context);
 			// The engine folder is listed as a data source only if it exists; scripts and maps are placed there later.
 			new File(context.getExternalFilesDir(null), "engine").mkdirs();
-			writeIni(context, iniFile, dataSources);
+			final String dataSources = dataSources(context, folder(context));
+			if (dataSources == null) {
+				Log.e(TAG, "No game data in " + folder(context));
+				return false;
+			}
+			// Compared rather than merely tested for presence: an ini left by a build that found other data, or that
+			// listed fewer folders, would otherwise keep the game on the wrong sources for good.
+			if (!iniFile.isFile() || !sameSources(iniFile, dataSources)) {
+				writeIni(context, iniFile, dataSources);
+			}
 		}
 		catch (final IOException e) {
 			Log.e(TAG, "Unable to write " + iniFile, e);
@@ -80,15 +84,17 @@ final class GameData {
 				.show();
 	}
 
-	private static boolean hasGameData(final File iniFile) {
-		try {
-			final DataTable ini = AndroidLauncher.loadWarsmashIni(iniFile);
-			return DataFolderCheck.hasGameData(ini.get("DataSources"));
-		}
-		catch (final IOException e) {
-			Log.w(TAG, "Unable to read " + iniFile, e);
+	/** Says whether the ini already lists exactly these sources. */
+	private static boolean sameSources(final File iniFile, final String expected) throws IOException {
+		final String text = new String(Files.readAllBytes(iniFile.toPath()), StandardCharsets.UTF_8)
+				.replace("\r\n", "\n");
+		final int start = text.indexOf("[DataSources]");
+		if (start < 0) {
 			return false;
 		}
+		final int end = text.indexOf("\n[", start + 1);
+		final String current = (end < 0 ? text.substring(start) : text.substring(start, end)).trim();
+		return current.equals(expected.trim());
 	}
 
 	/** The [DataSources] section for what the folder holds, or null when it holds no game data. */
