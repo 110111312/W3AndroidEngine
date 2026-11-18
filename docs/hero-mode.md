@@ -109,6 +109,13 @@ Settled, and no longer up for renegotiation without a good reason:
 6. **One-finger drag on the right side looks around**, and the camera returns to the hero when the finger lifts.
 7. **Skills aim by dragging from their button** and cast on release; no-target skills fire on tap.
 8. **Multiplayer is not a target yet**, but nothing in the design may exclude it — hero mode is the shape there too.
+9. **Four skill slots, always visible**, with the ultimate at the top-right of the arc. Passives take a slot like
+   actives, so the tray never shifts while levelling. How many are active and how many passive is a balance question
+   for after the core loop works.
+10. **Levelling is a "+" on the button**, tapped to spend a point — the moba gesture, not a separate window.
+11. **Skill buttons are circles.** Warcraft's ability icons are square and stay square on disk; the circle is the icon
+    masked at load, with a ring drawn the way the stick's is.
+12. **Tapping an item on the ground walks the hero to it and picks it up** — the one tap that orders movement.
 
 Two consequences that were not obvious when the design was written:
 
