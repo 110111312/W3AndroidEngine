@@ -40,9 +40,11 @@ public class CBehaviorNoTargetSpellBase implements CBehavior {
 
 	@Override
 	public CBehavior update(final CSimulation simulation) {
-		this.unit.getUnitAnimationListener().playAnimation(false, this.ability.getCastingPrimaryTag(),
-				this.ability.getCastingSecondaryTags(), 1.0f, true);
 		if (this.castStartTick == 0) {
+			// Once per cast: playAnimation restarts an animation that has ended, so asking again on every tick
+			// replays a cast animation that is shorter than the cast point and backswing.
+			this.unit.getUnitAnimationListener().playAnimation(false, this.ability.getCastingPrimaryTag(),
+					this.ability.getCastingSecondaryTags(), 1.0f, true);
 			this.castStartTick = simulation.getGameTurnTick();
 			if (!this.castEventsFired) {
 				this.castEventsFired = true;

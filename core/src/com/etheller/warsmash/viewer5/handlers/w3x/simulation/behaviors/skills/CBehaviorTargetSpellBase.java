@@ -83,9 +83,11 @@ public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
 		if ((this.castStartTick == 0) && isTurningToCast(withinFacingWindow)) {
 			return this;
 		}
-		this.unit.getUnitAnimationListener().playAnimation(false, this.ability.getCastingPrimaryTag(),
-				this.ability.getCastingSecondaryTags(), 1.0f, true);
 		if (this.castStartTick == 0) {
+			// Once per cast: playAnimation restarts an animation that has ended, so asking again on every tick
+			// replays a cast animation that is shorter than the cast point and backswing.
+			this.unit.getUnitAnimationListener().playAnimation(false, this.ability.getCastingPrimaryTag(),
+					this.ability.getCastingSecondaryTags(), 1.0f, true);
 			this.castStartTick = simulation.getGameTurnTick();
 			this.castPoint.start(simulation, castPointSeconds());
 			startBackswing(simulation);
@@ -117,6 +119,8 @@ public class CBehaviorTargetSpellBase extends CAbstractRangedBehavior {
 			}
 			this.castEventTick = -1;
 			this.castStartTick = simulation.getGameTurnTick();
+			this.unit.getUnitAnimationListener().playAnimation(false, this.ability.getCastingPrimaryTag(),
+					this.ability.getCastingSecondaryTags(), 1.0f, true);
 			this.castPoint.start(simulation, castPointSeconds());
 			startBackswing(simulation);
 			final CBehavior prevBeh = this.unit.getCurrentBehavior();
