@@ -261,7 +261,8 @@ final class MapViewerEffects {
 				effectAttachmentUI = abilityUI.getTargetArt();
 				break;
 			case CASTER:
-				effectAttachmentUI = abilityUI.getCasterArt();
+				effectAttachmentUI = casterArt(abilityUI.getCasterArt(), abilityUI.getEffectArt(),
+						effectBelongsElsewhere(abilityUI));
 				break;
 			case SPECIAL:
 				effectAttachmentUI = abilityUI.getSpecialArt();
@@ -313,7 +314,8 @@ final class MapViewerEffects {
 				effectAttachmentUI = abilityUI.getTargetArt(index);
 				break;
 			case CASTER:
-				effectAttachmentUI = abilityUI.getCasterArt(index);
+				effectAttachmentUI = casterArt(abilityUI.getCasterArt(index), abilityUI.getEffectArt(index),
+						effectBelongsElsewhere(abilityUI));
 				break;
 			case SPECIAL:
 				effectAttachmentUI = abilityUI.getSpecialArt(index);
@@ -507,15 +509,61 @@ final class MapViewerEffects {
 		return null;
 	}
 
+	/**
+	 * The art a caster effect draws. Classic data leaves Casterart empty and declares the burst the caster wears in
+	 * Effectart — 1.29's Fan of Knives is exactly that, and only five of the forty night elf ability sections declare
+	 * any caster art at all — while the art the engine was written against declares Casterart and no Effectart.
+	 * <p>
+	 * Effectart is the caster's only when it is the ability's whole art: an ability that also declares a target,
+	 * special or area effect puts that effect where that target is, not on the caster. Fan of Knives' section
+	 * declares nothing else; Flame Strike declares a Specialart as well, which is the fire at the target point.
+	 */
+	static EffectAttachmentUI casterArt(final EffectAttachmentUI casterArt, final EffectAttachmentUI effectArt,
+			final boolean effectBelongsElsewhere) {
+		return namesModel(casterArt) || effectBelongsElsewhere ? casterArt : effectArt;
+	}
+
+	/** The same choice for the effects that carry a list of art, one per level of the ability. */
+	static List<EffectAttachmentUI> casterArt(final List<EffectAttachmentUI> casterArt,
+			final List<EffectAttachmentUI> effectArt, final boolean effectBelongsElsewhere) {
+		return namesModel(casterArt) || effectBelongsElsewhere ? casterArt : effectArt;
+	}
+
+	/** Whether the ability draws its effect at a target rather than on the caster. */
+	static boolean effectBelongsElsewhere(final AbilityUI abilityUI) {
+		return namesModel(abilityUI.getTargetArt()) || namesModel(abilityUI.getSpecialArt())
+				|| namesModel(abilityUI.getAreaEffectArt());
+	}
+
+	private static boolean namesModel(final EffectAttachmentUI art) {
+		return (art != null) && namesModel(art.getModelPath());
+	}
+
+	private static boolean namesModel(final List<EffectAttachmentUI> artList) {
+		if (artList != null) {
+			for (final EffectAttachmentUI art : artList) {
+				if (namesModel(art)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** False for the data's "no model" entries, which {@link #loadModelMdx} refuses to load. */
+	static boolean namesModel(final String path) {
+		return (path != null) && !path.isEmpty() && !"_".equals(path) && !"_.mdl".equalsIgnoreCase(path)
+				&& !"_.mdx".equalsIgnoreCase(path);
+	}
+
 	static MdxModel loadModelMdx(final War3MapViewer viewer, final String path) {
 		return loadModelMdx(viewer.dataSource, viewer, path, viewer.mapPathSolver, viewer.solverParams);
 	}
 
 	static MdxModel loadModelMdx(final DataSource dataSource, final ModelViewer modelViewer, final String path,
 			final PathSolver pathSolver, final Object solverParams) {
-		// "_" is the data's "no model" entry (e.g. empty art fields in the 1.29 SLKs).
-		if ("".equals(path) || "_".equals(path) || "_.mdl".equalsIgnoreCase(path)
-				|| "_.mdx".equalsIgnoreCase(path)) {
+		// "" and "_" are the data's "no model" entries (e.g. empty art fields in the 1.29 profiles).
+		if (!namesModel(path)) {
 			return null;
 		}
 		final String mdxPath = War3MapViewer.mdx(path);
