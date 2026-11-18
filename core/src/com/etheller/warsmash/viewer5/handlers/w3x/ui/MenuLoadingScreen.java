@@ -66,7 +66,6 @@ final class MenuLoadingScreen {
 	private static final String TAP_TO_CONTINUE = "TAP TO CONTINUE";
 	private static final String PRESS_TO_CONTINUE = "PRESS ANY KEY TO CONTINUE";
 	private static final float TAP_PULSE_SECONDS = 1.2f;
-	private static final float PREVIEW_BAR_SHARE = 0.25f;
 	private final MenuUI menu;
 	private UIFrame loadingFrame;
 	private UIFrame loadingCustomPanel;
@@ -99,8 +98,8 @@ final class MenuLoadingScreen {
 	private boolean previewingLoading;
 	/** The melee backdrop model of the previewed screen, null for a campaign one. */
 	private String previewedBackground;
-	/** The part of the loading bar the menu build filled before the map itself loads. */
-	private float loadingBarStart;
+	/** The bar's ratio, shared by the menu's preview of the screen and the map loader's own progress. */
+	private final LoadingBarProgress progress = new LoadingBarProgress();
 	private boolean loadingMapDone;
 	private boolean continueTapped;
 	private float tapPulse;
@@ -197,7 +196,8 @@ final class MenuLoadingScreen {
 	void showWaitingForPlayers(final float deltaTime) {
 		if (!this.waitingTextShown) {
 			this.waitingTextShown = true;
-			setLoadingRatio(1.0f);
+			this.progress.complete();
+			setLoadingRatio(this.progress.getRatio());
 			this.menu.rootFrame.setText(this.loadingBarText, LanText.waitingForPlayers());
 			this.loadingBarText.setColor(new Color(0.99f, 0.827f, 0.0705f, 1.0f));
 		}
@@ -232,6 +232,8 @@ final class MenuLoadingScreen {
 			final int campaignBackground = mapInfo.getCampaignBackground();
 			final WTS wts = Warcraft3MapObjectData.loadWTS(map);
 			create();
+			// A screen of its own, so a bar left filled by an earlier map starts again from the preview's progress.
+			this.progress.reset();
 			final String mapModel = mapLoadingModel(mapInfo);
 			if (mapModel != null) {
 				this.previewedBackground = mapModel;
@@ -265,14 +267,15 @@ final class MenuLoadingScreen {
 
 	void setPreviewProgress(final float ratio) {
 		if (this.previewingLoading) {
-			this.loadingBarStart = PREVIEW_BAR_SHARE * ratio;
-			setLoadingRatio(this.loadingBarStart);
+			this.progress.setPreview(ratio);
+			setLoadingRatio(this.progress.getRatio());
 		}
 	}
 
 	void showTapToContinue(final float deltaTime) {
 		if (this.tapPulse == 0) {
-			setLoadingRatio(1.0f);
+			this.progress.complete();
+			setLoadingRatio(this.progress.getRatio());
 			this.menu.rootFrame.setText(this.loadingBarText, continueText());
 			this.loadingBarText.setColor(new Color(0.99f, 0.827f, 0.0705f, 1.0f));
 		}
@@ -303,7 +306,8 @@ final class MenuLoadingScreen {
 
 	/** The bar while the map loads: the part the preview filled, then the map loader's own progress. */
 	void setLoadingProgress(final float completionRatio) {
-		setLoadingRatio(this.loadingBarStart + ((1 - this.loadingBarStart) * completionRatio));
+		this.progress.setCompletion(completionRatio);
+		setLoadingRatio(this.progress.getRatio());
 	}
 
 	void clearReforgedLoading() {
@@ -359,6 +363,8 @@ final class MenuLoadingScreen {
 		this.loadingMapDone = false;
 		this.continueTapped = false;
 		this.tapPulse = 0;
+		// The bar goes on from the part a preview of this screen filled, and starts at the beginning without one.
+		this.progress.startLoad(this.previewingLoading);
 		if (this.loadingBarTextColor == null) {
 			this.loadingBarTextColor = new Color(this.loadingBarText.getColor());
 		}
@@ -374,9 +380,8 @@ final class MenuLoadingScreen {
 		if (mapModel != null) {
 			if (!this.previewingLoading) {
 				fillLoadingScreen(mapModel, 0, mapInfo, wts, map);
-				this.loadingBarStart = 0;
 			}
-			setLoadingRatio(this.loadingBarStart);
+			setLoadingRatio(this.progress.getRatio());
 		}
 		else if (campaignBackground == -1) {
 			final String background = meleeLoadingBackground(map,
@@ -388,14 +393,15 @@ final class MenuLoadingScreen {
 			if (!previewedReforged && (!this.previewingLoading || !background.equals(this.previewedBackground))) {
 				fillLoadingScreen(background, 0, mapInfo, wts);
 			}
-			if (!this.previewingLoading) {
-				this.loadingBarStart = 0;
-			}
-			setLoadingRatio(this.loadingBarStart);
+			setLoadingRatio(this.progress.getRatio());
 		}
-		else if (!this.previewingLoading) {
-			fillCampaignLoadingScreen(worldEditData, campaignBackground, mapInfo, wts);
-			this.loadingBarStart = 0;
+		else {
+			if (!this.previewingLoading) {
+				fillCampaignLoadingScreen(worldEditData, campaignBackground, mapInfo, wts);
+			}
+			// A previewed campaign screen used to keep whatever ratio its preview left in the bar, while the other
+			// two branches set it again; all three now go on from the preview's share.
+			setLoadingRatio(this.progress.getRatio());
 		}
 		// A previewed screen has been shown since the menu started building; only its bar goes on.
 		this.previewingLoading = false;
@@ -421,6 +427,7 @@ final class MenuLoadingScreen {
 		this.continueTapped = false;
 		this.previewingLoading = false;
 		this.previewedBackground = null;
+		this.progress.reset();
 		if (this.loadingFrame != null) {
 			this.loadingFrame.setVisible(false);
 			this.loadingBar.setVisible(false);
@@ -846,7 +853,8 @@ final class MenuLoadingScreen {
 		this.menu.placeBackdrop(this.loadingBackground, 1);
 		rootFrame.setSpriteFrameModel(this.loadingBar, rootFrame.getSkinField("LoadingProgressBar"));
 		this.loadingBar.setSequence(0);
-		this.loadingBar.setFrameByRatio(0.0f);
+		// The model was just set, so its frame is applied again; the bar keeps the ratio it already has, not zero.
+		this.loadingBar.setFrameByRatio(this.progress.getRatio());
 		this.loadingBar.setZDepth(0.25f);
 		rootFrame.setText(this.loadingTitleText, getStringWithWTS(wts, mapInfo.getLoadingScreenTitle()));
 		rootFrame.setText(this.loadingSubtitleText, getStringWithWTS(wts, mapInfo.getLoadingScreenSubtitle()));
