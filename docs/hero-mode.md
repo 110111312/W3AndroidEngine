@@ -94,40 +94,53 @@ Two consequences worth stating before any code:
    `CPlayerUnitOrderListener.issue*Order`, exactly like a right-click does, or a LAN game and a replay stop agreeing
    with the screen.
 
-## Open decisions
+## Decided
 
-Not settled, so none of this is an agent task yet:
+Settled, and no longer up for renegotiation without a good reason:
 
-1. **Is hero mode a mode, or the game?** A switch on the launch screen, a per-map option, or simply the only way this
-   fork plays. Campaign missions are the immediate target; melee and LAN are the question.
-2. **Does the player ever touch a unit?** Tapping an ally could do nothing, could set "protect this", could select it
-   for one order. Doing nothing is the simplest thing that can be right.
-3. **What exactly is "follow"?** Radius, leash length, what happens when the hero blinks or dies, whether units reform
-   in formation (`CGroupMove` already has slots) or as a blob.
-4. **Engagement rules.** Fight only what attacks the hero or the unit, or also what is merely nearby? How far will a
-   unit chase before it gives up and comes back?
-5. **Where the macro panel lives** and whether building placement is chosen by hand at all.
-6. **Skill targeting on a phone.** Point-target and unit-target skills need an aim gesture; drag-to-aim from the
-   button is the usual answer, and it has to coexist with the stick and with the existing selection drag.
-7. **Campaign heroes specifically**: items come from the map, skills unlock per mission, and some missions are
-   designed around controlling several units at once. Which of those break?
+1. **Hero mode is the game, not a mode.** There is no RTS interface on the phone and no way back to one. No Alt+Z
+   cycle, no corner button: the console is simply not built for phone play.
+2. **The hero is the first hero of the local player**, in campaigns and in custom games alike. Campaign maps that
+   move the view to a different hero mid-map are a known exception, to be handled when one is met.
+3. **The player never touches a unit.** Units are not selectable, not orderable, not groupable.
+4. **The stick is the only way to move.** No tap-to-move. This is a thumb game, not a mouse game.
+5. **The stick floats, but only in the left zone.** It appears under the thumb that lands in the left region of the
+   screen (never over the minimap), and a right-side touch never starts it.
+6. **One-finger drag on the right side looks around**, and the camera returns to the hero when the finger lifts.
+7. **Skills aim by dragging from their button** and cast on release; no-target skills fire on tap.
+8. **Multiplayer is not a target yet**, but nothing in the design may exclude it — hero mode is the shape there too.
 
-## Slices, in the order they would be worth doing
+Two consequences that were not obvious when the design was written:
 
-Written down so the work is visible; **not** filed as issues, because the decisions above change them.
+- **the hero must attack by itself.** With no right-click and no attack button, a hero that only walks can never
+  fight. The hero acquires and attacks targets while standing, and stops when the stick is pushed.
+- **a mission with no hero cannot be hero mode.** Rather than hand the player a dead screen, hero mode stays inert
+  and the RTS console is used for that mission until hero play can cover it.
 
-1. **Follow camera and hero-only control** — camera locks to the hero, the hero answers a tap-to-move, the console
-   hides. Proves the HUD can be swapped without breaking orders.
-2. **Movement stick** — a left-zone drag that issues move orders at a fixed cadence, coexisting with selection drag.
-3. **Skill tray** — 2–4 ability buttons from the hero's own list, drag-to-aim, cooldown and mana state visible.
-4. **Equipment tray** — the inventory's item abilities as the same kind of button.
-5. **Units follow** — a leash rule: an idle unit further than X from the hero walks back to Y. **Not** `CBehaviorFollow`,
-   which stands still and never looks for a target.
-6. **Units fight** — engagement and leash rules in `CUnitAcquisition`, plus support casting.
-7. **Macro panel** — train and build from the lists the command card already reads.
+## Still open
 
-Slices 1–4 are UI and can be checked on a phone with a screenshot; 5–6 are simulation and can be tested in
-`core/test`; 7 is both.
+1. **The leash and the engagement rules** (issues C and D): distances, what a unit will engage, how far it chases.
+2. **Where the macro panel lives** (issue E) and whether building placement is chosen by hand at all.
+3. **Campaign exceptions**: missions that switch heroes, missions with no hero, missions built around controlling
+   several units at once.
+
+## The five issues
+
+Each is one branch and one PR. A and B are the interface, C and D are the simulation, E is the economy.
+
+| | issue | covers |
+|---|---|---|
+| A | hero shell and stick | console gone, camera on the hero, floating left stick, one-finger look-around, hero auto-attack |
+| B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
+| C | the army follows | a leash rule: an idle unit further than X from the hero walks back to Y |
+| D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
+| E | macro panel | train and build from the lists the command card already reads |
+
+## The stick's art
+
+The stick is drawn in code — two rings and a knob — so it needs no asset and no licence: no game's artwork is copied,
+and the proportions can be tuned on a phone in one build. If it later deserves a texture, engine resources
+(`files/resources`, the folder `SmashFrameDef.toc` already comes from) can carry a PNG without touching `core`.
 
 ## Out of scope
 
