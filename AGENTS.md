@@ -12,6 +12,33 @@ done here. Upstream's `README.md` still describes the original Windows + Android
 | `mobile` | integration branch; the APK builds from it. Direct commits only for changes with no issue (typos, docs). |
 | `issue/<number>-<slug>` | one issue per branch, opened as a PR into `mobile`. |
 
+## One worktree per issue
+
+A checkout has **one HEAD**, and HEAD belongs to the directory, not to the session. Two agents working in
+`C:/W/W3AndroidEngine` share that HEAD: whoever runs `git switch` last moves the directory under both of them, and the
+other agent's next commit lands on whatever branch that happens to be. This has already happened here — a docs commit
+went onto another agent's issue branch, and the follow-up `git push origin mobile` reported success while pushing
+nothing, because `mobile` was not where the commit was.
+
+So give each issue its own directory:
+
+```bash
+git worktree add ../w3-issue-12 -b issue/12-slug mobile   # new branch from mobile
+# or, for a branch that already exists:
+git worktree add ../w3-issue-12 issue/12-slug
+```
+
+- the main checkout stays on `mobile`, for docs, merges and the APK;
+- git **refuses** to check out the same branch in two worktrees, so a collision becomes an error instead of a silent
+  commit on the wrong branch;
+- `git worktree list` says which directory holds which branch — check it before committing when more than one agent
+  is about;
+- after the merge: `git worktree remove ../w3-issue-12` and `git branch -d issue/12-slug`.
+
+A fresh worktree is a full copy of the tracked files with no `build/` output, so its first `:core:test` is slow; `wc3/`
+is ignored and therefore absent, so pass `-PgameDataDir` pointing at the main checkout's copy when a task needs game
+data.
+
 ## The loop
 
 1. **Read the issue.** `gh issue view <n>`. The issue is the spec and must stand on its own — do not go looking for
