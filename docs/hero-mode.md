@@ -80,7 +80,8 @@ The point of this section is that none of it needs a rewrite: the engine already
 | equipment buttons | `CAbilityInventory.java:43-290` — each held item's abilities are already `CAbility` | a usable item is an ability button with `OrderIds.itemUseFirst + slot`; no new mechanism |
 | follow camera | `GameCameraManager.setTargetController` (`:787-800`), `followTargetController` (`:164-205`) | **already exists**; the only UI caller today is press-and-hold on the portrait (`MeleeUIInfoPanel.java:1607-1618`) |
 | stick → movement | `core/src/.../input/touch/` — `RtsTouchAdapter`, `GestureRecognizer`, `GestureListener`, `TouchSettings` | **no joystick code exists**; one-finger drag is currently selection box *or* aim, two-finger drag is camera pan, so the stick needs its own zone and a new gesture |
-| units following the hero | `CBehaviorFollow.java` + `CUnit.setFollowBehavior` (`:1609`) | the behaviour exists but **no order id issues it**; making units follow is new behaviour, not wiring |
+| swapping the HUD | `MeleeToggleUI` (`ui/toggle/`), `WarsmashGdxMapScreen.java:315` | the seam exists: the HUD is a list of `WarsmashToggleableUI` that Alt+Z cycles, and today the list holds one entry, so hero mode is a **second entry**, not a replacement |
+| units following the hero | `CBehaviorFollow.java:41-44` + `CAbilityMove.java:203` | **not reusable as a standing order.** It exists and is issued (a move or smart order onto an ally), but its `update` plays STAND and never looks for targets — an army on it would walk with you and never fight. Hero-mode follow is a leash rule beside `CUnitAcquisition` |
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
 | computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | untouched: the *enemy* keeps playing RTS |
@@ -120,7 +121,8 @@ Written down so the work is visible; **not** filed as issues, because the decisi
 2. **Movement stick** — a left-zone drag that issues move orders at a fixed cadence, coexisting with selection drag.
 3. **Skill tray** — 2–4 ability buttons from the hero's own list, drag-to-aim, cooldown and mana state visible.
 4. **Equipment tray** — the inventory's item abilities as the same kind of button.
-5. **Units follow** — a follow order built on `CBehaviorFollow`, issued to the player's army on spawn and on regroup.
+5. **Units follow** — a leash rule: an idle unit further than X from the hero walks back to Y. **Not** `CBehaviorFollow`,
+   which stands still and never looks for a target.
 6. **Units fight** — engagement and leash rules in `CUnitAcquisition`, plus support casting.
 7. **Macro panel** — train and build from the lists the command card already reads.
 
