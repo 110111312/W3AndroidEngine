@@ -296,8 +296,11 @@ public class AndroidLauncher extends AndroidApplication {
 					started = launch.start(menu);
 				}
 				if (!started) {
-					Log.e(TAG, "The launcher asked for a game the engine cannot start: " + launch);
-					gameEnded(withoutGame("error"));
+					Log.e(TAG, "The launcher asked for a game the engine cannot start: " + launch + " - "
+							+ launch.failure);
+					final GameResult failed = withoutGame("error", launch.failure);
+					failed.map = launch.mapFile;
+					gameEnded(failed);
 				}
 			});
 		}
@@ -412,8 +415,14 @@ public class AndroidLauncher extends AndroidApplication {
 
 	/** A result without the game's own: one that could not start, a crash or the program closed. */
 	private static GameResult withoutGame(final String result) {
+		return withoutGame(result, null);
+	}
+
+	/** The same, with the reason the engine gave for a game it could not start. */
+	private static GameResult withoutGame(final String result, final String failure) {
 		final GameResult failed = new GameResult();
 		failed.result = result;
+		failed.failure = failure;
 		return failed;
 	}
 

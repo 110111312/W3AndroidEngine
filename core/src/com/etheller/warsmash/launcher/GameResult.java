@@ -23,6 +23,8 @@ public final class GameResult {
 	public String map;
 	public String profile;
 	public String loadFailure;
+	/** Why the engine could not start the game, in its own words; null when it started. */
+	public String failure;
 	/** The race the player played, a random one as it was drawn; 0 when the engine did not tell. */
 	public int race;
 	public long finished;
@@ -58,6 +60,32 @@ public final class GameResult {
 		return "crash".equals(this.result);
 	}
 
+	/**
+	 * What the launcher shows under "the game could not be started": the map that did not start, and below it the
+	 * reason the engine gave when it gave one.
+	 */
+	public String notStartedLine() {
+		final String startedMap = this.map == null ? "" : this.map;
+		final String reason = this.failure;
+		if ((reason == null) || reason.isEmpty()) {
+			return startedMap;
+		}
+		return startedMap.isEmpty() ? reason : startedMap + "\n" + reason;
+	}
+
+	/**
+	 * What the engine said went wrong, short enough for the launcher's dialog: the message of the cause it was told
+	 * about, since an exception wrapped around an {@link java.io.IOException} carries only that one's text.
+	 */
+	public static String reason(final Throwable error) {
+		if (error == null) {
+			return null;
+		}
+		final Throwable cause = error.getCause() == null ? error : error.getCause();
+		final String message = cause.getMessage();
+		return message != null ? message : cause.getClass().getSimpleName();
+	}
+
 	/** Whether the player lost: a defeat, or a game left before it was won, as the Reforged result counts it. */
 	public boolean lost() {
 		return "defeat".equals(this.result) || "quit".equals(this.result);
@@ -81,6 +109,9 @@ public final class GameResult {
 		json.addChild("profile", text(this.profile));
 		if (this.loadFailure != null) {
 			json.addChild("loadFailure", new JsonValue(this.loadFailure));
+		}
+		if (this.failure != null) {
+			json.addChild("failure", new JsonValue(this.failure));
 		}
 		if (this.race > 0) {
 			json.addChild("race", new JsonValue(this.race));
@@ -131,6 +162,7 @@ public final class GameResult {
 		result.map = json.getString("map", "");
 		result.profile = json.getString("profile", "");
 		result.loadFailure = json.has("loadFailure") ? json.getString("loadFailure", null) : null;
+		result.failure = json.has("failure") ? json.getString("failure", null) : null;
 		result.race = json.getInt("race", 0);
 		result.finished = json.getLong("finished", 0);
 		result.mapName = json.getString("mapName", "");

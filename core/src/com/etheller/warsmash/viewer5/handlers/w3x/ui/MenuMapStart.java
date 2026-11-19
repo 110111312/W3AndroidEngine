@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 import java.util.function.ToIntFunction;
 
 import com.badlogic.gdx.Application.ApplicationType;
@@ -77,7 +77,7 @@ final class MenuMapStart {
 	private String loadingMapFilename;
 	/** The replay header of the game being loaded, when that game is recorded. */
 	private CReplayHeader loadingReplayHeader;
-	private Predicate<String> mapLoadFailureListener;
+	private BiPredicate<String, Exception> mapLoadFailureListener;
 	private LoadingMap loadingMap;
 	private FileHandle pendingSavedGame;
 	private boolean loadedFixedPlayerSettings;
@@ -100,7 +100,7 @@ final class MenuMapStart {
 
 	private int mapLoadErrorCount;
 
-	void setMapLoadFailureListener(final Predicate<String> listener) {
+	void setMapLoadFailureListener(final BiPredicate<String, Exception> listener) {
 		this.mapLoadFailureListener = listener;
 	}
 
@@ -123,7 +123,7 @@ final class MenuMapStart {
 		this.menu.beginGameInformation = null;
 		this.loadingMapFilename = null;
 		this.menu.loadingScreen.abandon();
-		if ((this.mapLoadFailureListener != null) && this.mapLoadFailureListener.test(mapFilename)) {
+		if ((this.mapLoadFailureListener != null) && this.mapLoadFailureListener.test(mapFilename, cause)) {
 			return;
 		}
 		showMapLoadError();
