@@ -1381,6 +1381,13 @@ final class MeleeUIInfoPanel {
 	}
 
 	public void positionPortrait() {
+		if (this.ui.heroMode.isActive()) {
+			// Hero mode shows the hero's health and mana over her, and the console that framed the portrait is not
+			// built: a scene left showing would paint her face into the corner of the screen.
+			this.ui.portrait.portraitScene.show = false;
+			this.ui.portrait.portraitScene.camera.viewport(this.ui.tempRect.set(0, 0, 0, 0));
+			return;
+		}
 		if (this.ui.cinematicPanel.isVisible() && !(this.ui.cinematics.isInterfaceFading() && this.ui.userUIEnabled)) {
 			this.ui.portrait.portraitScene.show = false;
 			// A hidden scene still clears its viewport, which no letterbox covers in Reforged cinematics.

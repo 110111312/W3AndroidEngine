@@ -1117,7 +1117,9 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		if (fadingBatch != null) {
 			fadingBatch.setAlphaScale(gameInterfaceAlpha);
 		}
-		final ControlGroupBar bar = gameInterfaceAlpha > 0f ? this.groups.getControlGroupBar() : null;
+		final ControlGroupBar bar = (gameInterfaceAlpha > 0f) && !this.heroMode.isActive()
+				? this.groups.getControlGroupBar()
+				: null;
 		if (bar != null) {
 			final int[] groupSizes = new int[ControlGroupBar.SLOT_COUNT];
 			final Texture[] groupIcons = new Texture[ControlGroupBar.SLOT_COUNT];
@@ -1236,10 +1238,11 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 	/**
 	 * Reforged cinematics show the world on the whole screen, where the classic letterbox keeps the world in the
-	 * area above the console.
+	 * area above the console. Hero mode has no console at all, so it wants that whole screen too.
 	 */
 	void updateWorldFrameViewport() {
-		final boolean fullScreen = this.reforgedCinematics && this.cinematicPanel.isVisible();
+		final boolean fullScreen = this.heroMode.isActive()
+				|| (this.reforgedCinematics && this.cinematicPanel.isVisible());
 		if ((fullScreen != this.worldFrameFullScreen) && (this.worldFrameWidth > 0)) {
 			this.worldFrameFullScreen = fullScreen;
 			this.cameraManager.resize(setupWorldFrameViewport(this.worldFrameWidth, this.worldFrameHeight));
@@ -1554,6 +1557,11 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 	@Override
 	public int touchOverlaySlotAt(final int screenX, final int screenY) {
+		if (this.heroMode.isActive()) {
+			// The control group bar and its Shift are the console's: hero mode's screen is the world, the minimap and
+			// the stick, and a tap on the right half is a look-around.
+			return -1;
+		}
 		return this.groups.touchOverlaySlotAt(screenX, screenY);
 	}
 

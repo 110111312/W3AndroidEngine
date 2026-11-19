@@ -15,6 +15,7 @@ import com.etheller.warsmash.input.touch.TouchSettings;
 import com.etheller.warsmash.lan.LockstepTurnManager;
 import com.etheller.warsmash.parsers.fdf.datamodel.FramePoint;
 import com.etheller.warsmash.parsers.fdf.frames.AbstractRenderableFrame;
+import com.etheller.warsmash.parsers.fdf.frames.AbstractUIFrame;
 import com.etheller.warsmash.parsers.fdf.frames.SetPoint;
 import com.etheller.warsmash.parsers.fdf.frames.SimpleStatusBarFrame;
 import com.etheller.warsmash.parsers.fdf.frames.UIFrame;
@@ -26,6 +27,11 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityActivationReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTargetCheckReceiver;
+import com.etheller.warsmash.util.Log;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * Hero mode: the interface the phone plays. A hero, a camera on her, a floating stick in the left thumb's region, a
@@ -46,6 +52,12 @@ final class HeroMode implements HeroTouchHost {
 	private static final int KNOB_SEGMENTS = 28;
 	/** The upper button bar's distance from the minimap, in design pixels. */
 	private static final float BUTTON_BAR_GAP = 10f;
+	/**
+	 * How long the search for a hero runs. The map's script makes the hero just before the first frame, so this only
+	 * has to cover a hero that a cinematic or a timer creates (or one restored from a saved game, which the simulation
+	 * adds over its first steps).
+	 */
+	private static final float HERO_SEARCH_SECONDS = 8f;
 
 	private final MeleeUI ui;
 	private final TouchSettings settings;
@@ -54,6 +66,7 @@ final class HeroMode implements HeroTouchHost {
 	private final AbilityPointTarget orderTarget = new AbilityPointTarget(0, 0);
 	private boolean resolved;
 	private boolean active;
+	private float searchTime;
 	private CUnit hero;
 	private RenderUnit heroRender;
 	private boolean cameraLocked;
@@ -79,7 +92,7 @@ final class HeroMode implements HeroTouchHost {
 	/** Called once a frame, before the interface draws. */
 	void update(final float deltaTime) {
 		if (!this.resolved) {
-			resolve();
+			resolve(deltaTime);
 		}
 		if (!this.active) {
 			return;
@@ -90,26 +103,59 @@ final class HeroMode implements HeroTouchHost {
 
 	// ------------------------------------------------------------------ resolution
 
-	private void resolve() {
-		this.resolved = true;
+	private void resolve(final float deltaTime) {
 		if (!canPlayHeroMode()) {
+			this.resolved = true;
 			return;
 		}
-		final CUnit hero = HeroResolver.firstHero(this.ui.localPlayer.getHeroes(), (unit) -> !unit.isDead());
-		if (hero == null) {
-			// No hero on this map for the local player: the console stays, as the issue asks.
-			return;
+		if (this.hero == null) {
+			this.hero = findHero();
+			if (this.hero == null) {
+				this.searchTime += deltaTime;
+				if (this.searchTime >= HERO_SEARCH_SECONDS) {
+					// No hero on this map for the local player: the console stays, as the issue asks.
+					this.resolved = true;
+					Log.info("Hero mode: no hero for player " + this.ui.localPlayer.getId()
+							+ " in this map, the console stays");
+				}
+				return;
+			}
+			// The hero is decided now; only her render peer is left, and that appears with the frame that draws her.
+			this.resolved = true;
+			Log.info("Hero mode: following " + this.hero.getName() + " (" + this.hero.getTypeId() + ") of player "
+					+ this.hero.getPlayerIndex());
 		}
-		final RenderUnit renderHero = this.ui.war3MapViewer.getRenderPeer(hero);
+		final RenderUnit renderHero = this.ui.war3MapViewer.getRenderPeer(this.hero);
 		if (renderHero == null) {
 			return;
 		}
-		this.hero = hero;
 		this.heroRender = renderHero;
 		this.active = true;
 		measureWorldPerScreenPixel();
 		applyHeroLayout();
 		lockCamera();
+	}
+
+	/**
+	 * The player's heroes, in the order the map made them.
+	 * <p>
+	 * The player's own hero list is only filled by {@code CSinulation.createUnit}, that is by the script's CreateUnit;
+	 * a hero placed in the map, or one restored from a saved game, is never added to it, and the campaigns are built
+	 * that way. So the player's units are read as well, which is the same rule the original game uses: a hero is a
+	 * hero because the player owns it, not because of how it came to exist.
+	 */
+	private CUnit findHero() {
+		final int localIndex = this.ui.localPlayer.getId();
+		final List<CUnit> candidates = new ArrayList<>(this.ui.localPlayer.getHeroes());
+		// Including the units the script made this step: they join the simulation's unit list only at the next one.
+		for (final CUnit unit : this.ui.war3MapViewer.simulation.getUnitsIncludingNew()) {
+			if ((unit.getPlayerIndex() == localIndex) && unit.isHero() && !unit.isIllusion()
+					&& !candidates.contains(unit)) {
+				candidates.add(unit);
+			}
+		}
+		candidates.sort(Comparator.comparingInt(CUnit::getHandleId));
+		return HeroResolver.firstHero(candidates, (unit) -> !unit.isDead());
 	}
 
 	/**
@@ -135,8 +181,24 @@ final class HeroMode implements HeroTouchHost {
 
 	private void applyHeroLayout() {
 		this.ui.minimapPanel.placeMinimapTopLeft(this.ui.meleeUIMinimap);
+		liftOutOfConsole(this.ui.resourceBar);
+		liftOutOfConsole(this.ui.upperButtonBar);
 		placeUpperButtonBar();
 		updateInterfaceVisibility(true);
+	}
+
+	/**
+	 * The console is hidden outright, and a hidden frame draws none of its children, so the two bars hero mode keeps
+	 * have to belong to the root instead. Their set points still name the console, which is laid out as before; only
+	 * the drawing was lost with it.
+	 */
+	private void liftOutOfConsole(final UIFrame frame) {
+		if (frame == null) {
+			return;
+		}
+		((AbstractUIFrame) this.ui.consoleUI).remove(frame);
+		// First among the root's children, so the dialogs and the console frames still draw above them.
+		this.ui.rootFrame.add(0, frame);
 	}
 
 	/**
@@ -150,10 +212,13 @@ final class HeroMode implements HeroTouchHost {
 		}
 		final float x = this.ui.minimapPanel.heroMinimapRight()
 				+ (BUTTON_BAR_GAP * this.ui.widthRatioCorrection);
-		final float y = this.ui.minimapPanel.heroMinimapTopMargin();
+		final float y = this.ui.minimapPanel.heroInterfaceTop()
+				- (BUTTON_BAR_GAP * this.ui.heightRatioCorrection);
 		((AbstractRenderableFrame) bar).clearFramePointAssignments();
+		// Hung off the root's bottom left, so the point is the world position and the wide viewport's letterbox on the
+		// left and right is part of it.
 		((AbstractRenderableFrame) bar).addSetPoint(new SetPoint(FramePoint.TOPLEFT, this.ui.rootFrame,
-				FramePoint.TOPLEFT, x, -y));
+				FramePoint.BOTTOMLEFT, x, y));
 		bar.positionBounds(this.ui.rootFrame, this.ui.uiViewport);
 	}
 
@@ -174,7 +239,9 @@ final class HeroMode implements HeroTouchHost {
 		this.ui.minimapButtonBar.setVisible(false);
 		this.ui.smashSimpleInfoPanel.setVisible(false);
 		this.ui.smashCommandButtons.setVisible(false);
-		this.ui.timeIndicator.setVisible(false);
+		// The clock is not the console's: it hangs off the root frame and tells the player what the world does, so it
+		// stays. Its own art is a dial small enough for the corner it was made for.
+		this.ui.timeIndicator.setVisible(show);
 		if (this.ui.heroBar != null) {
 			this.ui.heroBar.setVisible(false);
 		}
@@ -240,12 +307,18 @@ final class HeroMode implements HeroTouchHost {
 
 	@Override
 	public boolean beginLook(final float screenX, final float screenY) {
-		if (!canTakeTouches() || !isRightHalf(screenX) || isOverInterface(screenX, screenY)) {
+		if (!canTakeTouches()) {
 			return false;
 		}
-		this.looking = true;
-		releaseCamera();
-		return true;
+		// The minimap is a look-around too: a drag on it walks the camera across the map, since the camera is the
+		// hero's and the game would pull a tap straight back. A tap is no drag, so it does nothing, as it should on a
+		// screen with no selection to order and no camera to send anywhere.
+		if (isOverMinimap(screenX, screenY) || (isRightHalf(screenX) && !isOverInterface(screenX, screenY))) {
+			this.looking = true;
+			releaseCamera();
+			return true;
+		}
+		return false;
 	}
 
 	@Override
@@ -265,10 +338,14 @@ final class HeroMode implements HeroTouchHost {
 
 	/** The minimap keeps its own touches, and so does every button of the interface: the stick only takes the rest. */
 	private boolean isOverInterface(final float screenX, final float screenY) {
+		return isOverMinimap(screenX, screenY) || this.ui.input.isOverClickableUi(Math.round(screenX),
+				Math.round(screenY));
+	}
+
+	private boolean isOverMinimap(final float screenX, final float screenY) {
 		MeleeUI.screenCoordsVector.set(screenX, screenY);
 		final Vector2 point = this.ui.uiViewport.unproject(MeleeUI.screenCoordsVector);
-		return this.ui.meleeUIMinimap.containsMouse(point.x, point.y)
-				|| this.ui.input.isOverClickableUi(Math.round(screenX), Math.round(screenY));
+		return this.ui.meleeUIMinimap.containsMouse(point.x, point.y);
 	}
 
 	private void updateStick() {
@@ -298,7 +375,8 @@ final class HeroMode implements HeroTouchHost {
 		}
 		final float ahead = this.settings.stickOrderAhead;
 		this.orderTarget.x = this.hero.getX() + (directionX * ahead);
-		this.orderTarget.y = this.hero.getY() + (directionY * ahead);
+		// The thumb is in screen space, where y grows downwards; the map's y grows upwards.
+		this.orderTarget.y = this.hero.getY() - (directionY * ahead);
 		final int localPlayerIndex = this.ui.war3MapViewer.getLocalPlayerIndex();
 		final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 		final PointAbilityTargetCheckReceiver targetReceiver = PointAbilityTargetCheckReceiver.INSTANCE;
@@ -387,7 +465,8 @@ final class HeroMode implements HeroTouchHost {
 		final float deadZone = this.settings.stickDeadZonePx * perPixel;
 		final float knobRadius = this.settings.stickKnobRadiusPx * perPixel;
 		final float knobX = originX + (this.stick.getKnobOffsetX() * perPixel);
-		final float knobY = originY + (this.stick.getKnobOffsetY() * perPixel);
+		// The stick is kept in screen pixels; the UI space it is drawn in has y growing upwards.
+		final float knobY = originY - (this.stick.getKnobOffsetY() * perPixel);
 
 		batch.end();
 		shapes.setProjectionMatrix(batch.getProjectionMatrix());

@@ -148,16 +148,25 @@ final class MeleeUIMinimapPanel {
 		final float height = MINIMAP_HEIGHT * this.ui.heightRatioCorrection;
 		final float marginX = HERO_MINIMAP_MARGIN * this.ui.widthRatioCorrection;
 		final float marginY = HERO_MINIMAP_MARGIN * this.ui.heightRatioCorrection;
-		minimap.setDisplayArea(marginX, this.ui.uiViewport.getMinWorldHeight() - marginY - height, width, height);
+		minimap.setDisplayArea(heroInterfaceLeft() + marginX, heroInterfaceTop() - marginY - height, width, height);
+	}
+
+	/**
+	 * Hero mode: the left edge of what the player can see. The interface box is 4:3 and the viewport is wider, so its
+	 * x 0 is not the screen's left edge — the wide viewport sticks out on both sides of it.
+	 */
+	float heroInterfaceLeft() {
+		return (this.ui.uiViewport.getMinWorldWidth() - this.ui.uiViewport.getWorldWidth()) / 2;
+	}
+
+	/** Hero mode: the top edge of what the player can see, for the same reason as {@link #heroInterfaceLeft()}. */
+	float heroInterfaceTop() {
+		return (this.ui.uiViewport.getMinWorldHeight() + this.ui.uiViewport.getWorldHeight()) / 2;
 	}
 
 	/** Where hero mode's minimap ends, so the interface's buttons can be put beside it. */
 	float heroMinimapRight() {
-		return (HERO_MINIMAP_MARGIN + MINIMAP_WIDTH) * this.ui.widthRatioCorrection;
-	}
-
-	float heroMinimapTopMargin() {
-		return HERO_MINIMAP_MARGIN * this.ui.heightRatioCorrection;
+		return heroInterfaceLeft() + ((HERO_MINIMAP_MARGIN + MINIMAP_WIDTH) * this.ui.widthRatioCorrection);
 	}
 
 	void createMinimapButtons() {

@@ -108,7 +108,9 @@ Settled, and no longer up for renegotiation without a good reason:
 4. **The stick is the only way to move.** No tap-to-move. This is a thumb game, not a mouse game.
 5. **The stick floats, but only in the left zone.** It appears under the thumb that lands in the left region of the
    screen (never over the minimap), and a right-side touch never starts it.
-6. **One-finger drag on the right side looks around**, and the camera returns to the hero when the finger lifts.
+6. **One-finger drag on the right side looks around**, and the camera returns to the hero when the finger lifts. A
+   drag on the minimap looks too, since a tap there has nothing to do: no selection to order, and a camera the hero
+   would pull straight back.
 7. **Skills aim by dragging from their button** and cast on release; no-target skills fire on tap.
 8. **Multiplayer is not a target yet**, but nothing in the design may exclude it — hero mode is the shape there too.
 9. **Four skill slots, always visible**, with the ultimate at the top-right of the arc. Passives take a slot like
@@ -132,6 +134,25 @@ Two consequences that were not obvious when the design was written:
   fight. The hero acquires and attacks targets while standing, and stops when the stick is pushed.
 - **a mission with no hero cannot be hero mode.** Rather than hand the player a dead screen, hero mode stays inert
   and the RTS console is used for that mission until hero play can cover it.
+
+Five things the first run on the phone corrected, all of them places where the console was doing work nobody had
+noticed:
+
+- **`CPlayer.getHeroes()` is not every hero.** It is only filled by `CreateUnit`, so a hero placed in the map, or one
+  restored from a saved game, is missing from it — which is most campaign missions. Hero mode reads the player's units
+  as well, ordered by handle id.
+- **the world was letterboxed for a console that is not drawn.** The world viewport stops 0.21 of the height above the
+  screen bottom to leave room for the console; in hero mode it takes the whole screen, the way a Reforged cinematic
+  already did, and the camera's projection height scale goes back to 1.
+- **the hero's portrait is a 3D scene, not a frame.** Hiding `UnitPortrait` hides a frame that holds nothing; the scene
+  has to be turned off, and `positionPortrait` must not turn it back on.
+- **the resource bar and the quest/menu/chat buttons are children of `ConsoleUI`.** A hidden frame draws none of its
+  children, so they are moved to the root; their set points still name the console, which keeps being laid out.
+- **the control group bar, and the Shift button it draws, are not console frames.** They are drawn for any touch
+  scheme while the interface alpha is above zero, so hero mode has to say no explicitly.
+
+And one geometry trap: the interface is a 4:3 box centred in a wider viewport, so its x 0 is not the screen's left
+edge. Anything hero mode puts in a corner is offset by `(minWorldWidth - worldWidth) / 2`.
 
 ## Still open
 
