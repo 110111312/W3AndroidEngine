@@ -43,7 +43,41 @@ Added:
 | bottom-right, above | **macro panel**, opened deliberately: train, build, and what the army is doing |
 
 The exact arrangement of the skill cluster, the equipment slots and the macro panel is settled later — the shape
-above is what the doc is asking to be true, not the final layout.
+above is what the doc is asking to be true, not the final layout. The skill cluster itself is settled: see
+[the skill tray](#the-skill-tray).
+
+### The skill tray
+
+![the skill tray](images/hero-tray-layout.png)
+
+Two arcs centred on the bottom-right corner, so the whole cluster is under the right thumb and the middle of the
+screen stays empty. The outer arc is the hero's four skills in data order, the ultimate last and therefore top-right.
+The inner arc is the big attack button with the two small item buttons beside it; any further usable items go in a
+row on the bottom edge, and four is the cap. Sizes in dp, all tuned on a phone:
+
+| | radius from the corner | size |
+|---|---|---|
+| skills 1-4 | 176 | 52 |
+| attack | 70 | 68 |
+| items a, b | 118 | 36 |
+| item row c, d | — | 36 |
+
+A slot shows the icon, its level, a cooldown wedge, a blue tint when the mana is not there, the disabled art when
+the spell is disabled, and a "+" badge when there is a skill point this slot can take. The badge is its own hit area,
+because a tap on the circle itself means cast.
+
+Which gesture a slot takes comes from a table of ability classes:
+
+| type | gesture | preview |
+|---|---|---|
+| no target | tap | — |
+| single target | tap, then tap the target | a ring around the hero showing the range |
+| direction | drag | a line from the hero to the thumb |
+| ground | drag | a circle of the spell's area, the point clamped to the cast range |
+
+Dragging back into the button cancels, tapping the chosen button again cancels, and so does pushing the stick. An
+untargeted world tap does nothing — the stick is still the only way to move, and the one exception is a tap on an
+item on the ground, which is a smart order on that item.
 
 ## The army
 
@@ -139,6 +173,24 @@ Settled, and no longer up for renegotiation without a good reason:
     distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
+18. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
+    to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
+    preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
+    and several spells the 1.29 data declares are not implemented at all, so the table maps ability classes (with
+    rawcode overrides) and anything outside it falls back on what the spell accepts.
+19. **The aimed point is clamped to the cast range.** The engine lets an out-of-range point order through and walks
+    the caster into range; a phone mis-tap would send the hero across the map, so the tray clamps. The order stays a
+    legal point order, so replays and LAN see nothing unusual.
+20. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
+    a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
+    item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.
+21. **The big attack button gives target focus.** The hero auto-attacks without being told, but auto-attack picks
+    its own target; the button orders an attack on the nearest enemy so a hero can be picked out of the crowd.
+22. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
+    the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
+    the tray keeps its own masked copy per icon.
+23. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a press
+    on a skill does not have to lift the stick first; a second finger that is not on the tray stays a camera pan.
 
 Two consequences that were not obvious when the design was written:
 
