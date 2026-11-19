@@ -110,8 +110,11 @@ public class PlayerSlotPane {
 			this.colorMenu.setVisible(!this.colorMenu.isVisible());
 		});
 		this.handicapMenu = (PopupMenuFrame) rootFrame.getFrameByName("HandicapMenu", index);
-		// Ping is measured only in network games.
-		rootFrame.getFrameByName("PingValue", index).setVisible(false);
+		// Ping is measured only in network games, and a screen without a ping column has no frame of that name.
+		final UIFrame pingValue = rootFrame.getFrameByName("PingValue", index);
+		if (pingValue != null) {
+			pingValue.setVisible(false);
+		}
 	}
 
 	public void setTeamCount(final GameUI rootFrame, final Viewport uiViewport, final int teamCount) {

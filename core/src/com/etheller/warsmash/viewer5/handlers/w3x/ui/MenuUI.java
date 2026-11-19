@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -468,7 +468,7 @@ public class MenuUI {
 	 *
 	 * @param listener returns whether it took care of the failure (a launcher showing its own screen)
 	 */
-	public void setMapLoadFailureListener(final Predicate<String> listener) {
+	public void setMapLoadFailureListener(final BiPredicate<String, Exception> listener) {
 		this.mapStart.setMapLoadFailureListener(listener);
 	}
 
@@ -581,6 +581,11 @@ public class MenuUI {
 	 */
 	public boolean startSkirmish(final String mapPath, final String slots, final String options) {
 		return this.skirmish.startSkirmish(mapPath, slots, options);
+	}
+
+	/** Why the last {@link #startSkirmish} failed, for the launcher; null when it did not. */
+	public String skirmishStartFailure() {
+		return this.skirmish.startFailure();
 	}
 
 	public boolean startMap(final String mapFilename) {

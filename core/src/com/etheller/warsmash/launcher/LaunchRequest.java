@@ -37,6 +37,8 @@ public final class LaunchRequest {
 	public String customMap;
 	public String slots;
 	public String options;
+	/** Why the engine could not start the game, as it said it; null until a start fails. */
+	public String failure;
 	/** A saved game of the current profile, by its name without the extension. */
 	public String saveFile;
 	/** A replay of the Replay folder, by its full path. */
@@ -171,13 +173,18 @@ public final class LaunchRequest {
 						CAMPAIGN_MAPS_REFORGED.equals(this.campaignMaps));
 			}
 			if (this.customMap != null) {
-				return menu.startSkirmish(this.customMap, this.slots, this.options);
+				if (menu.startSkirmish(this.customMap, this.slots, this.options)) {
+					return true;
+				}
+				this.failure = menu.skirmishStartFailure();
+				return false;
 			}
 			if (this.replayFile != null) {
 				return menu.startReplay(Gdx.files.absolute(this.replayFile), 0, this.replayForced);
 			}
 		}
 		catch (final RuntimeException e) {
+			this.failure = GameResult.reason(e);
 			LauncherLog.e("Unable to start the game", e);
 		}
 		return false;

@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+
 import org.junit.jupiter.api.Test;
 
 /** The result file a game leaves the launcher, and the campaign result of both skins made from it. */
@@ -47,6 +49,7 @@ class GameResultTest {
 		assertEquals("Maps\\Campaign\\Human01.w3m", read.map);
 		assertEquals("Player \"One\"", read.profile);
 		assertNull(read.loadFailure);
+		assertNull(read.failure);
 		assertEquals(1, read.race);
 		assertEquals(1762650000123L, read.finished);
 		assertEquals("The Defense of Strahnbrad", read.mapName);
@@ -81,12 +84,53 @@ class GameResultTest {
 	}
 
 	@Test
+	void whyAGameDidNotStartComesBackWithIt() {
+		final GameResult failed = new GameResult();
+		failed.result = "error";
+		failed.map = "Maps\\FrozenThrone\\(8)SpiderFalls.w3x";
+		failed.failure = "The map left no player slots to start on";
+		final GameResult read = GameResult.fromJson(failed.toJson());
+		assertEquals("error", read.result);
+		assertEquals(failed.map, read.map);
+		assertEquals(failed.failure, read.failure);
+		assertTrue(read.failed());
+	}
+
+	@Test
+	void theDialogSaysWhatDidNotStartAndWhy() {
+		final GameResult failed = new GameResult();
+		failed.result = "error";
+		failed.map = "Maps\\FrozenThrone\\(8)SpiderFalls.w3x";
+		// A result of before the engine gave its reason shows the map alone, as it always did.
+		assertEquals(failed.map, failed.notStartedLine());
+		failed.failure = "The map left no player slots to start on";
+		assertEquals(failed.map + "\n" + failed.failure, failed.notStartedLine());
+		// An engine failure before the map was chosen speaks for itself.
+		failed.map = "";
+		assertEquals(failed.failure, failed.notStartedLine());
+		failed.failure = null;
+		assertEquals("", failed.notStartedLine());
+	}
+
+	@Test
+	void theReasonIsTheEnginesOwnWords() {
+		assertNull(GameResult.reason(null));
+		// An exception made to carry another one adds no words of its own.
+		assertEquals("No such map file: Maps\\x.w3x",
+				GameResult.reason(new RuntimeException(new IOException("No such map file: Maps\\x.w3x"))));
+		assertEquals("The map has no JASS script (war3map.j), only a Lua one or none",
+				GameResult.reason(new IOException("The map has no JASS script (war3map.j), only a Lua one or none")));
+		assertEquals("NullPointerException", GameResult.reason(new NullPointerException()));
+	}
+
+	@Test
 	void theFirstFormatStillReads() {
 		final GameResult read = GameResult.fromJson("{\n  \"version\": 1,\n  \"result\": \"defeat\",\n"
 				+ "  \"source\": \"campaign\",\n  \"map\": \"Maps\\\\Campaign\\\\Prologue02.w3m\",\n"
 				+ "  \"profile\": \"Player\",\n  \"race\": 2,\n  \"finished\": 5\n}");
 		assertEquals("defeat", read.result);
 		assertEquals("Maps\\Campaign\\Prologue02.w3m", read.map);
+		assertNull(read.failure);
 		assertEquals(2, read.race);
 		assertEquals(5, read.finished);
 		assertEquals("", read.mapName);

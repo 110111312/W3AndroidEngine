@@ -7,6 +7,7 @@ import java.util.List;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.etheller.warsmash.launcher.GameResult;
 import com.etheller.warsmash.launcher.LauncherSlot;
 import com.etheller.warsmash.parsers.fdf.GameUI;
 import com.etheller.warsmash.parsers.fdf.frames.GlueTextButtonFrame;
@@ -59,6 +60,8 @@ final class MenuSkirmish {
 	private PlayerSlotPaneListenerImplementation skirmishSlotListener;
 	private Runnable skirmishStart;
 	private GlueTextButtonFrame skirmishCancelButton;
+	/** Why the last startSkirmish could not start its game; null when it did or was not asked. */
+	private String startFailure;
 
 	MenuSkirmish(final MenuUI menu) {
 		this.menu = menu;
@@ -121,6 +124,7 @@ final class MenuSkirmish {
 						selectMap(map, newSelectedItem, teamSetupPane);
 					}
 					catch (final IOException e) {
+						MenuSkirmish.this.startFailure = GameResult.reason(e);
 						Log.error(e);
 					}
 				}
@@ -258,8 +262,20 @@ final class MenuSkirmish {
 
 	boolean startSkirmish(final String mapPath, final String slots, final String options) {
 		final PlayerSlotPaneListenerImplementation before = this.skirmishSlotListener;
-		if (!this.skirmishMapList.select(mapPath) || (this.skirmishSlotListener == before)
-				|| (this.skirmishSlotListener == null)) {
+		this.startFailure = null;
+		if (this.skirmishMapList.isUnreadable(mapPath)) {
+			this.startFailure = "The engine's map list says this map cannot be read.";
+			return false;
+		}
+		if (!this.skirmishMapList.select(mapPath)) {
+			this.startFailure = "The engine's map list does not have the map the launcher chose.";
+			return false;
+		}
+		if ((this.skirmishSlotListener == before) || (this.skirmishSlotListener == null)) {
+			if (this.startFailure == null) {
+				// The map is in the list, so selecting it read it, but it left no slots to play on.
+				this.startFailure = "The map left no player slots to start on.";
+			}
 			return false;
 		}
 		for (final LauncherSlot slot : LauncherSlot.parse(slots)) {
@@ -282,6 +298,11 @@ final class MenuSkirmish {
 		this.menu.mainMenuFrame.setVisible(false);
 		this.skirmishStart.run();
 		return true;
+	}
+
+	/** Why the last {@link #startSkirmish} could not start its game, for the launcher to show; null when it did. */
+	String startFailure() {
+		return this.startFailure;
 	}
 
 	/** @return whether the state is one of the custom game screen's, which it then advances */

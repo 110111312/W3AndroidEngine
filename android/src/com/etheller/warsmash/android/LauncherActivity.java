@@ -385,7 +385,7 @@ public class LauncherActivity extends AndroidApplication {
 					this.loadPage.loadFailureText(result.loadFailure));
 		}
 		else if ((result != null) && result.failed()) {
-			this.dialogs.showMessage(getString(R.string.game_not_started), result.map);
+			this.dialogs.showMessage(getString(R.string.game_not_started), result.notStartedLine());
 		}
 	}
 

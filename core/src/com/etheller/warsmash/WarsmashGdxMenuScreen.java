@@ -1210,12 +1210,18 @@ public class WarsmashGdxMenuScreen implements InputProcessor, Screen, SingleMode
 
 	/** A launcher showing its own menu hears of a map that cannot be loaded as of a game that ended in an error. */
 	private boolean mapLoadFailed(final String mapFile) {
+		return mapLoadFailed(mapFile, null);
+	}
+
+	/** The same, with the reason the map could not be loaded; null when the engine has none to give. */
+	private boolean mapLoadFailed(final String mapFile, final Exception cause) {
 		if (this.gameEndListener == null) {
 			return false;
 		}
 		final GameResult failed = new GameResult();
 		failed.result = "error";
 		failed.map = mapFile;
+		failed.failure = GameResult.reason(cause);
 		this.gameEndListener.gameEnded(failed);
 		return true;
 	}
