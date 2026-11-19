@@ -29,14 +29,16 @@ automatic or it is a macro decision.*
 Gone: the console along the bottom — the 4×3 command card, the portrait with its info panel, the inventory grid, the
 control-group bar. That is the RTS surface, and it is the thing that makes the game unplayable on a phone.
 
-Kept: the world, the minimap (top-left, as now), the resource bar, and enough of a hero panel to read health, mana,
-level and cooldowns at a glance.
+Kept: the world, the minimap — moved out of the console's bottom-left slot to the **top-left corner**, since the
+console it used to sit in is not built — the resource bar (gold, lumber, supply) at the top right, and health and mana
+read **over the hero** herself, always, rather than in a portrait that is gone.
 
 Added:
 
 | where | what |
 |---|---|
 | bottom-left | **movement stick.** Drag anywhere in the left zone; the hero walks that way while the thumb is down |
+| over the hero | **health and mana.** Her two bars, drawn every frame, not only while a finger rests on her |
 | bottom-right | **skills**, 2 to 4 depending on the hero, in an arc where the thumb rests — plus the **usable equipment** |
 | bottom-right, above | **macro panel**, opened deliberately: train, build, and what the army is doing |
 
@@ -117,6 +119,13 @@ Settled, and no longer up for renegotiation without a good reason:
     masked at load, with a ring drawn the way the stick's is.
 12. **Tapping an item on the ground walks the hero to it and picks it up** — the one tap that orders movement.
 
+13. **Health and mana are drawn over the hero, always.** The portrait panel that held them belongs to the console and
+    is not built; a phone has no hover, so the bars are simply there. Cooldowns and level join them in B.
+14. **The console is not built for a hero map.** Two of its pieces outlive it: the minimap moves to the top-left
+    corner, the resource bar stays at the top right, and the quest/menu/chat buttons move beside the minimap. Nothing
+    brings the console back — there is no key for it, and the one exception is a map with no hero for the local
+    player, which plays on the console because hero mode would have nothing to hand the player.
+
 Two consequences that were not obvious when the design was written:
 
 - **the hero must attack by itself.** With no right-click and no attack button, a hero that only walks can never
@@ -137,7 +146,7 @@ Each is one branch and one PR. A and B are the interface, C and D are the simula
 
 | | issue | covers |
 |---|---|---|
-| A | hero shell and stick | console gone, camera on the hero, floating left stick, one-finger look-around, hero auto-attack |
+| A | hero shell and stick | console gone, camera on the hero, minimap to the top-left, health and mana over the hero, floating left stick, one-finger look-around, hero auto-attack |
 | B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
 | C | the army follows | a leash rule: an idle unit further than X from the hero walks back to Y |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |

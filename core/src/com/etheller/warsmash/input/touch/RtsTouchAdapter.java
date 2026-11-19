@@ -22,6 +22,9 @@ public final class RtsTouchAdapter implements GestureListener {
 	private static final int SHIFT_SLOT = 10;
 	/** A drag from an item slot picks the item up, so a tap there may drift further before it becomes one. */
 	private static final float INVENTORY_DRAG_SLOPS = 2.5f;
+	private static final int HERO_DRAG_NONE = 0;
+	private static final int HERO_DRAG_STICK = 1;
+	private static final int HERO_DRAG_LOOK = 2;
 	private volatile boolean longPressOrders = true;
 	private boolean aiming;
 	private boolean overlayDrag;
@@ -36,6 +39,7 @@ public final class RtsTouchAdapter implements GestureListener {
 	private float ghostY;
 	private final float[] ghostWorld = new float[3];
 	private final float[] ghostScreen = new float[2];
+	private int heroDrag = HERO_DRAG_NONE;
 
 	public RtsTouchAdapter(final TouchSettings settings, final boolean debugLog) {
 		this.settings = settings;
@@ -90,6 +94,11 @@ public final class RtsTouchAdapter implements GestureListener {
 	private static TouchTarget target() {
 		final InputProcessor processor = processor();
 		return processor instanceof TouchTarget ? (TouchTarget) processor : null;
+	}
+
+	private static HeroTouchHost heroTouch() {
+		final TouchTarget target = target();
+		return target == null ? null : target.heroTouch();
 	}
 
 	private static void moveTo(final InputProcessor processor, final float x, final float y) {
@@ -246,6 +255,21 @@ public final class RtsTouchAdapter implements GestureListener {
 	public void dragStart(final float x, final float y, final boolean pen) {
 		final InputProcessor processor = processor();
 		final TouchTarget target = target();
+		final HeroTouchHost heroTouch = (target == null) ? null : target.heroTouch();
+		if (heroTouch != null) {
+			// The stick, then the look-around: the left region and the right half of a hero-mode screen.
+			if (heroTouch.beginStick(x, y)) {
+				this.heroDrag = HERO_DRAG_STICK;
+				log("hero stick start");
+				return;
+			}
+			if (heroTouch.beginLook(x, y)) {
+				this.heroDrag = HERO_DRAG_LOOK;
+				panStart(x, y);
+				log("hero look start");
+				return;
+			}
+		}
 		if ((target != null) && (target.touchOverlaySlotAt(Math.round(x), Math.round(y)) >= 0)) {
 			this.overlayDrag = true;
 			return;
@@ -276,6 +300,17 @@ public final class RtsTouchAdapter implements GestureListener {
 
 	@Override
 	public void drag(final float x, final float y) {
+		if (this.heroDrag == HERO_DRAG_STICK) {
+			final HeroTouchHost heroTouch = heroTouch();
+			if (heroTouch != null) {
+				heroTouch.dragStick(x, y);
+			}
+			return;
+		}
+		if (this.heroDrag == HERO_DRAG_LOOK) {
+			pan(x, y);
+			return;
+		}
 		if (this.overlayDrag) {
 			return;
 		}
@@ -297,6 +332,26 @@ public final class RtsTouchAdapter implements GestureListener {
 
 	@Override
 	public void dragEnd(final float x, final float y) {
+		if (this.heroDrag == HERO_DRAG_STICK) {
+			this.heroDrag = HERO_DRAG_NONE;
+			final HeroTouchHost heroTouch = heroTouch();
+			if (heroTouch != null) {
+				heroTouch.endStick();
+			}
+			log("hero stick end");
+			return;
+		}
+		if (this.heroDrag == HERO_DRAG_LOOK) {
+			this.heroDrag = HERO_DRAG_NONE;
+			// The input layer finishes the pan first, then the camera is the hero's again.
+			panEnd(x, y);
+			final HeroTouchHost heroTouch = heroTouch();
+			if (heroTouch != null) {
+				heroTouch.endLook();
+			}
+			log("hero look end");
+			return;
+		}
 		if (this.overlayDrag) {
 			this.overlayDrag = false;
 			return;
@@ -388,6 +443,18 @@ public final class RtsTouchAdapter implements GestureListener {
 		this.aiming = false;
 		this.itemDrag = false;
 		this.overlayDrag = false;
+		if (this.heroDrag != HERO_DRAG_NONE) {
+			final HeroTouchHost heroTouch = heroTouch();
+			if (heroTouch != null) {
+				if (this.heroDrag == HERO_DRAG_STICK) {
+					heroTouch.endStick();
+				}
+				else {
+					heroTouch.endLook();
+				}
+			}
+			this.heroDrag = HERO_DRAG_NONE;
+		}
 		final TouchTarget target = target();
 		if (target != null) {
 			target.cancelPointerDrag();

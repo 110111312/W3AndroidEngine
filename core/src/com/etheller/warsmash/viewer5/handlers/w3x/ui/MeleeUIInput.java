@@ -633,6 +633,13 @@ final class MeleeUIInput {
 			this.ui.minimapSignalTargeting = false;
 			return true;
 		}
+		if ((clickedUIFrame == null) && this.ui.heroMode.isActive()
+				&& ((button == Input.Buttons.LEFT) || (button == Input.Buttons.RIGHT))) {
+			// Hero mode has no selection, no tap-to-move and no right click: the stick is the only way to move. The
+			// minimap has already taken its own touches above, and the interface's buttons their own clicks. The middle
+			// button is left alone: the right half's look-around is a pan, and a pan is a middle drag.
+			return true;
+		}
 		if (clickedUIFrame == null) {
 			// try to interact with world
 			if ((this.ui.activeCommand != null) && (button != Input.Buttons.MIDDLE)) {

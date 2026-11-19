@@ -79,6 +79,13 @@ final class MeleeUIMinimapPanel {
 	private static final int MINIMAP_ALLY_PING_BIRTH = 3;
 	private static final int MINIMAP_ALLY_PING_STAND = 4;
 	private static final int MINIMAP_ALLY_PING_DEATH = 5;
+	/** The console's measured minimap slot at 1600x1200, scaled by the ratio corrections at use. */
+	private static final float MINIMAP_WIDTH = 278.75f;
+	private static final float MINIMAP_HEIGHT = 276.25f;
+	private static final float MINIMAP_LEFT = 18.75f;
+	private static final float MINIMAP_BOTTOM = 13.75f;
+	/** Hero mode leaves the minimap in a corner of its own, since the console it used to sit in is not built. */
+	private static final float HERO_MINIMAP_MARGIN = 12f;
 	// Measured on 1.29: the signal is gone about 5 s after the click, its death included.
 	private static final float MINIMAP_SIGNAL_SECONDS = 4.6f;
 	private static final float ATTACK_PING_SECONDS = 4.6f;
@@ -91,9 +98,9 @@ final class MeleeUIMinimapPanel {
 	}
 
 	MeleeUIMinimap createMinimap(final War3MapViewer war3MapViewer) {
-		final Rectangle minimapDisplayArea = new Rectangle(18.75f * this.ui.widthRatioCorrection,
-				13.75f * this.ui.heightRatioCorrection, 278.75f * this.ui.widthRatioCorrection,
-				276.25f * this.ui.heightRatioCorrection);
+		final Rectangle minimapDisplayArea = new Rectangle(MINIMAP_LEFT * this.ui.widthRatioCorrection,
+				MINIMAP_BOTTOM * this.ui.heightRatioCorrection, MINIMAP_WIDTH * this.ui.widthRatioCorrection,
+				MINIMAP_HEIGHT * this.ui.heightRatioCorrection);
 		Texture minimapTexture = null;
 		if (war3MapViewer.dataSource.has("war3mapMap.tga")) {
 			try {
@@ -129,6 +136,28 @@ final class MeleeUIMinimapPanel {
 				specialIcons);
 		minimap.setMaskedAreasPartiallyVisible(war3MapViewer.isMaskedAreasPartiallyVisible());
 		return minimap;
+	}
+
+	/**
+	 * Hero mode: the console that used to hold the minimap is not built, so the map owns the top-left corner. The size
+	 * stays the console's — only the corner changes — and the five minimap buttons go with the console, so nothing
+	 * is left stranded where the map used to be.
+	 */
+	void placeMinimapTopLeft(final MeleeUIMinimap minimap) {
+		final float width = MINIMAP_WIDTH * this.ui.widthRatioCorrection;
+		final float height = MINIMAP_HEIGHT * this.ui.heightRatioCorrection;
+		final float marginX = HERO_MINIMAP_MARGIN * this.ui.widthRatioCorrection;
+		final float marginY = HERO_MINIMAP_MARGIN * this.ui.heightRatioCorrection;
+		minimap.setDisplayArea(marginX, this.ui.uiViewport.getMinWorldHeight() - marginY - height, width, height);
+	}
+
+	/** Where hero mode's minimap ends, so the interface's buttons can be put beside it. */
+	float heroMinimapRight() {
+		return (HERO_MINIMAP_MARGIN + MINIMAP_WIDTH) * this.ui.widthRatioCorrection;
+	}
+
+	float heroMinimapTopMargin() {
+		return HERO_MINIMAP_MARGIN * this.ui.heightRatioCorrection;
 	}
 
 	void createMinimapButtons() {

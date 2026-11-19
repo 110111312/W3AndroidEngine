@@ -193,7 +193,8 @@ class TouchRouterFlowTest {
 		this.router = new TouchInputRouter(new TouchSettings(d.tapSlopPx, d.penSlopPx, d.tapMaxMs, d.longPressMs,
 				d.twoFingerWindowMs, d.twoFingerTapMs, d.pinchStartRatio, d.pinchStepRatio, d.buildAimOffsetPx,
 				d.ghostTapRadiusPx, d.palmTouchMajorPx, d.penFingerPolicy, d.palmRejection, scheme, style, 250, 32,
-				button), this.clock::get, false);
+				button, d.stickDeadZonePx, d.stickRadiusPx, d.stickKnobRadiusPx, d.stickOrderAhead, d.stickTurnDegrees,
+				d.stickReissueMs), this.clock::get, false);
 		TouchInputRouter.install(this.router);
 	}
 

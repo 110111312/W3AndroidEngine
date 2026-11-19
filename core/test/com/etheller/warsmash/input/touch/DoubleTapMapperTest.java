@@ -189,7 +189,9 @@ class DoubleTapMapperTest {
 		final TouchSettings d = TouchSettings.defaults(DENSITY, ControlScheme.TOUCH);
 		return new TouchSettings(d.tapSlopPx, d.penSlopPx, d.tapMaxMs, d.longPressMs, d.twoFingerWindowMs,
 				d.twoFingerTapMs, d.pinchStartRatio, d.pinchStepRatio, d.buildAimOffsetPx, d.ghostTapRadiusPx,
-				d.palmTouchMajorPx, d.penFingerPolicy, d.palmRejection, ControlScheme.TOUCH, style, 250, 32, d.penButton);
+				d.palmTouchMajorPx, d.penFingerPolicy, d.palmRejection, ControlScheme.TOUCH, style, 250, 32, d.penButton,
+				d.stickDeadZonePx, d.stickRadiusPx, d.stickKnobRadiusPx, d.stickOrderAhead, d.stickTurnDegrees,
+				d.stickReissueMs);
 	}
 
 	private void event(final PointerEvent.Action action, final float x, final float y, final long time) {
