@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.badlogic.gdx.math.Rectangle;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
+import com.etheller.warsmash.viewer5.handlers.w3x.save.SavedTransient;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CFogMaskSettings;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSightWorld;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.trigger.enumtypes.CFogState;
@@ -34,7 +35,11 @@ public class CPlayerFogOfWar {
 	// in sight of every unit each second.
 	private final byte[] fogOfWar;
 	private final byte[] detection;
-	private final ByteBuffer fogOfWarBuffer;
+	// A view of fogOfWar for the terrain and the minimap, so nothing has to copy the cells every frame. Not saved: the
+	// save stores the array, and a buffer read back from it would be a copy drawn from the cells as they were at the
+	// save, while the units went on writing the array. Re-made whenever the array is not the one it was made from.
+	@SavedTransient
+	private ByteBuffer fogOfWarBuffer;
 
 	public CPlayerFogOfWar(final PathingGrid pathingGrid) {
 		this.width = (pathingGrid.getWidth() / PATHING_RATIO) + 1;
@@ -75,7 +80,12 @@ public class CPlayerFogOfWar {
 	}
 
 	public ByteBuffer getFogOfWarBuffer() {
-		return this.fogOfWarBuffer;
+		final ByteBuffer buffer = this.fogOfWarBuffer;
+		if ((buffer == null) || (buffer.array() != this.fogOfWar)) {
+			this.fogOfWarBuffer = ByteBuffer.wrap(this.fogOfWar);
+			return this.fogOfWarBuffer;
+		}
+		return buffer;
 	}
 
 	private byte getState(CFogMaskSettings fogMaskSettings, final PathingGrid pathingGrid, final float x,
