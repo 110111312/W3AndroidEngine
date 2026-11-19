@@ -49,10 +49,13 @@ above is what the doc is asking to be true, not the final layout.
 
 Units belong to the player but are not commanded one by one. Their standing orders:
 
-- **follow** the hero at a distance, without crowding into the screen centre;
-- **engage** what comes within reach of the hero or of themselves, and disengage back to the hero rather than chasing
-  across the map;
-- **return** to the hero when the hero moves on, and reform rather than straggle;
+- **follow** the hero as a formation: when the hero moves, the army receives the same group move the console gives a
+  multi-unit selection — rank-sorted slots around the hero's destination, marching as one block at the army's own
+  slowest pace, never slowing the hero;
+- **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
+  elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition;
+- **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
+  free; regrouping while the hero stands still is the script's job (D);
 - **not die stupidly** — no walking into towers, no standing in the middle of nothing, no chasing a lone unit into a
   base.
 
@@ -83,7 +86,7 @@ The point of this section is that none of it needs a rewrite: the engine already
 | follow camera | `GameCameraManager.setTargetController` (`:787-800`), `followTargetController` (`:164-205`) | **already exists**; the only UI caller today is press-and-hold on the portrait (`MeleeUIInfoPanel.java:1607-1618`) |
 | stick → movement | `core/src/.../input/touch/` — `RtsTouchAdapter`, `GestureRecognizer`, `GestureListener`, `TouchSettings` | **no joystick code exists**; one-finger drag is currently selection box *or* aim, two-finger drag is camera pan, so the stick needs its own zone and a new gesture |
 | swapping the HUD | `MeleeToggleUI` (`ui/toggle/`), `WarsmashGdxMapScreen.java:315` | the seam exists: the HUD is a list of `WarsmashToggleableUI` that Alt+Z cycles, and today the list holds one entry, so hero mode is a **second entry**, not a replacement |
-| units following the hero | `CBehaviorFollow.java:41-44` + `CAbilityMove.java:203` | **not reusable as a standing order.** It exists and is issued (a move or smart order onto an ally), but its `update` plays STAND and never looks for targets — an army on it would walk with you and never fight. Hero-mode follow is a leash rule beside `CUnitAcquisition` |
+| units following the hero | `CGroupMove.java:120-246` (`slots`), `:44-113` (`linkMoving`, `limitSpeed`), `MeleeUIInput.java:945-1013` (the console's own caller), `HeroMode.java:372-400` (the call site to extend) | **hero-mode follow is the console's formation group move, not `CBehaviorFollow`.** That behavior exists (`:41-44`, issued from `CAbilityMove.java:203`) but its `update` plays STAND and never looks for targets — an army on it would walk with you and never fight. `CGroupMove.slots` instead gives each follower a rank-sorted slot around the hero's destination, and the wire format already carries per-unit arrays |
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
 | computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | untouched: the *enemy* keeps playing RTS |
@@ -127,6 +130,15 @@ Settled, and no longer up for renegotiation without a good reason:
     corner, the resource bar stays at the top right, and the quest/menu/chat buttons move beside the minimap. Nothing
     brings the console back — there is no key for it, and the one exception is a map with no hero for the local
     player, which plays on the console because hero mode would have nothing to hand the player.
+15. **When the hero moves, the army moves in formation.** Each idle follower gets a `CGroupMove` slot around the
+    hero's stick destination — the engine's own group move, rank-sorted so melee front and ranged back are
+    data-driven. The hero is excluded from the group's speed link: the stick answers at the hero's own speed, and
+    the army links among itself so it marches as one block.
+16. **A fighting unit ignores hero movement** and keeps its target while the player moves, casts and attacks freely.
+    Only a hero more than **1000** away turns the order into a retreat: break combat, join the formation. The
+    distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero.
+17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
+    kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
 
 Two consequences that were not obvious when the design was written:
 
@@ -156,7 +168,9 @@ edge. Anything hero mode puts in a corner is offset by `(minWorldWidth - worldWi
 
 ## Still open
 
-1. **The leash and the engagement rules** (issues C and D): distances, what a unit will engage, how far it chases.
+1. **The engagement rules** (issue D): what a unit will engage, when it retreats by judgment rather than by the
+   hero's distance, how it regroups to the hero — or to the altar, when the hero is unspawned — while the hero
+   stands still.
 2. **Where the macro panel lives** (issue E) and whether building placement is chosen by hand at all.
 3. **Campaign exceptions**: missions that switch heroes, missions with no hero, missions built around controlling
    several units at once.
@@ -169,7 +183,7 @@ Each is one branch and one PR. A and B are the interface, C and D are the simula
 |---|---|---|
 | A | hero shell and stick | console gone, camera on the hero, minimap to the top-left, health and mana over the hero, floating left stick, one-finger look-around, hero auto-attack |
 | B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
-| C | the army follows | a leash rule: an idle unit further than X from the hero walks back to Y |
+| C | the army follows | hero moves → the army moves in formation (`CGroupMove` slots, army speed-linked, hero never slowed); a fighting unit ignores hero movement until the hero is **1000** away, then it is a retreat |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
 | E | macro panel | train and build from the lists the command card already reads |
 
