@@ -32,6 +32,7 @@ import com.etheller.warsmash.units.HashedGameObject;
 import com.etheller.warsmash.util.SessionResources;
 import com.etheller.warsmash.input.touch.SliderHost;
 import com.etheller.warsmash.input.touch.PointKind;
+import com.etheller.warsmash.input.touch.HeroTouchHost;
 import com.etheller.warsmash.input.touch.TouchTarget;
 import com.etheller.warsmash.movie.Movie;
 import com.etheller.warsmash.movie.Movies;
@@ -725,6 +726,12 @@ public class WarsmashGdxMapScreen implements InputProcessor, Screen, TouchTarget
 	@Override
 	public boolean hasOrderableSelection() {
 		return this.meleeUI.hasOrderableSelection();
+	}
+
+	@Override
+	public HeroTouchHost heroTouch() {
+		// Hero mode is the console's replacement, so the question is asked of the console's own interface.
+		return this.baseMeleeUI == null ? null : this.baseMeleeUI.getHeroTouch();
 	}
 
 	@Override

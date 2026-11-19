@@ -21,6 +21,7 @@ public final class TouchInputRouter {
 	private int shiftPointerId = -1;
 
 	private final Queue<PointerEvent> events = new ConcurrentLinkedQueue<>();
+	private final TouchSettings settings;
 	private final GestureRecognizer recognizer;
 	private final PalmFilter palmFilter;
 	private final LongSupplier clock;
@@ -37,6 +38,7 @@ public final class TouchInputRouter {
 	 * @param clock the time base of the events, for example Android uptime
 	 */
 	public TouchInputRouter(final TouchSettings settings, final LongSupplier clock, final boolean debugLog) {
+		this.settings = settings;
 		this.adapter = new RtsTouchAdapter(settings, debugLog);
 		this.doubleTap = new DoubleTapMapper(this.adapter, settings, TouchInputRouter::currentTarget, clock,
 				debugLog);
@@ -54,6 +56,14 @@ public final class TouchInputRouter {
 
 	public void setPenCapable(final boolean penCapable) {
 		this.palmFilter.setPenCapable(penCapable);
+	}
+
+	/**
+	 * @return the thresholds this router was built from; the interface reads the stick's own distances from here, so a
+	 *         phone build is tuned from warsmash.ini and not by a second copy of the numbers in the UI
+	 */
+	public TouchSettings getSettings() {
+		return this.settings;
 	}
 
 	public static void install(final TouchInputRouter router) {

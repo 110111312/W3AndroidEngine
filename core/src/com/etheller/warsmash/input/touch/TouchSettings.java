@@ -25,6 +25,18 @@ public final class TouchSettings {
 	public final long doubleTapMs;
 	public final float doubleTapSlopPx;
 	public final PenButton penButton;
+	/** A drag shorter than this from the stick's origin is inside the dead zone and has no direction yet. */
+	public final float stickDeadZonePx;
+	/** Outer ring radius of the drawn stick; drawing only, the geometry never clamps to it. */
+	public final float stickRadiusPx;
+	/** Radius of the knob drawn at the finger; drawing only. */
+	public final float stickKnobRadiusPx;
+	/** How far ahead of the hero a stick order aims, in game units rather than pixels. */
+	public final float stickOrderAhead;
+	/** A turn larger than this many degrees re-issues the order before the re-issue cadence would. */
+	public final float stickTurnDegrees;
+	/** How often a held stick re-issues its order. */
+	public final long stickReissueMs;
 
 	public TouchSettings(final float tapSlopPx, final float penSlopPx, final long tapMaxMs, final long longPressMs,
 			final long twoFingerWindowMs, final long twoFingerTapMs, final float pinchStartRatio,
@@ -32,7 +44,9 @@ public final class TouchSettings {
 			final float palmTouchMajorPx, final PalmFilter.PenFingerPolicy penFingerPolicy,
 			final PalmFilter.SizeRejection palmRejection, final ControlScheme controlScheme,
 			final TouchStyle touchStyle, final long doubleTapMs, final float doubleTapSlopPx,
-			final PenButton penButton) {
+			final PenButton penButton, final float stickDeadZonePx, final float stickRadiusPx,
+			final float stickKnobRadiusPx, final float stickOrderAhead, final float stickTurnDegrees,
+			final long stickReissueMs) {
 		this.tapSlopPx = tapSlopPx;
 		this.penSlopPx = penSlopPx;
 		this.tapMaxMs = tapMaxMs;
@@ -51,13 +65,20 @@ public final class TouchSettings {
 		this.doubleTapMs = doubleTapMs;
 		this.doubleTapSlopPx = doubleTapSlopPx;
 		this.penButton = penButton;
+		this.stickDeadZonePx = stickDeadZonePx;
+		this.stickRadiusPx = stickRadiusPx;
+		this.stickKnobRadiusPx = stickKnobRadiusPx;
+		this.stickOrderAhead = stickOrderAhead;
+		this.stickTurnDegrees = stickTurnDegrees;
+		this.stickReissueMs = stickReissueMs;
 	}
 
 	/** @param platformScheme the scheme used when the configuration names none: touch on a phone, mouse on a PC */
 	public static TouchSettings defaults(final float density, final ControlScheme platformScheme) {
 		return new TouchSettings(10 * density, 4 * density, 300, 300, 150, 250, 1.3f, 1.4f, 56 * density,
 				48 * density, 96 * density, PalmFilter.PenFingerPolicy.IGNORE, PalmFilter.SizeRejection.AUTO,
-				platformScheme, TouchStyle.DOUBLE_TAP, 250, 32 * density, PenButton.SHIFT);
+				platformScheme, TouchStyle.DOUBLE_TAP, 250, 32 * density, PenButton.SHIFT, 14 * density, 70 * density,
+				30 * density, 300f, 20f, 250);
 	}
 
 	public static TouchSettings fromIni(final Element touch, final float density, final ControlScheme platformScheme) {
@@ -82,7 +103,13 @@ public final class TouchSettings {
 				TouchStyle.parse(touch.getField("TouchScheme"), defaults.touchStyle),
 				ms(touch, "DoubleTapMs", defaults.doubleTapMs),
 				dp(touch, "DoubleTapSlopDp", defaults.doubleTapSlopPx, density),
-				PenButton.parse(touch.getField("PenButton"), defaults.penButton));
+				PenButton.parse(touch.getField("PenButton"), defaults.penButton),
+				dp(touch, "StickDeadZoneDp", defaults.stickDeadZonePx, density),
+				dp(touch, "StickRadiusDp", defaults.stickRadiusPx, density),
+				dp(touch, "StickKnobRadiusDp", defaults.stickKnobRadiusPx, density),
+				ratio(touch, "StickOrderAhead", defaults.stickOrderAhead),
+				ratio(touch, "StickTurnDeg", defaults.stickTurnDegrees),
+				ms(touch, "StickReissueMs", defaults.stickReissueMs));
 	}
 
 	/** The older switch TouchControls=Off stays a way to ask for the mouse scheme. */

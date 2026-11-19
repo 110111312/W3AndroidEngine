@@ -58,4 +58,13 @@ public interface TouchTarget {
 	default boolean hasOrderableSelection() {
 		return false;
 	}
+
+	/**
+	 * The hero-mode surface, for a screen that plays as one hero: the stick takes the left region and the look-around
+	 * takes the right half, and the interface's buttons keep their taps. Screens that keep the RTS console return null
+	 * and every gesture keeps its meaning.
+	 */
+	default HeroTouchHost heroTouch() {
+		return null;
+	}
 }

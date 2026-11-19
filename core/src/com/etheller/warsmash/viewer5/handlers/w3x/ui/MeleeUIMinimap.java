@@ -33,7 +33,7 @@ public class MeleeUIMinimap {
 	private Texture loadedAltIcon;
 	private static final float HERO_STEP = 0.01f;
 	private final Rectangle minimap;
-	private final Rectangle minimapFilledArea;
+	private final Rectangle minimapFilledArea = new Rectangle();
 	private final Texture minimapTexture;
 	private final Rectangle playableMapArea;
 	private final Texture[] teamColors;
@@ -67,13 +67,26 @@ public class MeleeUIMinimap {
 		this.teamColors = teamColors;
 		this.minimap = displayArea;
 		this.specialIcons = specialIcons;
-		final float worldWidth = playableMapArea.getWidth();
-		final float worldHeight = playableMapArea.getHeight();
+		updateFilledArea();
+	}
+
+	/**
+	 * Moves the minimap's rectangle, for a screen that plays hero mode and keeps the map out of the console's corner.
+	 * Everything downstream (drawing, icons, fog, pings, the camera footprint and the mouse's own hit test) reads
+	 * {@link #minimapFilledArea}, so the derived rectangle is recomputed here and nowhere else.
+	 */
+	public void setDisplayArea(final float x, final float y, final float width, final float height) {
+		this.minimap.set(x, y, width, height);
+		updateFilledArea();
+	}
+
+	private void updateFilledArea() {
+		final float worldWidth = this.playableMapArea.getWidth();
+		final float worldHeight = this.playableMapArea.getHeight();
 		final float worldSize = Math.max(worldWidth, worldHeight);
 		final float minimapFilledWidth = (worldWidth / worldSize) * this.minimap.width;
 		final float minimapFilledHeight = (worldHeight / worldSize) * this.minimap.height;
-
-		this.minimapFilledArea = new Rectangle(this.minimap.x + ((this.minimap.width - minimapFilledWidth) / 2),
+		this.minimapFilledArea.set(this.minimap.x + ((this.minimap.width - minimapFilledWidth) / 2),
 				this.minimap.y + ((this.minimap.height - minimapFilledHeight) / 2), minimapFilledWidth,
 				minimapFilledHeight);
 	}

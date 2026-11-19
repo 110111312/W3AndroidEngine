@@ -29,14 +29,16 @@ automatic or it is a macro decision.*
 Gone: the console along the bottom — the 4×3 command card, the portrait with its info panel, the inventory grid, the
 control-group bar. That is the RTS surface, and it is the thing that makes the game unplayable on a phone.
 
-Kept: the world, the minimap (top-left, as now), the resource bar, and enough of a hero panel to read health, mana,
-level and cooldowns at a glance.
+Kept: the world, the minimap — moved out of the console's bottom-left slot to the **top-left corner**, since the
+console it used to sit in is not built — the resource bar (gold, lumber, supply) at the top right, and health and mana
+read **over the hero** herself, always, rather than in a portrait that is gone.
 
 Added:
 
 | where | what |
 |---|---|
 | bottom-left | **movement stick.** Drag anywhere in the left zone; the hero walks that way while the thumb is down |
+| over the hero | **health and mana.** Her two bars, drawn every frame, not only while a finger rests on her |
 | bottom-right | **skills**, 2 to 4 depending on the hero, in an arc where the thumb rests — plus the **usable equipment** |
 | bottom-right, above | **macro panel**, opened deliberately: train, build, and what the army is doing |
 
@@ -106,7 +108,9 @@ Settled, and no longer up for renegotiation without a good reason:
 4. **The stick is the only way to move.** No tap-to-move. This is a thumb game, not a mouse game.
 5. **The stick floats, but only in the left zone.** It appears under the thumb that lands in the left region of the
    screen (never over the minimap), and a right-side touch never starts it.
-6. **One-finger drag on the right side looks around**, and the camera returns to the hero when the finger lifts.
+6. **One-finger drag on the right side looks around**, and the camera returns to the hero when the finger lifts. A
+   drag on the minimap looks too, since a tap there has nothing to do: no selection to order, and a camera the hero
+   would pull straight back.
 7. **Skills aim by dragging from their button** and cast on release; no-target skills fire on tap.
 8. **Multiplayer is not a target yet**, but nothing in the design may exclude it — hero mode is the shape there too.
 9. **Four skill slots, always visible**, with the ultimate at the top-right of the arc. Passives take a slot like
@@ -117,12 +121,38 @@ Settled, and no longer up for renegotiation without a good reason:
     masked at load, with a ring drawn the way the stick's is.
 12. **Tapping an item on the ground walks the hero to it and picks it up** — the one tap that orders movement.
 
+13. **Health and mana are drawn over the hero, always.** The portrait panel that held them belongs to the console and
+    is not built; a phone has no hover, so the bars are simply there. Cooldowns and level join them in B.
+14. **The console is not built for a hero map.** Two of its pieces outlive it: the minimap moves to the top-left
+    corner, the resource bar stays at the top right, and the quest/menu/chat buttons move beside the minimap. Nothing
+    brings the console back — there is no key for it, and the one exception is a map with no hero for the local
+    player, which plays on the console because hero mode would have nothing to hand the player.
+
 Two consequences that were not obvious when the design was written:
 
 - **the hero must attack by itself.** With no right-click and no attack button, a hero that only walks can never
   fight. The hero acquires and attacks targets while standing, and stops when the stick is pushed.
 - **a mission with no hero cannot be hero mode.** Rather than hand the player a dead screen, hero mode stays inert
   and the RTS console is used for that mission until hero play can cover it.
+
+Five things the first run on the phone corrected, all of them places where the console was doing work nobody had
+noticed:
+
+- **`CPlayer.getHeroes()` is not every hero.** It is only filled by `CreateUnit`, so a hero placed in the map, or one
+  restored from a saved game, is missing from it — which is most campaign missions. Hero mode reads the player's units
+  as well, ordered by handle id.
+- **the world was letterboxed for a console that is not drawn.** The world viewport stops 0.21 of the height above the
+  screen bottom to leave room for the console; in hero mode it takes the whole screen, the way a Reforged cinematic
+  already did, and the camera's projection height scale goes back to 1.
+- **the hero's portrait is a 3D scene, not a frame.** Hiding `UnitPortrait` hides a frame that holds nothing; the scene
+  has to be turned off, and `positionPortrait` must not turn it back on.
+- **the resource bar and the quest/menu/chat buttons are children of `ConsoleUI`.** A hidden frame draws none of its
+  children, so they are moved to the root; their set points still name the console, which keeps being laid out.
+- **the control group bar, and the Shift button it draws, are not console frames.** They are drawn for any touch
+  scheme while the interface alpha is above zero, so hero mode has to say no explicitly.
+
+And one geometry trap: the interface is a 4:3 box centred in a wider viewport, so its x 0 is not the screen's left
+edge. Anything hero mode puts in a corner is offset by `(minWorldWidth - worldWidth) / 2`.
 
 ## Still open
 
@@ -137,7 +167,7 @@ Each is one branch and one PR. A and B are the interface, C and D are the simula
 
 | | issue | covers |
 |---|---|---|
-| A | hero shell and stick | console gone, camera on the hero, floating left stick, one-finger look-around, hero auto-attack |
+| A | hero shell and stick | console gone, camera on the hero, minimap to the top-left, health and mana over the hero, floating left stick, one-finger look-around, hero auto-attack |
 | B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
 | C | the army follows | a leash rule: an idle unit further than X from the hero walks back to Y |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |

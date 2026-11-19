@@ -431,6 +431,11 @@ final class MeleeUICinematics {
 		return this.interfaceFadeRate != 0f;
 	}
 
+	/** Whether the interface is one the map has asked to show; hero mode lets the camera be the game's while it is not. */
+	boolean isInterfaceShown() {
+		return this.interfaceShown;
+	}
+
 	float getGameInterfaceAlpha() {
 		if (!this.ui.userUIEnabled) {
 			return 0f;
@@ -508,6 +513,11 @@ final class MeleeUICinematics {
 	}
 
 	void updateInterfaceVisibility(final boolean show) {
+		if (this.ui.heroMode.isActive()) {
+			// The console is not part of this map: hero mode decides which surfaces exist and which follow a fade.
+			this.ui.heroMode.updateInterfaceVisibility(show);
+			return;
+		}
 		this.ui.consoleUI.setVisible(show);
 		this.ui.resourceBar.setVisible(show);
 		this.ui.timeIndicator.setVisible(show);

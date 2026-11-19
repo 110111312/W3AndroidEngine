@@ -41,7 +41,11 @@ import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.etheller.warsmash.viewer5.handlers.w3x.ui.command.FocusableFrame;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.campaign.CSaveStorage;
 import com.etheller.interpreter.ast.scope.GlobalScope;
+import com.etheller.warsmash.input.touch.ControlScheme;
+import com.etheller.warsmash.input.touch.HeroTouchHost;
 import com.etheller.warsmash.input.touch.PointKind;
+import com.etheller.warsmash.input.touch.TouchInputRouter;
+import com.etheller.warsmash.input.touch.TouchSettings;
 import com.etheller.warsmash.input.touch.VirtualCursor;
 import com.etheller.warsmash.datasources.DataSource;
 import com.etheller.warsmash.parsers.fdf.GameUI;
@@ -160,6 +164,9 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 	private final RootFrameListener rootFrameListener;
 	GameUI rootFrame;
 	UIFrame consoleUI;
+	/** The console's black backdrop under its tiled openings; hero mode hides it with the console. */
+	UIFrame consoleBackdrop;
+	final HeroMode heroMode;
 	UIFrame resourceBar;
 	StringFrame resourceBarGoldText;
 	StringFrame resourceBarLumberText;
@@ -458,6 +465,9 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 		this.localPlayer.addStateListener(this);
 		this.messages.watchSharedControl();
+		final TouchInputRouter touchRouter = TouchInputRouter.installedRouter();
+		this.heroMode = new HeroMode(this, touchRouter != null ? touchRouter.getSettings()
+				: TouchSettings.defaults(Gdx.graphics.getDensity(), ControlScheme.TOUCH));
 
 		this.musicSLK = new DataTable(StringBundle.EMPTY);
 		final String musicSLKPath = "UI\\SoundInfo\\Music.SLK";
@@ -549,10 +559,11 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 			final UIFrame consoleBackdrop = this.rootFrame.getTemplates().getFrame("ConsoleUIBackdrop") != null
 					? this.rootFrame.createFrame("ConsoleUIBackdrop", this.consoleUI, 0, 0)
 					: createClassicConsoleBackdrop();
-			((SimpleFrame) this.consoleUI).add(0,
-					consoleBackdrop instanceof BackdropFrame
-							? new ConsoleBackdrop((BackdropFrame) consoleBackdrop, this.infoPanel, this.consoleUI)
-							: consoleBackdrop);
+			final UIFrame consoleBackdropChild = consoleBackdrop instanceof BackdropFrame
+					? new ConsoleBackdrop((BackdropFrame) consoleBackdrop, this.infoPanel, this.consoleUI)
+					: consoleBackdrop;
+			((SimpleFrame) this.consoleUI).add(0, consoleBackdropChild);
+			this.consoleBackdrop = consoleBackdropChild;
 		}
 
 		this.menus.createTopBar();
@@ -720,8 +731,15 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.messages.showUpgradeCompleteAlert(playerIndex, queuedRawcode, level);
 	}
 
+	/** The hero-mode surface for the touch adapter, or null while this map plays on the RTS console. */
+	public HeroTouchHost getHeroTouch() {
+		return this.heroMode.isActive() ? this.heroMode : null;
+	}
+
 	@Override
 	public void update(final float deltaTime) {
+		// First, because hero mode resolves the hero the map's script made and the camera is hers from the first frame.
+		this.heroMode.update(deltaTime);
 		this.menus.updateAlliesButton();
 		if (this.replayPanel != null) {
 			this.replayPanel.update(deltaTime);
@@ -776,6 +794,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		this.hpBarFrameIndex = 0;
 		if (!this.allowDrag) {
 			if ((this.mouseOverUnit != null) && isSelectionOn(PRE_SELECT_OFF)
+					&& (this.mouseOverUnit != this.heroMode.getHeroRender())
 					&& this.input.isUnitSelectable(this.mouseOverUnit)) {
 				final SimpleStatusBarFrame simpleStatusBarFrame = this.tooltips.getHpBar();
 				this.tooltips.positionHealthBar(simpleStatusBarFrame, this.mouseOverUnit, 1.0f);
@@ -856,6 +875,8 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		if (GameOptions.get().isAlwaysShowStatusBars() && !MeleeUIInput.isAltDown() && this.consoleUI.isVisible()) {
 			this.tooltips.showAllStatusBars();
 		}
+		// Last, so the hero's own bar is always in the pool after the hover and selection bars.
+		this.heroMode.positionOverheadBar();
 		for (int i = this.hpBarFrameIndex; i < this.hpBarFrames.size(); i++) {
 			this.hpBarFrames.get(i).setVisible(false);
 		}
@@ -1048,6 +1069,7 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		if (fadingBatch != null) {
 			fadingBatch.setAlphaScale(1f);
 		}
+		this.heroMode.render(batch, this.shapeRenderer);
 		this.timeIndicator.setSequence(this.war3MapViewer.simulation.isFalseTimeOfDay() ? 1 : 0);
 		this.timeIndicator.setFrameByRatio(this.war3MapViewer.simulation.getGameTimeOfDay()
 				/ this.war3MapViewer.simulation.getGameplayConstants().getGameDayHours());
@@ -1095,7 +1117,9 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 		if (fadingBatch != null) {
 			fadingBatch.setAlphaScale(gameInterfaceAlpha);
 		}
-		final ControlGroupBar bar = gameInterfaceAlpha > 0f ? this.groups.getControlGroupBar() : null;
+		final ControlGroupBar bar = (gameInterfaceAlpha > 0f) && !this.heroMode.isActive()
+				? this.groups.getControlGroupBar()
+				: null;
 		if (bar != null) {
 			final int[] groupSizes = new int[ControlGroupBar.SLOT_COUNT];
 			final Texture[] groupIcons = new Texture[ControlGroupBar.SLOT_COUNT];
@@ -1214,10 +1238,11 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 	/**
 	 * Reforged cinematics show the world on the whole screen, where the classic letterbox keeps the world in the
-	 * area above the console.
+	 * area above the console. Hero mode has no console at all, so it wants that whole screen too.
 	 */
 	void updateWorldFrameViewport() {
-		final boolean fullScreen = this.reforgedCinematics && this.cinematicPanel.isVisible();
+		final boolean fullScreen = this.heroMode.isActive()
+				|| (this.reforgedCinematics && this.cinematicPanel.isVisible());
 		if ((fullScreen != this.worldFrameFullScreen) && (this.worldFrameWidth > 0)) {
 			this.worldFrameFullScreen = fullScreen;
 			this.cameraManager.resize(setupWorldFrameViewport(this.worldFrameWidth, this.worldFrameHeight));
@@ -1532,6 +1557,11 @@ public class MeleeUI implements CUnitStateListener, CommandButtonListener, Comma
 
 	@Override
 	public int touchOverlaySlotAt(final int screenX, final int screenY) {
+		if (this.heroMode.isActive()) {
+			// The control group bar and its Shift are the console's: hero mode's screen is the world, the minimap and
+			// the stick, and a tap on the right half is a look-around.
+			return -1;
+		}
 		return this.groups.touchOverlaySlotAt(screenX, screenY);
 	}
 
