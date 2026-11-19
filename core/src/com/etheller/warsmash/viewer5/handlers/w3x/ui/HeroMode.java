@@ -20,6 +20,7 @@ import com.etheller.warsmash.parsers.fdf.frames.SetPoint;
 import com.etheller.warsmash.parsers.fdf.frames.SimpleStatusBarFrame;
 import com.etheller.warsmash.parsers.fdf.frames.UIFrame;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.RenderUnit;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CHeroArmy;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
@@ -73,6 +74,8 @@ final class HeroMode implements HeroTouchHost {
 	private boolean looking;
 	private boolean moving;
 	private float worldPerScreenPixel = 1f;
+	/** The step the army's chase cap is next looked at on; see {@link CHeroArmy#RETREAT_SCAN_TICKS}. */
+	private int nextArmyScanTick = Integer.MIN_VALUE;
 
 	HeroMode(final MeleeUI ui, final TouchSettings settings) {
 		this.ui = ui;
@@ -99,6 +102,7 @@ final class HeroMode implements HeroTouchHost {
 		}
 		updateCamera();
 		updateStick();
+		updateArmy();
 	}
 
 	// ------------------------------------------------------------------ resolution
@@ -377,6 +381,14 @@ final class HeroMode implements HeroTouchHost {
 		this.orderTarget.x = this.hero.getX() + (directionX * ahead);
 		// The thumb is in screen space, where y grows downwards; the map's y grows upwards.
 		this.orderTarget.y = this.hero.getY() - (directionY * ahead);
+		issueHeroMoveOrder();
+		// The army walks around the same point, in formation and at its own pace. The hero's order above is untouched
+		// by it: she is never in the group, so the slowest follower cannot slow her down.
+		CHeroArmy.follow(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero, this.orderTarget.x,
+				this.orderTarget.y, this.ui.unitOrderListener);
+	}
+
+	private void issueHeroMoveOrder() {
 		final int localPlayerIndex = this.ui.war3MapViewer.getLocalPlayerIndex();
 		final BooleanAbilityActivationReceiver activationReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 		final PointAbilityTargetCheckReceiver targetReceiver = PointAbilityTargetCheckReceiver.INSTANCE;
@@ -397,6 +409,27 @@ final class HeroMode implements HeroTouchHost {
 				return;
 			}
 		}
+	}
+
+	/**
+	 * The chase cap, on the engine's own beat: the hero may walk off in the middle of a fight, and a unit she has left
+	 * more than {@link CHeroArmy#RETREAT_DISTANCE} behind gives the fight up and walks back to the formation. It is here
+	 * rather than in the stick's throttle because the hero may be standing still while a unit chases an enemy across
+	 * the map, which is the same rule reached the other way around.
+	 */
+	private void updateArmy() {
+		if (!canTakeTouches()) {
+			return;
+		}
+		final int tick = this.ui.war3MapViewer.simulation.getGameTurnTick();
+		if (tick < this.nextArmyScanTick) {
+			// The beat is kept in steps, not frames: frames come faster than steps, and a slow one may skip the step the
+			// beat falls on.
+			return;
+		}
+		this.nextArmyScanTick = tick + CHeroArmy.RETREAT_SCAN_TICKS;
+		CHeroArmy.giveUpFarChases(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero,
+				this.ui.unitOrderListener);
 	}
 
 	private void issueStopOrder() {
