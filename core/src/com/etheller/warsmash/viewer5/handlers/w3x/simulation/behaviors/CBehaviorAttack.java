@@ -12,6 +12,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.replacement.CUnitAttackModifier;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.replacement.CUnitAttackSettings;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CExactExpiry;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
@@ -57,6 +58,8 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 	private CUnitAttackModifier forcedModifier;
 	private CUnitAttackSettings settings;
 	private boolean throughFog;
+	/** Sustained by a plain attack order, one swing per tap by {@link OrderIds#attackonce}. */
+	private CSwingIntent intent = new CSwingIntent(false);
 
 	private float orderX;
 	private float orderY;
@@ -71,6 +74,7 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 		this.highlightOrderId = highlightOrderId;
 		this.attackListener = attackListener;
 		this.throughFog = false;
+		this.intent = new CSwingIntent(highlightOrderId == OrderIds.attackonce);
 
 		this.unitAttack = unitAttack;
 		this.damagePointLaunchTime = 0;
@@ -200,6 +204,55 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 		return this.attackListener.onFinish(simulation, this.unit);
 	}
 
+	/** True when this behaviour is running a one-tap intent: the swing the button bought and has not spent yet. */
+	public boolean isTapSwing() {
+		return (this.intent != null) && this.intent.isOneSwing();
+	}
+
+	/** True while a swing is in flight, from its start until the backswing is over. */
+	public boolean isSwinging() {
+		return (this.damagePointLaunchTime != 0) || (this.backSwingTime != 0);
+	}
+
+	/**
+	 * A tap for one more swing at the target this behaviour is already fighting. False when this is a new fight — a
+	 * different target, a behaviour that is not the one running, or a target that is no longer valid — and the caller
+	 * then resets as usual, which is a new engagement and pays the fire-on-sight wait.
+	 */
+	public boolean armOneMoreSwing(final CSimulation game, final AbilityTarget target) {
+		if ((this.intent == null) || !this.intent.isOneSwing() || (this.unit.getCurrentBehavior() != this)
+				|| !isSameTarget(target) || !checkTargetStillValid(game)) {
+			return false;
+		}
+		if (!this.intent.canArm(isSwinging(), this.damagePointLaunchTime == 0)) {
+			// Taken, and buys nothing: the swing this tap repeats has not landed yet, or has not even started. A quick
+			// double tap is one attack, because the second tap is the first one's impatience. Returning true keeps the
+			// behaviour exactly as it is; the caller then does not reset it either.
+			return true;
+		}
+		this.intent.arm();
+		return true;
+	}
+
+	private boolean isSameTarget(final AbilityTarget other) {
+		if (other == this.target) {
+			return true;
+		}
+		if ((other instanceof CWidget) && (this.target instanceof CWidget)) {
+			return ((CWidget) other).getHandleId() == ((CWidget) this.target).getHandleId();
+		}
+		return false;
+	}
+
+	/**
+	 * Whether another swing may begin once the one in flight is over: a sustained attack always, a one-tap intent only
+	 * while the player has tapped it. The tap is spent here, so one tap buys exactly one swing.
+	 */
+	private boolean nextSwingAllowed() {
+		// A behaviour restored from a save made before the intent existed has no intent: sustained, as it was.
+		return (this.intent == null) || this.intent.nextSwingAllowed();
+	}
+
 	private void cancelBackswing(final CSimulation simulation) {
 		this.backSwingTime = 0;
 		if (this.backswing != null) {
@@ -224,7 +277,8 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 			return;
 		}
 		this.backSwingTime = 0;
-		final CBehavior next = checkTargetStillValid(simulation) ? this.attackListener.onFirstUpdateAfterBackswing(this)
+		final CBehavior next = (checkTargetStillValid(simulation) && nextSwingAllowed())
+				? this.attackListener.onFirstUpdateAfterBackswing(this)
 				: this.attackListener.onFinish(simulation, this.unit);
 		if (next != this) {
 			this.unit.beginBehavior(simulation, next);
@@ -375,7 +429,8 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 		}
 		if ((this.backSwingTime != 0) && (this.damagePointLaunchTime == 0) && backswingOver(simulation)) {
 			this.backSwingTime = 0;
-			return this.attackListener.onFirstUpdateAfterBackswing(this);
+			return nextSwingAllowed() ? this.attackListener.onFirstUpdateAfterBackswing(this)
+					: this.attackListener.onFinish(simulation, this.unit);
 		}
 		return this;
 	}

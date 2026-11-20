@@ -43,7 +43,49 @@ Added:
 | bottom-right, above | **macro panel**, opened deliberately: train, build, and what the army is doing |
 
 The exact arrangement of the skill cluster, the equipment slots and the macro panel is settled later — the shape
-above is what the doc is asking to be true, not the final layout.
+above is what the doc is asking to be true, not the final layout. The skill cluster itself is settled: see
+[the skill tray](#the-skill-tray).
+
+### The skill tray
+
+![the skill tray](images/hero-tray-layout.png)
+
+Two arcs centred on the bottom-right corner, so the whole cluster is under the right thumb and the middle of the
+screen stays empty. The outer arc is the hero's four skills in data order, the ultimate last and therefore top-right.
+The inner arc is the big attack button with the two small item buttons beside it; any further usable items go in a
+row on the bottom edge, and four is the cap. Sizes in dp, all tuned on a phone:
+
+| | radius from the corner | size |
+|---|---|---|
+| skills 1-4 | 149 | 44 |
+| attack | 82 | 58 |
+| items a, b | 100 | 30 |
+| item row c, d | — | 30 |
+
+The first draft of these numbers was 6/5 of this and read as heavy on a 480 dpi phone; the picture is drawn from the
+table above.
+
+A slot shows the icon inside a border about 3 dp thick, a cooldown wedge, a blue tint when the mana is not there, a
+grey one when the spell cannot be used, and a "+" badge when there is a skill point this slot can take. The badge is
+its own hit area, because a tap on the circle itself means cast. An item button also carries how many uses it has
+left; a skill carries no number, because "1" on a freshly learned skill says nothing.
+
+Which gesture a slot takes comes from a table of ability classes:
+
+| type | gesture | preview |
+|---|---|---|
+| no target | tap | — |
+| single target | tap, then tap the target | a ring around the hero showing the range |
+| direction | drag | a line from the hero to the thumb |
+| ground | drag | a circle of the spell's area |
+
+A drag is measured from where the thumb went down, not from where it is: the aim starts on the hero and moves as far
+and in the direction the thumb moved, so the circle can be walked around her and out past her cast range, and a thumb
+that barely moved asks for a point beside her feet rather than at the corner of the screen where the tray sits.
+
+Dragging back into the button cancels, tapping the chosen button again cancels, and so does pushing the stick. An
+untargeted world tap does nothing — the stick is still the only way to move, and the one exception is a tap on an
+item on the ground, which is a smart order on that item.
 
 ## The army
 
@@ -181,11 +223,73 @@ Settled, and no longer up for renegotiation without a good reason:
     `blockedByUnit`, the test `CBehaviorMove` refuses a step by) who was in the way and moved that unit. The nudge was
     sound — the log even showed the blocked step and a free spot for it — but it fought the formation: the next slot
     order walked the unit straight back. Removing the slots removes the fight.
+19. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
+    to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
+    preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
+    and several spells the 1.29 data declares are not implemented at all, so the table maps ability classes (with
+    rawcode overrides) and anything outside it falls back on what the spell accepts.
+20. **An aim is a drag from the press, scaled to the spell, and stopped at its range.** The skill button is at the
+    corner of the screen and the hero is in the middle: reading the thumb absolutely would put the circle where the
+    button is the moment it is pressed, and every drag would move the circle the wrong way. So the press point is the
+    origin, the direction is the one the thumb went, and the distance is the drag scaled by range over 80 dp — a
+    sweep of about the tray-to-hero gap fills the ring for a short spell and a long one alike, which is what makes
+    the ring mean something. Past the ring the circle stops: a spell's reach is what the ring shows, and the engine
+    walks a caster into range of a target beyond it.
+    Two numbers the phone supplied: laying the world point of the finger straight onto the map (1:1) put the far end
+    of any range out of reach, and the data's unlimited range — Blink declares 99999 — used as a scale put the circle
+    ten thousand units away. A declared range at or above 5000, or none at all, now scales and stops at 1200.
+21. **A cast keeps the walk stick's orders off for its own moment.** A move order interrupts a spell here, as in the
+    game the engine comes from, and a held stick re-issues its move order every few frames, so every skill cast while
+    walking was cancelled before it fired — instant ones included, because a cast with an animation is still a cast.
+    For `HeroCastHold`'s time, the stick issues nothing; the thumb keeps its direction and takes over again when the
+    hold ends, so the hero stops, casts, and carries on. The time is per skill (300 ms was too short for both Fan of
+    Knives and Blink; 700 and 800 are measured on the phone), it is a table rather than a data field because nothing
+    in the ability data describes a cast's length — a unit's cast point is only a multiplier on a model's spell
+    sequence — and 1500 ms is the ceiling whichever skill asks.
+22. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
+    a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
+    item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.
+23. **The big attack button gives target focus, and the hero never fights on her own.** She swings only when the
+    button is tapped: her own target scan is off, so an enemy that walks up to a standing hero is ignored. The button
+    orders an attack on the nearest thing in reach, so a hero can be picked out of the crowd — and so a gate can be
+    broken. What it may pick is not "an enemy": a destructable gate and a Neutral Passive building are legitimate
+    targets, because Neutral Passive is allied to everybody only so that a right click walks instead of attacking.
+    The hero's own side is not, which is why the rule asks `isNeutralPassive` rather than the alliance alone. The order
+    is not the smart order a right click sends — a smart order on a neutral building is a walk by design.
 
+    **One tap, one swing.** The order is `attackonce`, not the sustained `attack`: after the swing the hero stops
+    unless the button is tapped again. A tap that lands after the swing it repeats has landed its hit is remembered
+    rather than lost, and it arms one more swing on the behaviour that is already running instead of re-ordering her.
+    That distinction is the whole feature: a fresh attack order wipes the backswing latch, the cooldown snapshot and
+    the wait before the first swing, so re-ordering per tap would cost up to a quarter second before every swing and
+    feel mushy. A tap that lands *before* that hit — in the windup, or before the swing has even started — buys
+    nothing, because it is the previous tap's impatience rather than a second intent: that is why a quick double tap
+    is one attack and not two. One arm at most, so a burst of taps still buys one swing; a queue would let a masher
+    stock swings and would be auto-attack through the back door. A tap on a different target is a new order, which is
+    a new engagement and is meant to settle briefly.
+
+    **A tap while walking.** With a thumb on the stick the player has already said where she is going, so the tap
+    chases only a step: a target she can reach within a quarter second of walking, and it gives up the moment the
+    target outruns that — a chase across the lane would take her somewhere the player did not send her. Standing still,
+    the tap still
+    walks her into range as far as the acquisition range. While the swing she asked for is owed, the stick's move
+    orders go quiet: a move order ends the attack behaviour before its damage point, so without the quiet the swing
+    was ordered and taken back in the same frame, and the button did nothing at all while walking. A swing that has
+    started is finished whatever the thumb does, for the same reason, and the thumb's direction is not lost: she walks
+    again the moment the swing is over, without a lift and a re-press. Letting go of the stick mid-swing sends no stop
+    either: the attack ends on its own and leaves her standing. That quiet only covers a swing the button bought, so a
+    script that orders the hero to attack still lets the player walk her out of it.
+24. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
+    the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
+    the tray keeps its own masked copy per icon.
+25. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a press
+    on a skill does not have to lift the stick first; a second finger that is not on the tray stays a camera pan.
 Two consequences that were not obvious when the design was written:
 
-- **the hero must attack by itself.** With no right-click and no attack button, a hero that only walks can never
-  fight. The hero acquires and attacks targets while standing, and stops when the stick is pushed.
+- **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
+  the button exists at all. That was first built as an auto-acquire so she would fight while the player was busy, and
+  the phone rejected it: a hero who picks her own fights makes the player feel she is not under their control. She now
+  fights only when the button is tapped, one swing per tap.
 - **a mission with no hero cannot be hero mode.** Rather than hand the player a dead screen, hero mode stays inert
   and the RTS console is used for that mission until hero play can cover it.
 

@@ -254,6 +254,12 @@ final class CUnitAcquisition {
 
 	private static boolean autoAcquireAttackTargets(final CUnit self, final CSimulation game, final boolean disableMove,
 			final boolean attackRangeOnly) {
+		if (!self.auto.autoAcquire) {
+			// The unit fights only when it is told to: hero mode turns this off for the hero, so that a swing is
+			// something the player asked for. Attack-move and the priority scan come through here too, so one check
+			// covers every way the engine could otherwise pick a fight for her.
+			return false;
+		}
 		if (!self.getCurrentAttacks().isEmpty() && !self.classifications.contains(CUnitClassification.PEON)) {
 			if (self.placement.collisionRectangle != null) {
 				CWidget.tempRect.set(self.placement.collisionRectangle);

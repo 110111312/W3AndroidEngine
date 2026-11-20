@@ -57,4 +57,20 @@ public interface GestureListener {
 
 	/** The gesture in progress was aborted, for example by the system or a palm; nothing should be carried out. */
 	void cancel();
+
+	/**
+	 * A second finger landed while the first one's gesture is still running. A screen that has something for it — a
+	 * hero-mode skill button, where the finger aims while the other thumb walks — answers true and then gets this
+	 * finger's movements and its lift through {@link #secondaryMove} and {@link #secondaryUp}, while the first
+	 * finger's gesture carries on untouched. Answering false leaves everything as it was: two fingers are a pan.
+	 */
+	default boolean secondaryDown(final float x, final float y, final int pointerId) {
+		return false;
+	}
+
+	default void secondaryMove(final float x, final float y) {
+	}
+
+	default void secondaryUp(final float x, final float y) {
+	}
 }
