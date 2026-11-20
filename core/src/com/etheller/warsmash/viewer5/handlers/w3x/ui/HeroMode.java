@@ -388,6 +388,15 @@ final class HeroMode implements HeroTouchHost {
 		return this.active && this.ui.userControlEnabled && !this.hero.isDead();
 	}
 
+	/**
+	 * The camera's screen space counts up from the bottom of the canvas; the touch layer counts down from the top of
+	 * the window. Every ray this class casts goes through here, because a ray cast with the wrong way up is not a
+	 * small error: a thumb at the bottom of the screen becomes a finger at the top of the world.
+	 */
+	private float canvasY(final float screenY) {
+		return this.ui.war3MapViewer.canvas.getHeight() - screenY;
+	}
+
 	private boolean isRightHalf(final float screenX) {
 		MeleeUI.screenCoordsVector.set(screenX, 0f);
 		return this.ui.uiViewport.unproject(MeleeUI.screenCoordsVector).x >= (this.ui.uiViewport.getMinWorldWidth()
@@ -620,7 +629,9 @@ final class HeroMode implements HeroTouchHost {
 			learnSkill(slot);
 			return;
 		}
-		switch (castTypeOf(slot)) {
+		final HeroCastType type = castTypeOf(slot);
+		Log.info("Hero mode: skill " + slot + " tapped, level " + state.level + ", type " + type);
+		switch (type) {
 		case NO_TARGET:
 			this.armedSlot = -1;
 			castNoTarget(slot);
@@ -674,8 +685,9 @@ final class HeroMode implements HeroTouchHost {
 	private void updateAim(final float screenX, final float screenY) {
 		final float planeZ = this.ui.war3MapViewer.terrain.getGroundHeight(this.hero.getX(), this.hero.getY());
 		this.ui.war3MapViewer.getClickLocationOnZPlane(this.aimPress, Math.round(this.pressX),
-				Math.round(this.pressY), planeZ);
-		this.ui.war3MapViewer.getClickLocationOnZPlane(this.aimDrag, Math.round(screenX), Math.round(screenY), planeZ);
+				Math.round(canvasY(this.pressY)), planeZ);
+		this.ui.war3MapViewer.getClickLocationOnZPlane(this.aimDrag, Math.round(screenX), Math.round(canvasY(screenY)),
+				planeZ);
 		HeroAim.fromDrag(this.hero.getX(), this.hero.getY(), this.aimPress.x, this.aimPress.y, this.aimDrag.x,
 				this.aimDrag.y, this.aimScratch);
 		this.aimLocation.x = this.aimScratch[0];
@@ -749,6 +761,7 @@ final class HeroMode implements HeroTouchHost {
 		if (!target.isTargetable()) {
 			return;
 		}
+		Log.info("Hero mode: casting " + ability.getAlias() + " on the spot");
 		this.ui.unitOrderListener.issueImmediateOrder(this.hero.getHandleId(), ability.getHandleId(), orderId, false);
 	}
 
@@ -821,7 +834,8 @@ final class HeroMode implements HeroTouchHost {
 		final int orderId = HeroTray.orderIdOf(ability);
 		final CSimulation simulation = this.ui.war3MapViewer.simulation;
 		final int playerIndex = this.ui.war3MapViewer.getLocalPlayerIndex();
-		final RenderWidget picked = this.ui.war3MapViewer.rayPickUnit(screenX, screenY, new CWidgetFilterFunction() {
+		final RenderWidget picked = this.ui.war3MapViewer.rayPickUnit(screenX, canvasY(screenY),
+				new CWidgetFilterFunction() {
 			@Override
 			public boolean call(final CWidget widget) {
 				if ((widget == null) || widget.isDead()) {
@@ -838,7 +852,8 @@ final class HeroMode implements HeroTouchHost {
 
 	/** An item on the ground: a smart order on the item itself, since a point order there walks past it. */
 	private boolean tapGroundItem(final float screenX, final float screenY) {
-		final RenderWidget picked = this.ui.war3MapViewer.rayPickUnit(screenX, screenY, new CWidgetFilterFunction() {
+		final RenderWidget picked = this.ui.war3MapViewer.rayPickUnit(screenX, canvasY(screenY),
+				new CWidgetFilterFunction() {
 			@Override
 			public boolean call(final CWidget widget) {
 				return widget instanceof CItem;

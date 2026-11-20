@@ -425,10 +425,11 @@ public final class RtsTouchAdapter implements GestureListener {
 	public boolean secondaryDown(final float x, final float y, final int pointerId) {
 		final HeroTouchHost heroTouch = heroTouch();
 		if ((heroTouch == null) || !heroTouch.beginSkill(x, y)) {
+			log("second finger " + pointerId + " at " + (int) x + "," + (int) y + " is not on the tray");
 			return false;
 		}
 		this.heroAim = true;
-		log("hero aim while walking");
+		log("hero aim taken by the second finger");
 		return true;
 	}
 
@@ -442,6 +443,7 @@ public final class RtsTouchAdapter implements GestureListener {
 
 	@Override
 	public void secondaryUp(final float x, final float y) {
+		log("second finger up at " + (int) x + "," + (int) y + (this.heroAim ? ", aiming" : ", not aiming"));
 		if (!this.heroAim) {
 			return;
 		}

@@ -134,6 +134,23 @@ class SecondaryPointerTest {
 		send(0, PointerEvent.Action.MOVE, 240, 700, time + 30);
 	}
 
+	/**
+	 * A tap is a press and a release with nothing between them: the tray has to treat that as a tap and not as a drag
+	 * that came back to its button, which would cancel the cast. This is the exact event stream a tap on the tray sends
+	 * while the other thumb walks, and it is the case that was silently cancelling.
+	 */
+	@Test
+	void aTapOfTheSecondFingerIsOnePressAndOneReleaseWithNoDrag() {
+		walking(1000);
+		send(1, PointerEvent.Action.DOWN, 900, 800, 1100);
+		send(1, PointerEvent.Action.UP, 902, 801, 1180);
+		send(0, PointerEvent.Action.MOVE, 280, 700, 1240);
+		send(0, PointerEvent.Action.UP, 280, 700, 1300);
+
+		assertEquals(List.of("pressed", "dragStart", "drag", "secondaryDown", "secondaryUp", "drag", "dragEnd"),
+				this.recorder.calls);
+	}
+
 	@Test
 	void aTakenSecondFingerAimsWhileTheFirstOneKeepsDragging() {
 		walking(1000);
