@@ -29,6 +29,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidgetFilterFunction;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.GetAbilityByRawcodeVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.hero.CAbilityHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.inventory.CAbilityInventory;
@@ -633,7 +634,7 @@ final class HeroMode implements HeroTouchHost {
 			return true;
 		}
 		if (this.tray.attackAt(point.x, point.y)) {
-			attackNearestEnemy();
+			attackNearestTarget();
 			return true;
 		}
 		if (this.armedSlot >= 0) {
@@ -936,27 +937,38 @@ final class HeroMode implements HeroTouchHost {
 				false);
 	}
 
-	/** The attack button: an order on the nearest enemy, so that a hero can be picked out of the crowd. */
-	private void attackNearestEnemy() {
+	/**
+	 * The attack button: an order on the nearest thing the hero's weapons accept, so that a hero can be picked out of
+	 * the crowd and a gate can be broken. Units and destructables alike, with a neutral building left in and the
+	 * hero's own side left out — see {@link HeroAttackTarget}. The order is {@link OrderIds#attack} rather than the
+	 * smart order a right click makes, because a smart order on a neutral building is a walk, by design.
+	 */
+	private void attackNearestTarget() {
 		final CSimulation simulation = this.ui.war3MapViewer.simulation;
 		final int playerIndex = this.ui.war3MapViewer.getLocalPlayerIndex();
-		final float range = Math.max(400f, this.hero.getUnitType().getDefaultAcquisitionRange());
-		CUnit nearest = null;
-		double best = Double.MAX_VALUE;
-		for (final CUnit unit : simulation.getUnits()) {
-			if ((unit == this.hero) || unit.isDead() || unit.isHidden() || (unit.getPlayerIndex() == playerIndex)) {
-				continue;
-			}
-			final double distance = this.hero.distance(unit);
-			if ((distance <= range) && (distance < best)) {
-				best = distance;
-				nearest = unit;
-			}
-		}
-		if (nearest == null) {
+		final CAbilityAttack attack = this.hero.getFirstAbilityOfType(CAbilityAttack.class);
+		if (attack == null) {
 			return;
 		}
-		issueSmartOrderOn(nearest);
+		final CWidget target = HeroAttackTarget.nearest(HeroAttackTarget.candidates(simulation),
+				HeroAttackTarget.rangeOf(this.hero.getUnitType().getDefaultAcquisitionRange()),
+				candidate -> this.hero.distance(candidate),
+				candidate -> HeroAttackTarget.isPickable(simulation, playerIndex, this.hero, candidate)
+						&& acceptsAttackOrder(simulation, playerIndex, attack, candidate));
+		if (target == null) {
+			return;
+		}
+		this.ui.unitOrderListener.issueTargetOrder(this.hero.getHandleId(), attack.getHandleId(), OrderIds.attack,
+				target.getHandleId(), false);
+	}
+
+	/** Whether the hero's own attack ability takes this widget, which is the only test of "attackable" here. */
+	private boolean acceptsAttackOrder(final CSimulation simulation, final int playerIndex,
+			final CAbilityAttack attack, final CWidget candidate) {
+		final CWidgetAbilityTargetCheckReceiver receiver = CWidgetAbilityTargetCheckReceiver.INSTANCE;
+		receiver.reset();
+		attack.checkCanTarget(simulation, this.hero, playerIndex, OrderIds.attack, false, candidate, receiver);
+		return receiver.getTarget() != null;
 	}
 
 	/**

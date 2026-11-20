@@ -208,7 +208,12 @@ Settled, and no longer up for renegotiation without a good reason:
     a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
     item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.
 21. **The big attack button gives target focus.** The hero auto-attacks without being told, but auto-attack picks
-    its own target; the button orders an attack on the nearest enemy so a hero can be picked out of the crowd.
+    its own target; the button orders an attack on the nearest thing in reach, so a hero can be picked out of the
+    crowd — and so a gate can be broken. What it may pick is not "an enemy": a destructable gate and a Neutral
+    Passive building are legitimate targets, because Neutral Passive is allied to everybody only so that a right
+    click walks instead of attacking. The hero's own side is not, which is why the rule asks
+    `isNeutralPassive` rather than the alliance alone. The order is the attack order the console's attack button
+    sends, not the smart order a right click sends — a smart order on a neutral building is a walk by design.
 22. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
     the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
     the tray keeps its own masked copy per icon.
