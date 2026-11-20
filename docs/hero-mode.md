@@ -55,10 +55,9 @@ Units belong to the player but are not commanded one by one. Their standing orde
 - **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
   elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition; a unit
   that already has a target, or an enemy inside its own acquisition range, is not pulled out of it to reach a slot;
-- **never cross** her, so that tight ground opens on its own: a unit behind her takes a slot behind her, a unit ahead of
-  her keeps walking ahead, and in a dead end or a corridor she backs out of that is exactly the "the army leads her
-  out" order — the side with the free path goes first — while a unit standing on the very cell she is stepping into is
-  told to step one cell aside;
+- **never cross** her, and never be slotted at all while she walks: every unit keeps its own depth along her way and is
+  held a corridor to one side of her line, so the cell she is stepping into is never a target and tight ground opens on
+  its own — in a dead end the squad ahead of her walks out and she follows into the ground it leaves;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
   free; regrouping while the hero stands still is the script's job (D);
 - **not die stupidly** — no walking into towers, no standing in the middle of nothing, no chasing a lone unit into a
@@ -152,27 +151,31 @@ Settled, and no longer up for renegotiation without a good reason:
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
-18. **The army never crosses the hero.** Slots are read per unit against the line she is walking on: a unit behind her
-    takes a slot in the trailing block, a unit ahead of her takes one further along the way she is going, and neither is
-    ever sent to the other side. `CGroupMove` lays its rows around the point it is given, so the trailing block is
-    pulled back until its front row stands on her own line, and the leading one is pushed until its back row is clear of
-    her feet. That one rule is what tight ground needs, and it needs no timer and no memory: in a dead end, or in a
-    corridor she has to back out of, the squad that walked in ahead of her is ahead of her *in the new direction*, so it
-    keeps walking and she follows into the ground it leaves. When she stops, the units in front are left where they
-    stand — calling them back would send them through her, which is the whole problem. Nothing in the engine pushes a
-    unit aside (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that
-    stand still) and hero mode has no selection with which the player could move one himself, so the side rule is the
-    only thing that can unblock her at all. The first attempt watched her progress and led for a second instead; the
-    phone showed the army flipping ahead, back, ahead, because a timer cannot know which side of her a unit is on. The
-    second phone run found the one case a slot cannot answer: a unit standing exactly where the formation wants it, on
-    the cell she is about to step into. It has no reason to move and she cannot pass it, so the order that reaches it
-    is "one cell aside": `makeRoom` asks the engine's own step test (`CUnitPlacement.blockedByUnit`, the same one
-    `CBehaviorMove` refuses the step by) whether her next cell is taken, takes the army unit standing nearest to that
-    cell, and orders it to the first free cell one cell to its side — the side it already leans to, so the same order
-    comes out on every beat instead of shuffling it between the two sides. It keeps its place along her way, so it
-    never walks forward or back, and it is dropped from that beat's formation so the block does not call it straight
-    back. Nothing is remembered: the next beat reads where the unit actually is. A unit in a fight is not in the roster
-    and is not moved — she waits for that one, as the original game would.
+18. **The army is not slotted while she walks.** A block of slots is a set of positions nobody has checked for
+    walkability: `CGroupMove.slots` lays its rows around the point it is given, and in a corridor or a corner most of
+    them land in trees, so the units stand wherever there is room — which is around her feet — and the stick re-aims
+    them at those cells four times a second. That was the bug the phone kept finding: she was not blocked by the map,
+    she was blocked by her own formation standing in the cell she was stepping into, and no amount of nudging it aside
+    fixed the next cell.
+
+    So the march is per unit, and it is two numbers. Each unit keeps **its own depth** along her way, and is held at
+    least `CORRIDOR` (110, wider than her three-cell footprint) to **one side of her line**: `marchTo`. The point is
+    measured from the hero, so it travels as she walks, and a unit is never given a cell that is not its own ground.
+    Two rules fall out of it: a unit more than `MARCH_BACK` (300) behind her aims at that depth instead, so a straggler
+    catches up; a unit already ahead of her keeps its own depth, so it marches on at its own pace and is never sent back
+    through her. Her own path is the one piece of ground known to be walkable, which is why following it cannot jam.
+
+    The block still exists, but only when she stops: `formUp` runs the old slot formation for the units behind her, with
+    the front row on her own line (or out at her attack range, for a ranged hero, who shoots over the front rank). That
+    is when a formation is both cheap and visible, and it is also the only moment it cannot block anything.
+
+    What this replaced, and why it kept failing: a progress timer that led the army for a second (the phone showed it
+    flipping ahead, back, ahead — a timer cannot know which side of a unit is on); a side rule that slotted units ahead
+    of her or behind her (the oscillation stopped, but the front row still stood level with her, 96 units wide, on the
+    cell she needed); and a "step one cell aside" order that asked the engine's own step test (`CUnitPlacement`
+    `blockedByUnit`, the test `CBehaviorMove` refuses a step by) who was in the way and moved that unit. The nudge was
+    sound — the log even showed the blocked step and a free spot for it — but it fought the formation: the next slot
+    order walked the unit straight back. Removing the slots removes the fight.
 
 Two consequences that were not obvious when the design was written:
 

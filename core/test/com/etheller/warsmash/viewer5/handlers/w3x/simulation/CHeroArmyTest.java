@@ -1,6 +1,5 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,7 +42,7 @@ class CHeroArmyTest {
 	private static final int HERO_HANDLE_ID = 100;
 
 	@Test
-	void anIdleFollowerFormsUpOnTheHerosOwnLine() {
+	void aFollowerBehindHerMarchesOnItsOwnDepthOutOfHerCorridor() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
 		final Orders orders = new Orders();
@@ -53,20 +52,21 @@ class CHeroArmyTest {
 		assertEquals(List.of(1), orders.unitHandleIds);
 		assertEquals(List.of(MOVE_ABILITY_HANDLE_ID), orders.abilityHandleIds);
 		assertEquals(List.of(OrderIds.move), orders.orderIds);
-		// A melee hero is the front of the block: the slot is her own line, not the stick's point 300 units ahead.
-		assertEquals(List.of(0f), orders.xs);
-		assertEquals(List.of(0f), orders.ys);
+		// Its own depth along the stick's way, and one corridor to its own side: the stick's point 500 units off is not
+		// where it is sent, because that ground is not known to be walkable.
+		assertEquals(List.of(130f), orders.xs);
+		assertEquals(List.of(-10f), orders.ys);
 	}
 
 	@Test
-	void aRangedHeroKeepsTheFrontRankAtHerReach() {
+	void aRangedHeroHoldsTheFrontRankAtHerReachWhenSheStops() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		giveRangedAttack(hero, 600);
 		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
-		// The stick points straight along +x, so the front line is the hero's position plus her range on that axis.
-		CHeroArmy.follow(game(hero, follower), PLAYER, hero, 300f, 0f, orders.listener());
+		// She faces +x on her own line, so the front line of the block she forms on stopping is her range along it.
+		CHeroArmy.formUp(game(hero, follower), PLAYER, hero, orders.listener());
 
 		assertEquals(List.of(600f), orders.xs);
 		assertEquals(List.of(0f), orders.ys);
@@ -141,13 +141,16 @@ class CHeroArmyTest {
 	@Test
 	void aFightingFollowerJoinsTheFormationOnceTheHeroIsAThousandOff() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit fighting = unit(1, CHeroArmy.RETREAT_DISTANCE + 1f, 0f, CBehaviorAttack.class);
+		final CUnit fighting = unit(1, -CHeroArmy.RETREAT_DISTANCE - 1f, 0f, CBehaviorAttack.class);
 		final Orders orders = new Orders();
 
-		CHeroArmy.follow(game(hero, fighting), PLAYER, hero, 300f, 400f, orders.listener());
+		CHeroArmy.follow(game(hero, fighting), PLAYER, hero, 300f, 0f, orders.listener());
 
+		// The fight it is in is further behind her than the chase cap, so the stick wins: it comes back to the catch-up
+		// depth rather than staying where it is.
 		assertEquals(List.of(1), orders.unitHandleIds);
 		assertEquals(List.of(OrderIds.move), orders.orderIds);
+		assertEquals(List.of(-300f), orders.xs);
 	}
 
 	@Test
@@ -180,21 +183,22 @@ class CHeroArmyTest {
 	 * to keep walking that way and she follows into the ground it leaves. It is never sent back through her.
 	 */
 	@Test
-	void aFollowerAheadOfTheHeroKeepsWalkingAhead() {
+	void aFollowerAheadOfTheHeroKeepsItsDepthAndStepsAside() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit inTheCorridor = unit(1, 300f, 0f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
 		CHeroArmy.follow(game(hero, inTheCorridor), PLAYER, hero, 300f, 0f, orders.listener());
 
+		// It keeps the depth it had — it is never sent back through her — and moves out of the corridor she walks in.
 		assertEquals(List.of(1), orders.unitHandleIds);
-		assertEquals(List.of(400f), orders.xs);
-		assertEquals(List.of(0f), orders.ys);
+		assertEquals(List.of(300f), orders.xs);
+		assertEquals(List.of(110f), orders.ys);
 	}
 
-	/** One order per side, and the side each unit stands on decides which: nobody crosses her. */
+	/** One order per unit, each on its own place along her way: no block, nothing to stand in the ground she needs. */
 	@Test
-	void theArmyIsSplitOnTheLineTheHeroWalks() {
+	void theArmyMarchesOnOneOrderWithoutSlots() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit behind = unit(1, -300f, 0f, CBehaviorStop.class);
 		final CUnit ahead = unit(2, 300f, 0f, CBehaviorStop.class);
@@ -202,32 +206,47 @@ class CHeroArmyTest {
 
 		CHeroArmy.follow(game(hero, behind, ahead), PLAYER, hero, 300f, 0f, orders.listener());
 
-		assertEquals(List.of("issueGroupPointOrder", "issueGroupPointOrder"), orders.calls);
+		assertEquals(List.of("issueGroupPointOrder"), orders.calls);
 		assertEquals(List.of(1, 2), orders.unitHandleIds);
-		assertEquals(List.of(0f, 400f), orders.xs);
+		assertEquals(List.of(-300f, 300f), orders.xs);
 	}
 
 	@Test
-	void aFollowerLevelWithTheHeroIsKeptBehindHer() {
-		// The front row of the trailing block stands on her own line; it must not be read as having overtaken her.
+	void aFollowerStandingOnHerLineIsSentOutOfHerCorridor() {
+		// The case the phone found: a unit level with her, standing in the cell she is about to step into. Its depth is
+		// kept, so it neither runs ahead nor falls back, and it steps {@link CHeroArmy#CORRIDOR} away from her line.
 		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit level = unit(1, 100f, 0f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
 		CHeroArmy.follow(game(hero, level), PLAYER, hero, 300f, 0f, orders.listener());
 
-		assertEquals(List.of(0f), orders.xs);
+		assertEquals(List.of(100f), orders.xs);
+		assertEquals(List.of(110f), orders.ys);
 	}
 
 	@Test
-	void theLeadingBlockIsPushedOffTheHerosFeet() {
-		// Two rows as CGroupMove centres them on the point it is given: aimed at her, so the back row is behind her.
-		final float[] slots = { 0f, 142f, 0f, -142f };
+	void aStragglerIsSentToTheDepthItCatchesUpOn() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit far = unit(1, -1000f, 0f, CBehaviorStop.class);
+		final Orders orders = new Orders();
 
-		CHeroArmy.placeClearOfHer(slots, 0f, 0f, 0f, 1f, 100f);
+		CHeroArmy.follow(game(hero, far), PLAYER, hero, 300f, 0f, orders.listener());
 
-		assertEquals(384f, slots[1], 1e-4f);
-		assertEquals(100f, slots[3], 1e-4f);
+		assertEquals(List.of(-300f), orders.xs);
+	}
+
+	@Test
+	void aFollowerOutsideTheCorridorIsGivenNoOrder() {
+		// It is already where the march wants it: ordering it to its own feet would only make the engine separate it
+		// from the units around it, which is the shuffling this rule set exists to avoid.
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit beside = unit(1, -200f, 300f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, beside), PLAYER, hero, 300f, 0f, orders.listener());
+
+		assertTrue(orders.calls.isEmpty());
 	}
 
 	@Test
@@ -277,30 +296,6 @@ class CHeroArmyTest {
 		CHeroArmy.follow(game(hero, own, anotherPlayers), PLAYER, hero, 300f, 400f, orders.listener());
 
 		assertEquals(List.of(1), orders.unitHandleIds);
-	}
-
-	@Test
-	void aUnitInHerWayIsSentToTheSideItLeansTo() {
-		assertArrayEquals(new float[] { 0f, 52f, 0f, -12f },
-				CHeroArmy.asideFrom(0f, 20f, 0f, 0f, 1f, 0f), 1e-4f);
-		assertArrayEquals(new float[] { 0f, -52f, 0f, 12f },
-				CHeroArmy.asideFrom(0f, -20f, 0f, 0f, 1f, 0f), 1e-4f);
-	}
-
-	@Test
-	void aUnitExactlyOnHerLineAlwaysGoesTheSameWay() {
-		// Which side is decided by where the unit already is, so a unit on her line cannot flip between the two and
-		// shuffle in and out of her way.
-		assertArrayEquals(new float[] { 0f, 32f, 0f, -32f }, CHeroArmy.asideFrom(0f, 0f, 0f, 0f, 1f, 0f), 1e-4f);
-	}
-
-	@Test
-	void aUnitIsNeverSentForwardOrBack() {
-		// A step aside keeps the unit's place along her way: it walks out of her path and nothing else changes.
-		final float[] aside = CHeroArmy.asideFrom(40f, 25f, 0f, 0f, 1f, 0f);
-
-		assertEquals(40f, aside[0], 1e-4f);
-		assertEquals(40f, aside[2], 1e-4f);
 	}
 
 	private static CSimulation game(final CUnit... units) {
