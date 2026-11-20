@@ -43,7 +43,49 @@ Added:
 | bottom-right, above | **macro panel**, opened deliberately: train, build, and what the army is doing |
 
 The exact arrangement of the skill cluster, the equipment slots and the macro panel is settled later — the shape
-above is what the doc is asking to be true, not the final layout.
+above is what the doc is asking to be true, not the final layout. The skill cluster itself is settled: see
+[the skill tray](#the-skill-tray).
+
+### The skill tray
+
+![the skill tray](images/hero-tray-layout.png)
+
+Two arcs centred on the bottom-right corner, so the whole cluster is under the right thumb and the middle of the
+screen stays empty. The outer arc is the hero's four skills in data order, the ultimate last and therefore top-right.
+The inner arc is the big attack button with the two small item buttons beside it; any further usable items go in a
+row on the bottom edge, and four is the cap. Sizes in dp, all tuned on a phone:
+
+| | radius from the corner | size |
+|---|---|---|
+| skills 1-4 | 149 | 44 |
+| attack | 82 | 58 |
+| items a, b | 100 | 30 |
+| item row c, d | — | 30 |
+
+The first draft of these numbers was 6/5 of this and read as heavy on a 480 dpi phone; the picture is drawn from the
+table above.
+
+A slot shows the icon inside a border about 3 dp thick, a cooldown wedge, a blue tint when the mana is not there, a
+grey one when the spell cannot be used, and a "+" badge when there is a skill point this slot can take. The badge is
+its own hit area, because a tap on the circle itself means cast. An item button also carries how many uses it has
+left; a skill carries no number, because "1" on a freshly learned skill says nothing.
+
+Which gesture a slot takes comes from a table of ability classes:
+
+| type | gesture | preview |
+|---|---|---|
+| no target | tap | — |
+| single target | tap, then tap the target | a ring around the hero showing the range |
+| direction | drag | a line from the hero to the thumb |
+| ground | drag | a circle of the spell's area |
+
+A drag is measured from where the thumb went down, not from where it is: the aim starts on the hero and moves as far
+and in the direction the thumb moved, so the circle can be walked around her and out past her cast range, and a thumb
+that barely moved asks for a point beside her feet rather than at the corner of the screen where the tray sits.
+
+Dragging back into the button cancels, tapping the chosen button again cancels, and so does pushing the stick. An
+untargeted world tap does nothing — the stick is still the only way to move, and the one exception is a tap on an
+item on the ground, which is a smart order on that item.
 
 ## The army
 
@@ -139,6 +181,39 @@ Settled, and no longer up for renegotiation without a good reason:
     distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
+18. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
+    to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
+    preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
+    and several spells the 1.29 data declares are not implemented at all, so the table maps ability classes (with
+    rawcode overrides) and anything outside it falls back on what the spell accepts.
+19. **An aim is a drag from the press, scaled to the spell, and stopped at its range.** The skill button is at the
+    corner of the screen and the hero is in the middle: reading the thumb absolutely would put the circle where the
+    button is the moment it is pressed, and every drag would move the circle the wrong way. So the press point is the
+    origin, the direction is the one the thumb went, and the distance is the drag scaled by range over 80 dp — a
+    sweep of about the tray-to-hero gap fills the ring for a short spell and a long one alike, which is what makes
+    the ring mean something. Past the ring the circle stops: a spell's reach is what the ring shows, and the engine
+    walks a caster into range of a target beyond it.
+    Two numbers the phone supplied: laying the world point of the finger straight onto the map (1:1) put the far end
+    of any range out of reach, and the data's unlimited range — Blink declares 99999 — used as a scale put the circle
+    ten thousand units away. A declared range at or above 5000, or none at all, now scales and stops at 1200.
+24. **A cast keeps the walk stick's orders off for its own moment.** A move order interrupts a spell here, as in the
+    game the engine comes from, and a held stick re-issues its move order every few frames, so every skill cast while
+    walking was cancelled before it fired — instant ones included, because a cast with an animation is still a cast.
+    For `HeroCastHold`'s time, the stick issues nothing; the thumb keeps its direction and takes over again when the
+    hold ends, so the hero stops, casts, and carries on. The time is per skill (300 ms was too short for both Fan of
+    Knives and Blink; 700 and 800 are measured on the phone), it is a table rather than a data field because nothing
+    in the ability data describes a cast's length — a unit's cast point is only a multiplier on a model's spell
+    sequence — and 1500 ms is the ceiling whichever skill asks.
+20. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
+    a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
+    item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.
+21. **The big attack button gives target focus.** The hero auto-attacks without being told, but auto-attack picks
+    its own target; the button orders an attack on the nearest enemy so a hero can be picked out of the crowd.
+22. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
+    the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
+    the tray keeps its own masked copy per icon.
+23. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a press
+    on a skill does not have to lift the stick first; a second finger that is not on the tray stays a camera pan.
 
 Two consequences that were not obvious when the design was written:
 

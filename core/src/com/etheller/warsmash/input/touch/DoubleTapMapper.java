@@ -280,6 +280,26 @@ public final class DoubleTapMapper implements GestureListener {
 		this.delegate.cancel();
 	}
 
+	/**
+	 * A finger the screen takes for itself — the hero tray's aim — goes straight through: the mapper only holds taps
+	 * back, and a claimed finger never becomes a tap. Dropping these three here is how the aim silently became a
+	 * camera pan, because the default refusal let the recognizer fall back to a two finger gesture.
+	 */
+	@Override
+	public boolean secondaryDown(final float x, final float y, final int pointerId) {
+		return this.delegate.secondaryDown(x, y, pointerId);
+	}
+
+	@Override
+	public void secondaryMove(final float x, final float y) {
+		this.delegate.secondaryMove(x, y);
+	}
+
+	@Override
+	public void secondaryUp(final float x, final float y) {
+		this.delegate.secondaryUp(x, y);
+	}
+
 	private void log(final String message) {
 		if (this.debugLog) {
 			Gdx.app.log(LOG_TAG, message);

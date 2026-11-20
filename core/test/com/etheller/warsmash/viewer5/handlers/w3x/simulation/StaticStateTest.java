@@ -184,6 +184,9 @@ class StaticStateTest {
 			"w3x.ui.MeleeScoreScreen#BAR_FRAME_HEIGHT", "w3x.ui.MeleeScoreScreen#BAR_CENTER",
 			"w3x.ui.MeleeScoreScreen#SORT_COLUMN", "w3x.ui.MeleeUICinematics#REFORGED_GRAPHICS_PACKAGES",
 			"w3x.ui.MeleeUITeamResources#UPKEEP_COLORS", "w3x.ui.menu.CampaignCatalog#FORSAKEN_KINGDOM_MAPS",
+			// The hero tray's layout and cast-type tables: the picture in docs/images/hero-tray-layout.png as numbers.
+			"w3x.ui.HeroTray#SKILL_ANGLE", "w3x.ui.HeroTray#ITEM_INNER_ANGLE", "w3x.ui.HeroTray#ITEM_ROW_X",
+			"w3x.ui.HeroCastTypes#DIRECTION",
 			"w3x.ui.MenuCampaigns#CAMPAIGN_DIFFICULTIES", "w3x.ui.MenuCampaigns#CAMPAIGN_DIFFICULTY_KEYS",
 			"w3x.ui.ReforgedLoadingScreen#BACKGROUNDS", "w3x.ui.ReforgedLoadingScreen#RACE_CRESTS",
 			"w3x.ui.ReforgedLoadingScreen#RACE_ICONS", "w3x.ui.ReforgedLoadingScreen#PLAYER_COLORS",
