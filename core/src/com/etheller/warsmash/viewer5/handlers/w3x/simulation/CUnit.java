@@ -1817,6 +1817,18 @@ public class CUnit extends CWidget {
 		return this.auto.autoTargetable;
 	}
 
+	/**
+	 * Whether the unit picks targets of its own accord. Hero mode turns this off for the hero, so that she swings only
+	 * when the attack button is tapped: see {@link CUnitAutoState#autoAcquire}.
+	 */
+	public boolean isAutoAcquire() {
+		return this.auto.autoAcquire;
+	}
+
+	public void setAutoAcquire(final boolean autoAcquire) {
+		this.auto.autoAcquire = autoAcquire;
+	}
+
 	public void setWorker(final CUnit unit, final boolean inside) {
 		this.production.worker = unit;
 		this.production.workerInside = inside;

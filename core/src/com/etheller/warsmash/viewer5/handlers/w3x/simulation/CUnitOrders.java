@@ -149,8 +149,8 @@ final class CUnitOrders {
 			// Measured (1.29): an order makes the unit look at once, but not before a new unit's first look.
 			self.acquisition.nextIdleAcquireScanTick = Math.max(game.getGameTurnTick(),
 					self.acquisition.firstIdleAcquireScanTick);
-			if ((order != null)
-					&& ((order.getOrderId() == OrderIds.attack) || (order.getOrderId() == OrderIds.smart))) {
+			if ((order != null) && ((order.getOrderId() == OrderIds.attack)
+					|| (order.getOrderId() == OrderIds.attackonce) || (order.getOrderId() == OrderIds.smart))) {
 				final AbilityTarget orderTarget = order.getTarget(game);
 				final CUnit orderTargetUnit = (orderTarget != null) ? orderTarget.visit(AbilityTargetVisitor.UNIT)
 						: null;
