@@ -451,6 +451,9 @@ final class HeroMode implements HeroTouchHost {
 		}
 		// Stop is issued without an ability when none carries it, exactly as the script's own order native does.
 		this.ui.unitOrderListener.issueImmediateOrder(this.hero.getHandleId(), abilityHandleId, OrderIds.stop, false);
+		// She stopped short of the point the stick named, so the army settles around her instead of walking on to it.
+		CHeroArmy.formUp(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero,
+				this.ui.unitOrderListener);
 	}
 
 	// ------------------------------------------------------------------ the camera

@@ -50,8 +50,8 @@ above is what the doc is asking to be true, not the final layout.
 Units belong to the player but are not commanded one by one. Their standing orders:
 
 - **follow** the hero as a formation: when the hero moves, the army receives the same group move the console gives a
-  multi-unit selection — rank-sorted slots around the hero's destination, marching as one block at the army's own
-  slowest pace, never slowing the hero;
+  multi-unit selection — rank-sorted slots with the hero at the front of the block, marching at the army's own slowest
+  pace, never slowing the hero, and settling around her when she stops;
 - **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
   elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
@@ -130,10 +130,15 @@ Settled, and no longer up for renegotiation without a good reason:
     corner, the resource bar stays at the top right, and the quest/menu/chat buttons move beside the minimap. Nothing
     brings the console back — there is no key for it, and the one exception is a map with no hero for the local
     player, which plays on the console because hero mode would have nothing to hand the player.
-15. **When the hero moves, the army moves in formation.** Each idle follower gets a `CGroupMove` slot around the
-    hero's stick destination — the engine's own group move, rank-sorted so melee front and ranged back are
-    data-driven. The hero is excluded from the group's speed link: the stick answers at the hero's own speed, and
-    the army links among itself so it marches as one block.
+15. **When the hero moves, the army moves in formation, and the hero keeps the front of it.** Each idle follower
+    gets a `CGroupMove` slot — the engine's own group move, rank-sorted so melee front and ranged back are
+    data-driven — but the block's front row stands on the hero's own line, because `CGroupMove` centres its rows on
+    the point it is given and a block centred on her destination walks inside her and body-blocks her (the first
+    phone run). The front line is her position for a melee hero, who wants the army behind her, and her position
+    plus her own attack range for a ranged one, who fights from behind the rank in front of her. When she stops, the
+    army forms up around her rather than walking on to the point the last stick order named. The hero is excluded
+    from the group's speed link: the stick answers at the hero's own speed, and the army links among itself so it
+    marches as one block.
 16. **A fighting unit ignores hero movement** and keeps its target while the player moves, casts and attacks freely.
     Only a hero more than **1000** away turns the order into a retreat: break combat, join the formation. The
     distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero.

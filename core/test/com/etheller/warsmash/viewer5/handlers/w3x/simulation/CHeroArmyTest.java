@@ -18,13 +18,17 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorAttackMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorStop;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CWeaponType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttackMissile;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 
 /**
- * The rule set of the army's follow order: who walks, who keeps fighting, and when the hero is too far. What the
- * order does once it is issued — walking, fighting, the formation's shape — is the engine's and is not mocked here.
+ * The rule set of the army's follow order: who walks, who keeps fighting, when the hero is too far, and where the
+ * block stands relative to her. What the order does once it is issued — walking, fighting, the formation's shape — is
+ * the engine's and is not mocked here.
  */
 class CHeroArmyTest {
 	private static final int PLAYER = 0;
@@ -32,8 +36,8 @@ class CHeroArmyTest {
 	private static final int HERO_HANDLE_ID = 100;
 
 	@Test
-	void anIdleFollowerWalksToASlotAroundThePoint() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+	void anIdleFollowerFormsUpOnTheHerosOwnLine() {
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
@@ -42,14 +46,57 @@ class CHeroArmyTest {
 		assertEquals(List.of(1), orders.unitHandleIds);
 		assertEquals(List.of(MOVE_ABILITY_HANDLE_ID), orders.abilityHandleIds);
 		assertEquals(List.of(OrderIds.move), orders.orderIds);
-		// One walker takes the point itself; the formation is CGroupMove's and is not re-tested here.
-		assertEquals(List.of(300f), orders.xs);
-		assertEquals(List.of(400f), orders.ys);
+		// A melee hero is the front of the block: the slot is her own line, not the stick's point 300 units ahead.
+		assertEquals(List.of(0f), orders.xs);
+		assertEquals(List.of(0f), orders.ys);
+	}
+
+	@Test
+	void aRangedHeroKeepsTheFrontRankAtHerReach() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		giveRangedAttack(hero, 600);
+		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		// The stick points straight along +x, so the front line is the hero's position plus her range on that axis.
+		CHeroArmy.follow(game(hero, follower), PLAYER, hero, 300f, 0f, orders.listener());
+
+		assertEquals(List.of(600f), orders.xs);
+		assertEquals(List.of(0f), orders.ys);
+	}
+
+	@Test
+	void theFrontRowIsPlacedOnTheFrontLineAndNothingAheadOfIt() {
+		// Two rows as CGroupMove centres them on the point it is given: one row past it, one row behind, marching +y.
+		final float[] slots = { 60f, 142f, -60f, 142f, 60f, -142f, -60f, -142f };
+
+		CHeroArmy.placeBehind(slots, 0f, 0f, 0f, 1f);
+
+		for (int i = 0; i < slots.length; i += 2) {
+			assertTrue(slots[i + 1] <= 0f, "no unit is left in front of the line the hero walks on");
+		}
+		// The row that was ahead now stands exactly on the line; the one behind only moved by the same amount.
+		assertEquals(0f, slots[1], 1e-4f);
+		assertEquals(0f, slots[3], 1e-4f);
+		assertEquals(-284f, slots[5], 1e-4f);
+	}
+
+	@Test
+	void theArmyFormsUpAroundTheHeroWhenSheStops() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit follower = unit(1, 800f, 0f, CBehaviorMove.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.formUp(game(hero, follower), PLAYER, hero, orders.listener());
+
+		// Walking on to the old point is what piled the squad up in front of her.
+		assertEquals(List.of(0f), orders.xs);
+		assertEquals(List.of(0f), orders.ys);
 	}
 
 	@Test
 	void aFollowerAlreadyWalkingIsSentToTheNewFormation() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit follower = unit(1, 50f, 50f, CBehaviorMove.class);
 		final Orders orders = new Orders();
 
@@ -62,7 +109,7 @@ class CHeroArmyTest {
 
 	@Test
 	void aFightingFollowerKeepsItsTargetWhileTheHeroMoves() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit attacking = unit(1, 300f, 0f, CBehaviorAttack.class);
 		final CUnit attackMoving = unit(2, 400f, 0f, CBehaviorAttackMove.class);
 		final Orders orders = new Orders();
@@ -74,7 +121,7 @@ class CHeroArmyTest {
 
 	@Test
 	void aFightingFollowerJoinsTheFormationOnceTheHeroIsAThousandOff() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit fighting = unit(1, CHeroArmy.RETREAT_DISTANCE + 1f, 0f, CBehaviorAttack.class);
 		final Orders orders = new Orders();
 
@@ -86,7 +133,7 @@ class CHeroArmyTest {
 
 	@Test
 	void aChaseTheHeroIsFarFromIsGivenUpOnTheScanBeat() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit chaser = unit(1, 1200f, 0f, CBehaviorAttack.class);
 		final Orders orders = new Orders();
 
@@ -100,7 +147,7 @@ class CHeroArmyTest {
 
 	@Test
 	void aChaseWithinReachIsLeftAlone() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit chaser = unit(1, CHeroArmy.RETREAT_DISTANCE, 0f, CBehaviorAttack.class);
 		final Orders orders = new Orders();
 
@@ -117,7 +164,7 @@ class CHeroArmyTest {
 
 	@Test
 	void onlyThePlayersOwnUnitsAreOrdered() {
-		final CUnit hero = unit(HERO_HANDLE_ID, 0f, 0f, CBehaviorStop.class);
+		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit own = unit(1, 50f, 50f, CBehaviorStop.class);
 		final CUnit anotherPlayers = unit(2, 60f, 60f, CBehaviorStop.class);
 		TestObjects.set(anotherPlayers, "playerIndex", PLAYER + 1);
@@ -133,6 +180,20 @@ class CHeroArmyTest {
 		TestObjects.set(game, "units", new ArrayList<>(Arrays.asList(units)));
 		TestObjects.set(game, "newUnits", new ArrayList<CUnit>());
 		return game;
+	}
+
+	private static CUnit hero(final Class<? extends CBehavior> behavior) {
+		return unit(HERO_HANDLE_ID, 0f, 0f, behavior);
+	}
+
+	/** A hero who shoots: her own attack range is what sets how far in front of her the front rank stands. */
+	private static void giveRangedAttack(final CUnit hero, final int range) {
+		final CUnitAttack attack = TestObjects.allocate(CUnitAttackMissile.class);
+		TestObjects.set(attack, "range", range);
+		TestObjects.set(attack, "weaponType", CWeaponType.MISSILE);
+		final List<CUnitAttack> attacks = new ArrayList<>();
+		attacks.add(attack);
+		TestObjects.set(hero, "unitSpecificCurrentAttacks", attacks);
 	}
 
 	private static CUnit unit(final int handleId, final float x, final float y,
