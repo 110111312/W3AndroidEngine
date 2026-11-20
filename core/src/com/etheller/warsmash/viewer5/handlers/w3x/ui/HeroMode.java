@@ -99,6 +99,11 @@ final class HeroMode implements HeroTouchHost {
 	private final Vector2 heroUi2 = new Vector2();
 	private final Vector2 aimUi2 = new Vector2();
 	private final float[] aimScratch = new float[2];
+	/** How far a thumb has to drag for the aim to reach the full cast range, whatever the spell's range is. */
+	private static final float AIM_FULL_RANGE_DP = 80f;
+	/** Until this time the walk stick keeps its move orders to itself, so a cast made while walking can finish. */
+	private long stickHoldUntilMs;
+
 	/** The last press, in screen pixels, so that a lift that never moved can be told from a drag back to the button. */
 	private float pressX;
 	private float pressY;
@@ -393,6 +398,18 @@ final class HeroMode implements HeroTouchHost {
 	 * the window. Every ray this class casts goes through here, because a ray cast with the wrong way up is not a
 	 * small error: a thumb at the bottom of the screen becomes a finger at the top of the world.
 	 */
+	/** A thumb's comfortable sweep, in dp: the drag that puts the aim on the range ring for any spell. */
+	private float aimDragForFullRangePx() {
+		final float density = (Gdx.graphics != null) ? Gdx.graphics.getDensity() : 1f;
+		return AIM_FULL_RANGE_DP * ((density > 0f) ? density : 1f);
+	}
+
+	/** Keeps the stick's move orders off for as long as this skill's cast needs, so walking does not cancel it. */
+	private void holdStickFor(final CAbility ability) {
+		final long now = TimeUtils.millis();
+		this.stickHoldUntilMs = Math.max(this.stickHoldUntilMs, now + HeroCastHold.holdMs(ability));
+	}
+
 	private float canvasY(final float screenY) {
 		return this.ui.war3MapViewer.canvas.getHeight() - screenY;
 	}
@@ -422,6 +439,11 @@ final class HeroMode implements HeroTouchHost {
 
 	private void updateStick() {
 		if (!this.stick.isActive()) {
+			return;
+		}
+		if (TimeUtils.millis() < this.stickHoldUntilMs) {
+			// A skill is still starting: a move order now would interrupt it, which is what stopped every cast made
+			// while walking. The thumb keeps its direction and takes over again when the hold ends.
 			return;
 		}
 		if (!canTakeTouches()) {
@@ -544,7 +566,10 @@ final class HeroMode implements HeroTouchHost {
 		}
 		this.aimingSlot = slot;
 		this.armedSlot = -1;
+		this.pressX = screenX;
+		this.pressY = screenY;
 		updateAim(screenX, screenY);
+		Gdx.app.log("Warsmash", "aim began on skill " + slot + " at " + (int) screenX + "," + (int) screenY);
 		return true;
 	}
 
@@ -562,9 +587,19 @@ final class HeroMode implements HeroTouchHost {
 			return;
 		}
 		this.aimingSlot = -1;
+		final boolean moved = Math.hypot(screenX - this.pressX,
+				screenY - this.pressY) > this.settings.tapSlopPx;
+		Gdx.app.log("Warsmash", "aim lift on skill " + slot + (moved ? " after a drag" : " without moving"));
+		if (!moved) {
+			// A finger that never left its button is a tap, however it arrived: a second thumb on the tray while the
+			// other one walks sends exactly this, and reading it as "dragged back to cancel" cancelled every one.
+			tappedSkill(slot);
+			return;
+		}
 		final Vector2 point = toUi(screenX, screenY, this.uiPoint);
 		if (this.tray.stillOnSlot(slot, point.x, point.y)) {
-			// Back on the button it started from: the player changed their mind, as on the command card.
+			// Dragged out and brought back onto the button it started from: the player changed their mind.
+			Gdx.app.log("Warsmash", "aim cancelled back on the button");
 			return;
 		}
 		updateAim(screenX, screenY);
@@ -688,8 +723,12 @@ final class HeroMode implements HeroTouchHost {
 				Math.round(canvasY(this.pressY)), planeZ);
 		this.ui.war3MapViewer.getClickLocationOnZPlane(this.aimDrag, Math.round(screenX), Math.round(canvasY(screenY)),
 				planeZ);
-		HeroAim.fromDrag(this.hero.getX(), this.hero.getY(), this.aimPress.x, this.aimPress.y, this.aimDrag.x,
-				this.aimDrag.y, this.aimScratch);
+		final CAbility ability = (this.aimingSlot >= 0) ? this.tray.skills[this.aimingSlot].ability : null;
+		final float range = (ability == null) ? 0f : HeroTray.castRangeOf(ability);
+		final float perPx = (range > 0f) ? range / aimDragForFullRangePx() : 0f;
+		HeroAim.fromScaledDrag(this.hero.getX(), this.hero.getY(), this.aimPress.x, this.aimPress.y, this.aimDrag.x,
+				this.aimDrag.y, (float) Math.hypot(screenX - this.pressX, screenY - this.pressY), perPx, range,
+				this.aimScratch);
 		this.aimLocation.x = this.aimScratch[0];
 		this.aimLocation.y = this.aimScratch[1];
 		this.aimLocation.z = planeZ;
@@ -762,6 +801,7 @@ final class HeroMode implements HeroTouchHost {
 			return;
 		}
 		Log.info("Hero mode: casting " + ability.getAlias() + " on the spot");
+		holdStickFor(ability);
 		this.ui.unitOrderListener.issueImmediateOrder(this.hero.getHandleId(), ability.getHandleId(), orderId, false);
 	}
 
@@ -785,6 +825,7 @@ final class HeroMode implements HeroTouchHost {
 			reportError(receiver.getExternStringKey());
 			return;
 		}
+		holdStickFor(ability);
 		this.ui.unitOrderListener.issuePointOrder(this.hero.getHandleId(), ability.getHandleId(), orderId, target.x,
 				target.y, false);
 	}
@@ -806,6 +847,7 @@ final class HeroMode implements HeroTouchHost {
 		if (resolved == null) {
 			return;
 		}
+		holdStickFor(ability);
 		this.ui.unitOrderListener.issueTargetOrder(this.hero.getHandleId(), ability.getHandleId(), orderId,
 				resolved.getHandleId(), false);
 	}

@@ -31,6 +31,50 @@ class HeroTrayLogicTest {
 
 	// ------------------------------------------------------------------ slots
 
+	/**
+	 * The aim is scaled, not mapped one to one: the same sweep of the thumb reaches the range ring whatever the spell's
+	 * range is, because a spell reaches hundreds of units and a thumb moves centimetres.
+	 */
+	@Test
+	void aSweepOfTheThumbReachesTheRangeRingWhateverTheSpellReaches() {
+		final float[] out = new float[2];
+		final float fullDragPx = 240f;
+		// A 900 unit spell: 240 px of drag is exactly its range, and more drag does not pass it.
+		final float perPx = 900f / fullDragPx;
+		HeroAim.fromScaledDrag(0f, 0f, 0f, 0f, 100f, 0f, 100f, perPx, 900f, out);
+		assertEquals(375f, out[0], 0.01f);
+		assertEquals(0f, out[1], 0.01f);
+		HeroAim.fromScaledDrag(0f, 0f, 0f, 0f, 240f, 0f, 240f, perPx, 900f, out);
+		assertEquals(900f, out[0], 0.01f);
+		HeroAim.fromScaledDrag(0f, 0f, 0f, 0f, 900f, 0f, 900f, perPx, 900f, out);
+		assertEquals(900f, out[0], 0.01f);
+
+		// A 300 unit spell: the same 240 px still fills its ring, and it is clamped there.
+		final float shortPerPx = 300f / fullDragPx;
+		HeroAim.fromScaledDrag(0f, 0f, 0f, 0f, 240f, 0f, 240f, shortPerPx, 300f, out);
+		assertEquals(300f, out[0], 0.01f);
+	}
+
+	/** The direction comes from the world points, the distance from how far the thumb went, even up and left. */
+	@Test
+	void aScaledAimKeepsTheThumbsDirectionAndStopsShortOfNothingElse() {
+		final float[] out = new float[2];
+		// Thumb went 300 left and 300 up on the ground, 200 px of drag, 2 units per px, range 800.
+		HeroAim.fromScaledDrag(10f, 20f, 310f, 320f, 10f, 20f, 200f, 2f, 800f, out);
+		assertEquals(10f - (400f / (float) Math.sqrt(2f)), out[0], 0.01f);
+		assertEquals(20f - (400f / (float) Math.sqrt(2f)), out[1], 0.01f);
+		// A thumb that never moved points nowhere: the aim is on the hero, not somewhere with a direction from nothing.
+		HeroAim.fromScaledDrag(10f, 20f, 500f, 500f, 500f, 500f, 0f, 2f, 800f, out);
+		assertEquals(10f, out[0], 0.01f);
+		assertEquals(20f, out[1], 0.01f);
+	}
+
+	/** A skill the table does not name still gets a hold, because a cast that has an animation is still a cast. */
+	@Test
+	void everySkillGetsACastHoldEvenWhenItIsNotNamed() {
+		assertEquals(HeroCastHold.DEFAULT_MS, 400L);
+	}
+
 	@Test
 	void theTrayShowsTheHeroesFirstFourSkillsInDataOrder() {
 		final List<War3ID> skills = new ArrayList<>(List.of(id("AEfk"), id("AEmb"), id("AEbl"), id("AEsh"),
