@@ -204,6 +204,11 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 		return this.attackListener.onFinish(simulation, this.unit);
 	}
 
+	/** True when this behaviour is running a one-tap intent: the swing the button bought and has not spent yet. */
+	public boolean isTapSwing() {
+		return (this.intent != null) && this.intent.isOneSwing();
+	}
+
 	/**
 	 * A tap for one more swing at the target this behaviour is already fighting. False when this is a new fight — a
 	 * different target, a behaviour that is not the one running, or a target that is no longer valid — and the caller

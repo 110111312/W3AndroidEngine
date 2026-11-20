@@ -30,6 +30,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidgetFilterFunction;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityAttack;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorAttack;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.GetAbilityByRawcodeVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.hero.CAbilityHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.inventory.CAbilityInventory;
@@ -123,6 +125,9 @@ final class HeroMode implements HeroTouchHost {
 	private int aimingSlot = -1;
 	/** A single-target skill that is waiting for the tap on its target, or -1. */
 	private int armedSlot = -1;
+	/** A press that landed on the attack button or an item, remembered so the lift can act on it. */
+	private boolean pressedAttack;
+	private int pressedItem = -1;
 
 	HeroMode(final MeleeUI ui, final TouchSettings settings) {
 		this.ui = ui;
@@ -367,9 +372,26 @@ final class HeroMode implements HeroTouchHost {
 		this.stick.end();
 		if (this.moving) {
 			this.moving = false;
-			issueStopOrder();
+			if (!isSwingCommitting()) {
+				// A stop now would cancel the swing the tap bought before its damage point. The attack ends on its own
+				// and leaves her standing, which is what the lift was asking for anyway.
+				issueStopOrder();
+			}
 		}
 		this.emitter.reset();
+	}
+
+	/**
+	 * Whether the hero is working through a tapped attack — walking the last step to its target, waiting out the wait
+	 * before its first swing, or swinging. The behaviour is one per unit and is only ever current because the button was
+	 * tapped, so this is also "the swing the player asked for is still owed".
+	 */
+	private boolean isSwingCommitting() {
+		if (this.hero == null) {
+			return false;
+		}
+		final CBehaviorAttack attack = this.hero.getAttackBehavior();
+		return (this.hero.getCurrentBehavior() == attack) && attack.isTapSwing();
 	}
 
 	@Override
@@ -452,6 +474,13 @@ final class HeroMode implements HeroTouchHost {
 		}
 		if (!canTakeTouches()) {
 			endStick();
+			return;
+		}
+		if (isSwingCommitting()) {
+			// A tapped attack owns the hero until its swing has landed. A move order now would end the attack
+			// behaviour before its damage point, which is why tapping attack while walking used to do nothing at all:
+			// the swing was ordered and the stick took it back in the same frame. The thumb keeps its direction and
+			// walks again the moment the swing is over, without having to be lifted and pressed again.
 			return;
 		}
 		if (!this.stick.hasDirection()) {
@@ -565,9 +594,17 @@ final class HeroMode implements HeroTouchHost {
 		final Vector2 point = toUi(screenX, screenY, this.uiPoint);
 		final int slot = this.tray.skillAt(point.x, point.y);
 		if (slot < 0) {
-			// The items and the attack button act on the lift, so a drag that starts on them belongs to nobody.
-			return (this.tray.itemAt(point.x, point.y) >= 0) || this.tray.attackAt(point.x, point.y);
+			// The items and the attack button act on the lift, so a drag that starts on them belongs to nobody. They
+			// are remembered here because with the stick held this is the only way they are ever reached: the second
+			// thumb's lift arrives with no skill aiming, and endSkill used to drop it on the floor.
+			this.pressX = screenX;
+			this.pressY = screenY;
+			this.pressedAttack = this.tray.attackAt(point.x, point.y);
+			this.pressedItem = this.tray.itemAt(point.x, point.y);
+			return this.pressedAttack || (this.pressedItem >= 0);
 		}
+		this.pressedAttack = false;
+		this.pressedItem = -1;
 		this.aimingSlot = slot;
 		this.armedSlot = -1;
 		this.pressX = screenX;
@@ -587,6 +624,7 @@ final class HeroMode implements HeroTouchHost {
 	public void endSkill(final float screenX, final float screenY) {
 		final int slot = this.aimingSlot;
 		if (slot < 0) {
+			releasePressedButton(screenX, screenY);
 			return;
 		}
 		this.aimingSlot = -1;
@@ -611,6 +649,31 @@ final class HeroMode implements HeroTouchHost {
 	public void cancelSkill() {
 		this.aimingSlot = -1;
 		this.armedSlot = -1;
+		this.pressedAttack = false;
+		this.pressedItem = -1;
+	}
+
+	/**
+	 * The lift of a press that landed on the attack button or an item. They act on the lift rather than on the press,
+	 * the same as a skill, so that a drag beginning on one of them is still a drag and not a command.
+	 */
+	private void releasePressedButton(final float screenX, final float screenY) {
+		final boolean attack = this.pressedAttack;
+		final int item = this.pressedItem;
+		this.pressedAttack = false;
+		this.pressedItem = -1;
+		if (!attack && (item < 0)) {
+			return;
+		}
+		if (Math.hypot(screenX - this.pressX, screenY - this.pressY) > this.settings.tapSlopPx) {
+			// Dragged away from the button it started on: the player changed their mind.
+			return;
+		}
+		if (attack) {
+			attackNearestTarget();
+		} else {
+			useItem(item);
+		}
 	}
 
 	@Override
@@ -953,16 +1016,30 @@ final class HeroMode implements HeroTouchHost {
 		if (attack == null) {
 			return;
 		}
+		// A thumb on the stick has already said where she is going, so a tap may only take a target she can strike from
+		// where she stands. An out-of-reach tap while walking is not a chase order: it is nothing, and she keeps
+		// walking, the way the mobile grammars behave. Standing still, the tap still walks her into range as before.
+		final boolean walking = this.stick.isActive() && this.stick.hasDirection();
 		final CWidget target = HeroAttackTarget.nearest(HeroAttackTarget.candidates(simulation),
 				HeroAttackTarget.rangeOf(this.hero.getUnitType().getDefaultAcquisitionRange()),
 				candidate -> this.hero.distance(candidate),
 				candidate -> HeroAttackTarget.isPickable(simulation, playerIndex, this.hero, candidate)
+						&& (!walking || canStrikeNow(candidate))
 						&& acceptsAttackOrder(simulation, playerIndex, attack, candidate));
 		if (target == null) {
 			return;
 		}
 		this.ui.unitOrderListener.issueTargetOrder(this.hero.getHandleId(), attack.getHandleId(), OrderIds.attackonce,
 				target.getHandleId(), false);
+	}
+
+	/** Whether the hero could swing at this widget from where she stands: her own weapon's reach, as the engine tests it. */
+	private boolean canStrikeNow(final CWidget candidate) {
+		float reach = 0f;
+		for (final CUnitAttack weapon : this.hero.getCurrentAttacks()) {
+			reach = Math.max(reach, weapon.getRange());
+		}
+		return this.hero.canReach(candidate, reach);
 	}
 
 	/** Whether the hero's own attack ability takes this widget, which is the only test of "attackable" here. */
