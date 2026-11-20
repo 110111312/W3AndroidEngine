@@ -46,29 +46,34 @@ final class HeroTray {
 	static final int SKILL_SLOTS = HeroSkillSlots.SLOT_COUNT;
 	static final int ITEM_BUTTONS = HeroItemSlots.MAX_BUTTONS;
 
-	// Everything below is dp measured from the interface's bottom-right corner, and matches the drawn layout.
-	private static final float SKILL_RADIUS = 26f;
-	private static final float SKILL_RING = 175.5f;
+	// Everything below is dp measured from the interface's bottom-right corner, and matches the drawn layout. They
+	// came down a sixth from the picture's numbers after the first look on a 480 dpi phone, where 52 dp circles read
+	// as heavy. The picture is regenerated from these.
+	private static final float SKILL_RADIUS = 22f;
+	private static final float SKILL_RING = 149f;
 	/** Slot 1 to slot 4, in data order: the last one is the ultimate, and it is the top-right of the arc. */
 	private static final float[] SKILL_ANGLE = { 172f, 148f, 124f, 100f };
-	private static final float ATTACK_RADIUS = 34f;
-	private static final float ATTACK_RING = 97f;
+	private static final float ATTACK_RADIUS = 29f;
+	private static final float ATTACK_RING = 82.5f;
 	private static final float ATTACK_ANGLE = 133.7f;
-	private static final float ITEM_RADIUS = 18f;
+	private static final float ITEM_RADIUS = 15f;
 	/** The two item buttons of the inner arc, on either side of the attack button. */
-	private static final float ITEM_INNER_RING = 118f;
+	private static final float ITEM_INNER_RING = 100f;
 	private static final float[] ITEM_INNER_ANGLE = { 104f, 165.7f };
 	/** Further usable items, in a row along the bottom edge, left of the inner arc. */
-	private static final float ITEM_ROW_Y = 24f;
-	private static final float[] ITEM_ROW_X = { 252f, 310f };
+	private static final float ITEM_ROW_Y = 20f;
+	private static final float[] ITEM_ROW_X = { 214f, 264f };
 	/** The "+" sits on its slot's ring, up and to the right, so that the icon it belongs to still casts. */
-	private static final float BADGE_OFFSET = 18f;
-	private static final float BADGE_RADIUS = 13f;
+	private static final float BADGE_OFFSET = 15f;
+	private static final float BADGE_RADIUS = 11f;
+	/** The border the buttons are drawn with, and the ring it is cut out of. */
+	private static final float BORDER = 2.5f;
 	private static final int SEGMENTS = 40;
 	private static final int WEDGE_SEGMENTS = 24;
 
-	private static final Color RING_COLOR = new Color(1f, 1f, 1f, 0.45f);
-	private static final Color RING_ARMED_COLOR = new Color(0.5f, 0.85f, 1f, 0.95f);
+	private static final Color RING_COLOR = new Color(1f, 1f, 1f, 0.8f);
+	private static final Color RING_ARMED_COLOR = new Color(0.5f, 0.85f, 1f, 1f);
+	private static final Color BORDER_DISABLED_COLOR = new Color(0.55f, 0.55f, 0.55f, 0.75f);
 	private static final Color COOLDOWN_COLOR = new Color(0f, 0f, 0f, 0.55f);
 	private static final Color NO_MANA_TINT = new Color(0.35f, 0.45f, 1f, 0.62f);
 	private static final Color DISABLED_TINT = new Color(0.4f, 0.4f, 0.4f, 0.7f);
@@ -152,35 +157,70 @@ final class HeroTray {
 		this.skillRadius = SKILL_RADIUS * unit;
 		this.itemRadius = ITEM_RADIUS * unit;
 		this.attackRadius = ATTACK_RADIUS * unit;
+		// A phone's dp are not the drawing's: at 480 dpi the lowest skill of the arc hangs a few pixels over the
+		// bottom edge, and art cut by a screen edge is not a design decision. Whatever overflows moves the cluster in.
+		final float[] shift = fitShift(right, bottom, unit);
+		final float insideRight = right - shift[0];
+		final float insideBottom = bottom + shift[1];
 		for (int i = 0; i < SKILL_SLOTS; i++) {
-			final float[] point = onRing(right, bottom, unit, SKILL_RING, SKILL_ANGLE[i]);
+			final float[] point = onRing(insideRight, insideBottom, unit, SKILL_RING, SKILL_ANGLE[i]);
 			this.skills[i].x = point[0];
 			this.skills[i].y = point[1];
 		}
-		final float[] attack = onRing(right, bottom, unit, ATTACK_RING, ATTACK_ANGLE);
+		final float[] attack = onRing(insideRight, insideBottom, unit, ATTACK_RING, ATTACK_ANGLE);
 		this.attackX = attack[0];
 		this.attackY = attack[1];
 		for (int i = 0; i < ITEM_BUTTONS; i++) {
 			if (i < HeroItemSlots.INNER_ARC_BUTTONS) {
-				final float[] point = onRing(right, bottom, unit, ITEM_INNER_RING, ITEM_INNER_ANGLE[i]);
+				final float[] point = onRing(insideRight, insideBottom, unit, ITEM_INNER_RING, ITEM_INNER_ANGLE[i]);
 				this.items[i].x = point[0];
 				this.items[i].y = point[1];
 			}
 			else {
-				this.items[i].x = right - (ITEM_ROW_X[i - HeroItemSlots.INNER_ARC_BUTTONS] * unit);
-				this.items[i].y = bottom + (ITEM_ROW_Y * unit);
+				this.items[i].x = insideRight - (ITEM_ROW_X[i - HeroItemSlots.INNER_ARC_BUTTONS] * unit);
+				this.items[i].y = insideBottom + (ITEM_ROW_Y * unit);
 			}
 		}
 	}
 
 	/**
-	 * A point a ring's radius from the corner, at an angle of degrees measured from the interface's right edge going
-	 * up, which is the way the layout picture reads.
+	 * How far the cluster has to move in from a corner to keep every circle of it inside the interface, as
+	 * {@code {in from the right, up from the bottom}}.
 	 */
-	private static float[] onRing(final float right, final float bottom, final float unit, final float ring,
+	static float[] fitShift(final float right, final float bottom, final float unit) {
+		float overRight = 0f;
+		float overBottom = 0f;
+		for (int i = 0; i < SKILL_SLOTS; i++) {
+			final float[] point = onRing(right, bottom, unit, SKILL_RING, SKILL_ANGLE[i]);
+			overRight = Math.max(overRight, point[0] + (SKILL_RADIUS * unit) - right);
+			overBottom = Math.max(overBottom, bottom - point[1] + (SKILL_RADIUS * unit));
+		}
+		final float[] attack = onRing(right, bottom, unit, ATTACK_RING, ATTACK_ANGLE);
+		overRight = Math.max(overRight, attack[0] + (ATTACK_RADIUS * unit) - right);
+		overBottom = Math.max(overBottom, bottom - attack[1] + (ATTACK_RADIUS * unit));
+		for (int i = 0; i < HeroItemSlots.INNER_ARC_BUTTONS; i++) {
+			final float[] point = onRing(right, bottom, unit, ITEM_INNER_RING, ITEM_INNER_ANGLE[i]);
+			overRight = Math.max(overRight, point[0] + (ITEM_RADIUS * unit) - right);
+			overBottom = Math.max(overBottom, bottom - point[1] + (ITEM_RADIUS * unit));
+		}
+		for (int i = HeroItemSlots.INNER_ARC_BUTTONS; i < ITEM_BUTTONS; i++) {
+			final float x = right - (ITEM_ROW_X[i - HeroItemSlots.INNER_ARC_BUTTONS] * unit);
+			final float y = bottom + (ITEM_ROW_Y * unit);
+			overRight = Math.max(overRight, x + (ITEM_RADIUS * unit) - right);
+			overBottom = Math.max(overBottom, bottom - y + (ITEM_RADIUS * unit));
+		}
+		return new float[] { Math.max(0f, overRight), Math.max(0f, overBottom) };
+	}
+
+	/**
+	 * A point a ring's radius from the corner, at an angle of degrees measured from the interface's right edge going
+	 * up, which is the way the layout picture reads: every button of the cluster is left of the corner and above it,
+	 * so every angle is between 90 and 180.
+	 */
+	static float[] onRing(final float right, final float bottom, final float unit, final float ring,
 			final float degrees) {
 		final double radians = Math.toRadians(degrees);
-		return new float[] { right - ((float) (Math.cos(radians) * ring * unit)),
+		return new float[] { right + ((float) (Math.cos(radians) * ring * unit)),
 				bottom + ((float) (Math.sin(radians) * ring * unit)) };
 	}
 
@@ -421,21 +461,22 @@ final class HeroTray {
 		batch.end();
 		shapes.setProjectionMatrix(batch.getProjectionMatrix());
 		Gdx.gl.glEnable(GL20.GL_BLEND);
-		shapes.begin(ShapeType.Line);
+		// One filled pass: the border is a ring of triangles rather than a line, because a line is always one pixel
+		// wide and reads as an accident next to the art it is supposed to frame.
+		shapes.begin(ShapeType.Filled);
 		for (int i = 0; i < SKILL_SLOTS; i++) {
 			if (this.skills[i].skill == null) {
 				continue;
 			}
 			shapes.setColor((i == armedSlot) ? RING_ARMED_COLOR : RING_COLOR);
-			shapes.circle(this.skills[i].x, this.skills[i].y, this.skillRadius, SEGMENTS);
+			drawBorder(shapes, this.skills[i].x, this.skills[i].y, this.skillRadius);
 		}
 		shapes.setColor(RING_COLOR);
-		shapes.circle(this.attackX, this.attackY, this.attackRadius, SEGMENTS);
+		drawBorder(shapes, this.attackX, this.attackY, this.attackRadius);
 		for (int i = 0; i < this.itemButtonCount; i++) {
-			shapes.circle(this.items[i].x, this.items[i].y, this.itemRadius, SEGMENTS);
+			shapes.setColor(this.items[i].disabled ? BORDER_DISABLED_COLOR : RING_COLOR);
+			drawBorder(shapes, this.items[i].x, this.items[i].y, this.itemRadius);
 		}
-		shapes.end();
-		shapes.begin(ShapeType.Filled);
 		for (int i = 0; i < this.itemButtonCount; i++) {
 			drawCooldown(shapes, this.items[i].x, this.items[i].y, this.itemRadius, this.items[i].cooldown,
 					this.items[i].cooldownMax);
@@ -451,6 +492,24 @@ final class HeroTray {
 		Gdx.gl.glDisable(GL20.GL_BLEND);
 		batch.begin();
 		drawNumbers(batch);
+	}
+
+	/** A ring {@link #BORDER} thick around a button, drawn as a fan of quads. */
+	private void drawBorder(final ShapeRenderer shapes, final float x, final float y, final float radius) {
+		final float thickness = BORDER * this.unit;
+		final float inner = radius - thickness;
+		for (int i = 0; i < SEGMENTS; i++) {
+			final double a = (Math.PI * 2d * i) / SEGMENTS;
+			final double b = (Math.PI * 2d * (i + 1)) / SEGMENTS;
+			final float cosA = (float) Math.cos(a);
+			final float sinA = (float) Math.sin(a);
+			final float cosB = (float) Math.cos(b);
+			final float sinB = (float) Math.sin(b);
+			shapes.triangle(x + (cosA * radius), y + (sinA * radius), x + (cosB * radius), y + (sinB * radius),
+					x + (cosB * inner), y + (sinB * inner));
+			shapes.triangle(x + (cosA * radius), y + (sinA * radius), x + (cosB * inner), y + (sinB * inner),
+					x + (cosA * inner), y + (sinA * inner));
+		}
 	}
 
 	private void drawIcons(final SpriteBatch batch) {
@@ -508,19 +567,13 @@ final class HeroTray {
 		shapes.rect(badgeX - (thickness / 2f), badgeY - arm, thickness, arm * 2f);
 	}
 
+	/** The numbers the buttons carry: how many uses an item has left. Skill levels would say "1" on a fresh hero. */
 	private void drawNumbers(final SpriteBatch batch) {
 		final BitmapFont numbers = numbersFont();
 		if (numbers == null) {
 			return;
 		}
 		numbers.setColor(Color.WHITE);
-		for (int i = 0; i < SKILL_SLOTS; i++) {
-			final SkillSlot slot = this.skills[i];
-			if (slot.level > 0) {
-				drawCentered(batch, numbers, Integer.toString(slot.level), slot.x,
-						slot.y - (this.skillRadius * 0.55f));
-			}
-		}
 		for (int i = 0; i < this.itemButtonCount; i++) {
 			final ItemButton button = this.items[i];
 			if (button.charges > 0) {

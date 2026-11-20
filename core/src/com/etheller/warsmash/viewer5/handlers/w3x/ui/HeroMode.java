@@ -87,6 +87,9 @@ final class HeroMode implements HeroTouchHost {
 	private final HeroTray tray;
 	private final AbilityPointTarget orderTarget = new AbilityPointTarget(0, 0);
 	private final Vector3 aimLocation = new Vector3();
+	/** The press that started the aim, on the hero's ground plane, and where the thumb is now on that same plane. */
+	private final Vector3 aimPress = new Vector3();
+	private final Vector3 aimDrag = new Vector3();
 	private final Vector3 heroLocation = new Vector3();
 	private final Vector3 worldScratch = new Vector3();
 	private final Vector2 screenScratch = new Vector2();
@@ -95,7 +98,10 @@ final class HeroMode implements HeroTouchHost {
 	private final Vector2 uiPoint = new Vector2();
 	private final Vector2 heroUi2 = new Vector2();
 	private final Vector2 aimUi2 = new Vector2();
-	private final float[] clampedAim = new float[2];
+	private final float[] aimScratch = new float[2];
+	/** The last press, in screen pixels, so that a lift that never moved can be told from a drag back to the button. */
+	private float pressX;
+	private float pressY;
 	private boolean resolved;
 	private boolean active;
 	private float searchTime;
@@ -661,19 +667,20 @@ final class HeroMode implements HeroTouchHost {
 	}
 
 	/**
-	 * Where the aim points now, in map coordinates: the thumb's point pulled back onto the spell's cast range. The
-	 * clamp is the tray's own decision — the engine would accept a point out of range and walk the hero there, which
- * on a phone means a mis-tap sends her across the map.
+	 * Where the aim points now, in map coordinates: the hero, moved by what the thumb moved since it went down. The
+	 * drag is read on the hero's own ground plane, so a thumb going up the screen puts the circle up the screen too,
+	 * whichever way the camera is turned and however it is tilted, and a longer drag reaches further.
 	 */
 	private void updateAim(final float screenX, final float screenY) {
-		this.ui.war3MapViewer.getClickLocation(this.aimLocation, Math.round(screenX), Math.round(screenY), true, true);
-		final int slot = this.aimingSlot;
-		final CAbility ability = (slot >= 0) ? this.tray.skills[slot].ability : null;
-		final float range = (ability == null) ? 0f : HeroTray.castRangeOf(ability);
-		HeroAim.clamp(this.hero.getX(), this.hero.getY(), this.aimLocation.x, this.aimLocation.y, range,
-				this.clampedAim);
-		this.aimLocation.x = this.clampedAim[0];
-		this.aimLocation.y = this.clampedAim[1];
+		final float planeZ = this.ui.war3MapViewer.terrain.getGroundHeight(this.hero.getX(), this.hero.getY());
+		this.ui.war3MapViewer.getClickLocationOnZPlane(this.aimPress, Math.round(this.pressX),
+				Math.round(this.pressY), planeZ);
+		this.ui.war3MapViewer.getClickLocationOnZPlane(this.aimDrag, Math.round(screenX), Math.round(screenY), planeZ);
+		HeroAim.fromDrag(this.hero.getX(), this.hero.getY(), this.aimPress.x, this.aimPress.y, this.aimDrag.x,
+				this.aimDrag.y, this.aimScratch);
+		this.aimLocation.x = this.aimScratch[0];
+		this.aimLocation.y = this.aimScratch[1];
+		this.aimLocation.z = planeZ;
 	}
 
 	/** How a slot is cast: the table's answer, or what the spell accepts when the table does not know it. */
@@ -1024,17 +1031,18 @@ final class HeroMode implements HeroTouchHost {
 		shapes.setProjectionMatrix(batch.getProjectionMatrix());
 		Gdx.gl.glEnable(GL20.GL_BLEND);
 		shapes.begin(ShapeType.Line);
+		// How far the spell reaches, always: the aim is a drag, so the ring is the ruler the thumb reads the drag by.
+		if (range > 0f) {
+			shapes.setColor(AIM_RANGE_COLOR);
+			shapes.circle(this.heroUi.x, this.heroUi.y, uiLength(this.hero.getX(), this.hero.getY(), range),
+					AIM_SEGMENTS);
+		}
 		switch (type) {
 		case DIRECTION:
 			shapes.setColor(AIM_LINE_COLOR);
 			shapes.line(this.heroUi.x, this.heroUi.y, this.aimUi.x, this.aimUi.y);
 			break;
 		case SINGLE_TARGET:
-			if (range > 0f) {
-				shapes.setColor(AIM_RANGE_COLOR);
-				shapes.circle(this.heroUi.x, this.heroUi.y,
-						uiLength(this.hero.getX(), this.hero.getY(), range), AIM_SEGMENTS);
-			}
 			shapes.setColor(AIM_COLOR);
 			shapes.circle(this.aimUi.x, this.aimUi.y, this.tray.skillRadius() * 0.3f, 12);
 			break;

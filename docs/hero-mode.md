@@ -57,14 +57,18 @@ row on the bottom edge, and four is the cap. Sizes in dp, all tuned on a phone:
 
 | | radius from the corner | size |
 |---|---|---|
-| skills 1-4 | 176 | 52 |
-| attack | 70 | 68 |
-| items a, b | 118 | 36 |
-| item row c, d | — | 36 |
+| skills 1-4 | 149 | 44 |
+| attack | 82 | 58 |
+| items a, b | 100 | 30 |
+| item row c, d | — | 30 |
 
-A slot shows the icon, its level, a cooldown wedge, a blue tint when the mana is not there, the disabled art when
-the spell is disabled, and a "+" badge when there is a skill point this slot can take. The badge is its own hit area,
-because a tap on the circle itself means cast.
+The first draft of these numbers was 6/5 of this and read as heavy on a 480 dpi phone; the picture is drawn from the
+table above.
+
+A slot shows the icon inside a border about 3 dp thick, a cooldown wedge, a blue tint when the mana is not there, a
+grey one when the spell cannot be used, and a "+" badge when there is a skill point this slot can take. The badge is
+its own hit area, because a tap on the circle itself means cast. An item button also carries how many uses it has
+left; a skill carries no number, because "1" on a freshly learned skill says nothing.
 
 Which gesture a slot takes comes from a table of ability classes:
 
@@ -73,7 +77,11 @@ Which gesture a slot takes comes from a table of ability classes:
 | no target | tap | — |
 | single target | tap, then tap the target | a ring around the hero showing the range |
 | direction | drag | a line from the hero to the thumb |
-| ground | drag | a circle of the spell's area, the point clamped to the cast range |
+| ground | drag | a circle of the spell's area |
+
+A drag is measured from where the thumb went down, not from where it is: the aim starts on the hero and moves as far
+and in the direction the thumb moved, so the circle can be walked around her and out past her cast range, and a thumb
+that barely moved asks for a point beside her feet rather than at the corner of the screen where the tray sits.
 
 Dragging back into the button cancels, tapping the chosen button again cancels, and so does pushing the stick. An
 untargeted world tap does nothing — the stick is still the only way to move, and the one exception is a tap on an
@@ -178,9 +186,12 @@ Settled, and no longer up for renegotiation without a good reason:
     preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
     and several spells the 1.29 data declares are not implemented at all, so the table maps ability classes (with
     rawcode overrides) and anything outside it falls back on what the spell accepts.
-19. **The aimed point is clamped to the cast range.** The engine lets an out-of-range point order through and walks
-    the caster into range; a phone mis-tap would send the hero across the map, so the tray clamps. The order stays a
-    legal point order, so replays and LAN see nothing unusual.
+19. **An aim is a drag from the press, not the thumb's position.** The skill button is at the corner of the screen
+    and the hero is in the middle: reading the thumb absolutely would put the circle where the button is the moment
+    it is pressed, and every drag would move the circle the wrong way. So the press point is the origin and the
+    circle starts on the hero, moving with the thumb, out past the cast range if the thumb goes that far — the engine
+    walks a caster into range, and with the drag measured from the hero a mis-tap is a few units, not half the map.
+    This replaced a clamp to the cast range that was in an earlier draft of this section.
 20. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
     a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
     item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.

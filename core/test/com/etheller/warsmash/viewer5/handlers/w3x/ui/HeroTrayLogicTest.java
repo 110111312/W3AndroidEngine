@@ -89,45 +89,31 @@ class HeroTrayLogicTest {
 	// ------------------------------------------------------------------ the aim
 
 	@Test
-	void anAimInsideTheRangeIsLeftWhereTheThumbPutIt() {
+	void anAimThatHasNotMovedIsTheHero() {
 		final float[] out = new float[2];
-		HeroAim.clamp(100f, 100f, 150f, 100f, 200f, out);
+		HeroAim.fromDrag(1000f, 500f, 2300f, 900f, 2300f, 900f, out);
 
-		assertEquals(150f, out[0], 0.001f);
-		assertEquals(100f, out[1], 0.001f);
+		assertEquals(1000f, out[0], 0.001f);
+		assertEquals(500f, out[1], 0.001f);
 	}
 
 	@Test
-	void anAimPastTheRangeComesBackAlongItsOwnRay() {
+	void theAimMovesAsFarAsTheThumbDid() {
 		final float[] out = new float[2];
-		HeroAim.clamp(0f, 0f, 300f, 400f, 500f, out);
+		// A press on the tray and 200 to the left and 150 up: the circle is that far from the hero, not at the thumb.
+		HeroAim.fromDrag(1000f, 500f, 2300f, 900f, 2100f, 750f, out);
 
-		// The point is 500 away from the hero on a 3-4-5 ray.
-		assertEquals(300f, out[0], 0.001f);
-		assertEquals(400f, out[1], 0.001f);
-
-		HeroAim.clamp(0f, 0f, 60f, 80f, 50f, out);
-		assertEquals(30f, out[0], 0.001f);
-		assertEquals(40f, out[1], 0.001f);
+		assertEquals(800f, out[0], 0.001f);
+		assertEquals(350f, out[1], 0.001f);
 	}
 
 	@Test
-	void aSpellWithNoRangeAndAnAimOnTheHeroAreBothLeftAlone() {
+	void aLongDragGoesPastTheCastRangeBecauseTheEngineWalksTheCasterIn() {
 		final float[] out = new float[2];
-		HeroAim.clamp(10f, 10f, 900f, 900f, 0f, out);
-		assertEquals(900f, out[0], 0.001f);
+		HeroAim.fromDrag(0f, 0f, 0f, 0f, 0f, 3000f, out);
 
-		HeroAim.clamp(10f, 10f, 10f, 10f, 100f, out);
-		assertEquals(10f, out[0], 0.001f);
-		assertEquals(10f, out[1], 0.001f);
-	}
-
-	@Test
-	void theDirectionOfADragIsNotChangedByTheClamp() {
-		final float[] out = new float[2];
-		HeroAim.clamp(0f, 0f, 100f, 0f, 40f, out);
-		assertEquals(40f, out[0], 0.001f);
-		assertEquals(0f, HeroAim.angle(0f, 0f, out[0], out[1]), 0.001f);
+		assertEquals(3000f, out[1], 0.001f);
+		assertEquals((float) (Math.PI / 2d), HeroAim.angle(0f, 0f, out[0], out[1]), 0.001f);
 	}
 
 	// ------------------------------------------------------------------ the cast types
@@ -161,5 +147,58 @@ class HeroTrayLogicTest {
 	@Test
 	void anAbilityTheTableDoesNotKnowIsLeftToTheProbe() {
 		assertNull(HeroCastTypes.ofClass(Object.class, id("AHer")));
+	}
+
+	// ------------------------------------------------------------------ the tray's corners
+
+	@Test
+	void everyButtonOfTheTraySitsInsideTheInterface() {
+		// The corner is the interface's bottom-right, so a button is left of it and above it. Getting this backwards
+		// puts the whole cluster off the screen edge, which no amount of drawing makes up for.
+		final float right = 1920f;
+		final float bottom = 0f;
+		final float unit = 3f;
+		final float[][] rings = { { 175.5f, 100f }, { 175.5f, 124f }, { 175.5f, 148f }, { 175.5f, 172f },
+				{ 97f, 133.7f }, { 118f, 104f }, { 118f, 165.7f } };
+		for (final float[] ring : rings) {
+			final float[] point = HeroTray.onRing(right, bottom, unit, ring[0], ring[1]);
+			assertTrue(point[0] < right, "x " + point[0] + " of the button at " + ring[1] + " degrees is off the edge");
+			assertTrue(point[1] > bottom, "y " + point[1] + " of the button at " + ring[1] + " degrees is below");
+			final float reached = (float) Math.hypot(right - point[0], point[1] - bottom);
+			assertEquals(ring[0] * unit, reached, 0.01f);
+		}
+	}
+
+	@Test
+	void theUltimateIsTheLowestAngleAndSoTheTopRightOne() {
+		final float[] first = HeroTray.onRing(0f, 0f, 1f, 100f, 172f);
+		final float[] ult = HeroTray.onRing(0f, 0f, 1f, 100f, 100f);
+		assertTrue(ult[0] > first[0], "the ultimate is further right than the first skill");
+		assertTrue(ult[1] > first[1], "the ultimate is higher than the first skill");
+	}
+
+	@Test
+	void noButtonIsEverCutByTheScreenEdge() {
+		// The dp of the drawing are not the dp of every phone: at 480 dpi the lowest skill of the arc hangs a few
+		// pixels over the bottom edge, so the cluster is moved in by whatever overflows, and by nothing otherwise.
+		final float right = 1920f;
+		final float bottom = 0f;
+		final float[][] buttons = { { 149f, 172f, 22f }, { 149f, 148f, 22f }, { 149f, 124f, 22f }, { 149f, 100f, 22f },
+				{ 82.5f, 133.7f, 29f }, { 100f, 104f, 15f }, { 100f, 165.7f, 15f } };
+		for (final float unit : new float[] { 1f, 2.625f, 3f, 3.5f }) {
+			final float[] shift = HeroTray.fitShift(right, bottom, unit);
+			assertTrue(shift[0] >= 0f, "the shift never moves the cluster further out");
+			assertTrue(shift[1] >= 0f, "the shift never moves the cluster further out");
+			assertTrue(shift[0] < 6f * unit, "the shift stays small: " + shift[0] + " at " + unit);
+			assertTrue(shift[1] < 6f * unit, "the shift stays small: " + shift[1] + " at " + unit);
+			final float inRight = right - shift[0];
+			final float inBottom = bottom + shift[1];
+			for (final float[] button : buttons) {
+				final float[] point = HeroTray.onRing(inRight, inBottom, unit, button[0], button[1]);
+				assertTrue(point[0] + (button[2] * unit) <= right + 0.001f, "a button crosses the right edge at " + unit);
+				assertTrue(point[1] - (button[2] * unit) >= bottom - 0.001f,
+						"a button crosses the bottom edge at " + unit);
+			}
+		}
 	}
 }

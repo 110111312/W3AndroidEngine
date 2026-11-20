@@ -1,39 +1,31 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui;
 
 /**
- * Where an aimed skill lands: the point the thumb drew, pulled back onto the spell's own cast range.
+ * Where an aimed skill lands: the hero, plus what the thumb moved since it went down on the button.
  * <p>
- * The engine does not do this — an out-of-range point order is legal for a caster who can walk, and the hero simply
- * walks into range — but a phone mis-tap would send her halfway across the map, and the player cannot see the range
- * while the thumb covers the screen. So the tray clamps, and the order it sends is the clamped point, which is still an
- * ordinary point order that a replay or a LAN peer applies as such.
+ * The aim is a drag, not a point. A finger on a skill button is at the hero's back, not at the place the player wants
+ * the spell: reading the thumb's absolute position would put the circle far from the hero the moment the button is
+ * touched, at the corner of the screen where the tray is. So the press point is the origin, and the delta of the drag
+ * is the spell's displacement, which is also how the range is reached — a longer drag goes further, past the cast range
+ * if it comes to that, because the engine's own point orders walk a caster into range and the tray is not the place to
+ * second-guess that.
  */
 final class HeroAim {
 	private HeroAim() {
 	}
 
 	/**
-	 * @param range    the spell's cast range, or anything <= 0 for "no clamp"
-	 * @param out      receives the point, two floats
+	 * @param out receives the point, two floats
 	 */
-	static void clamp(final float heroX, final float heroY, final float aimX, final float aimY, final float range,
-			final float[] out) {
-		final float dx = aimX - heroX;
-		final float dy = aimY - heroY;
-		final float length = (float) Math.sqrt((dx * dx) + (dy * dy));
-		if ((range <= 0f) || (length <= range) || (length == 0f)) {
-			out[0] = aimX;
-			out[1] = aimY;
-			return;
-		}
-		final float scale = range / length;
-		out[0] = heroX + (dx * scale);
-		out[1] = heroY + (dy * scale);
+	static void fromDrag(final float heroX, final float heroY, final float pressX, final float pressY, final float dragX,
+			final float dragY, final float[] out) {
+		out[0] = heroX + (dragX - pressX);
+		out[1] = heroY + (dragY - pressY);
 	}
 
 	/**
-	 * The angle of the aim, in radians, for a line drawn from the hero: it is the thumb's own direction, which is what
-	 * a direction cast needs, and it is unaffected by the clamp since the clamp only shortens the ray.
+	 * The angle of the aim, in radians, from the hero to the aim point: the thumb's own direction, which is what a
+	 * direction cast needs.
 	 */
 	static float angle(final float heroX, final float heroY, final float aimX, final float aimY) {
 		return (float) Math.atan2(aimY - heroY, aimX - heroX);
