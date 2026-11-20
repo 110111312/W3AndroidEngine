@@ -89,14 +89,26 @@ class CHeroArmyTest {
 	@Test
 	void theArmyFormsUpAroundTheHeroWhenSheStops() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit follower = unit(1, 800f, 0f, CBehaviorMove.class);
+		final CUnit walkingHome = unit(1, -800f, 0f, CBehaviorMove.class);
 		final Orders orders = new Orders();
 
-		CHeroArmy.formUp(game(hero, follower), PLAYER, hero, orders.listener());
+		CHeroArmy.formUp(game(hero, walkingHome), PLAYER, hero, orders.listener());
 
 		// Walking on to the old point is what piled the squad up in front of her.
 		assertEquals(List.of(0f), orders.xs);
 		assertEquals(List.of(0f), orders.ys);
+	}
+
+	@Test
+	void aFollowerAlreadyInFrontIsLeftWhereItStandsWhenSheStops() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit inFront = unit(1, 300f, 0f, CBehaviorMove.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.formUp(game(hero, inFront), PLAYER, hero, orders.listener());
+
+		// Calling it back would send it through her, so it simply stops where it is.
+		assertTrue(orders.calls.isEmpty());
 	}
 
 	@Test
@@ -162,20 +174,47 @@ class CHeroArmyTest {
 	}
 
 	/**
-	 * The tight ground: the hero is boxed in by her own army. The army has the free path, so it goes first and she
-	 * follows into the ground it leaves.
+	 * The tight ground: a unit between the hero and where she is going is already on the far side of her, so it is told
+	 * to keep walking that way and she follows into the ground it leaves. It is never sent back through her.
 	 */
 	@Test
-	void theArmyIsSentOnAheadWhenTheHeroIsBoxedIn() {
+	void aFollowerAheadOfTheHeroKeepsWalkingAhead() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit inTheCorridor = unit(1, 300f, 0f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
-		CHeroArmy.makeWay(game(hero, inTheCorridor), PLAYER, hero, 1f, 0f, orders.listener());
+		CHeroArmy.follow(game(hero, inTheCorridor), PLAYER, hero, 300f, 0f, orders.listener());
 
 		assertEquals(List.of(1), orders.unitHandleIds);
 		assertEquals(List.of(400f), orders.xs);
 		assertEquals(List.of(0f), orders.ys);
+	}
+
+	/** One order per side, and the side each unit stands on decides which: nobody crosses her. */
+	@Test
+	void theArmyIsSplitOnTheLineTheHeroWalks() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit behind = unit(1, -300f, 0f, CBehaviorStop.class);
+		final CUnit ahead = unit(2, 300f, 0f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, behind, ahead), PLAYER, hero, 300f, 0f, orders.listener());
+
+		assertEquals(List.of("issueGroupPointOrder", "issueGroupPointOrder"), orders.calls);
+		assertEquals(List.of(1, 2), orders.unitHandleIds);
+		assertEquals(List.of(0f, 400f), orders.xs);
+	}
+
+	@Test
+	void aFollowerLevelWithTheHeroIsKeptBehindHer() {
+		// The front row of the trailing block stands on her own line; it must not be read as having overtaken her.
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit level = unit(1, 100f, 0f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, level), PLAYER, hero, 300f, 0f, orders.listener());
+
+		assertEquals(List.of(0f), orders.xs);
 	}
 
 	@Test

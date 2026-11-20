@@ -55,8 +55,9 @@ Units belong to the player but are not commanded one by one. Their standing orde
 - **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
   elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition; a unit
   that already has a target, or an enemy inside its own acquisition range, is not pulled out of it to reach a slot;
-- **make way** when the hero is wedged against her own squad — a dead end, a corridor she has to back out of: the army
-  is sent on ahead of her, because the side with the free path goes first;
+- **never cross** her, so that tight ground opens on its own: a unit behind her takes a slot behind her, a unit ahead of
+  her keeps walking ahead, and in a dead end or a corridor she backs out of that is exactly the "the army leads her
+  out" order — the side with the free path goes first;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
   free; regrouping while the hero stands still is the script's job (D);
 - **not die stupidly** — no walking into towers, no standing in the middle of nothing, no chasing a lone unit into a
@@ -150,15 +151,18 @@ Settled, and no longer up for renegotiation without a good reason:
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
-18. **When the hero is wedged against her own army, the army leads.** The engine never pushes a unit aside
-    (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
-    still), and hero mode has no selection with which the player could move a unit out of the way himself — so a
-    squad that walked into a corridor in front of the hero is a wall between her and the way out. The signal is her
-    own progress: commanded to walk and moved less than **10** world units over the half-second beat means stopped,
-    which a wall does too, and the answer is the same either way. The army is then sent **400** ahead along the
-    stick's direction, with the block pushed until its back row is **100** clear of her feet, and it keeps leading for
-    **one second**; then the trailing formation comes back, and if she is still stopped the next beat asks again. The
-    army always has the free path in this case — she is the one behind it.
+18. **The army never crosses the hero.** Slots are read per unit against the line she is walking on: a unit behind her
+    takes a slot in the trailing block, a unit ahead of her takes one further along the way she is going, and neither is
+    ever sent to the other side. `CGroupMove` lays its rows around the point it is given, so the trailing block is
+    pulled back until its front row stands on her own line, and the leading one is pushed until its back row is clear of
+    her feet. That one rule is what tight ground needs, and it needs no timer and no memory: in a dead end, or in a
+    corridor she has to back out of, the squad that walked in ahead of her is ahead of her *in the new direction*, so it
+    keeps walking and she follows into the ground it leaves. When she stops, the units in front are left where they
+    stand — calling them back would send them through her, which is the whole problem. Nothing in the engine pushes a
+    unit aside (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that
+    stand still) and hero mode has no selection with which the player could move one himself, so the side rule is the
+    only thing that can unblock her at all. The first attempt watched her progress and led for a second instead; the
+    phone showed the army flipping ahead, back, ahead, because a timer cannot know which side of her a unit is on.
 
 Two consequences that were not obvious when the design was written:
 

@@ -15,7 +15,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityActivationReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTargetCheckReceiver;
 
@@ -42,8 +41,9 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTa
  * The front rank cuts both ways in tight ground. Walking forward, the hero goes first and the army follows; reversing
  * into a corridor, the army is suddenly between her and the way out, and nothing in the engine pushes a unit aside
  * ({@code CBehaviorMove} refuses a step into another unit's footprint, {@code CUnitPlacement} only separates units that
- * are standing still). There the roles swap: {@link #makeWay} sends the army on ahead of her so it clears the ground
- * she needs, which is the one arrangement where the side that has the free path goes first.
+ * are standing still). So the army never crosses her: a unit behind her is given a slot behind her, a unit ahead of her
+ * is given a slot ahead of her, and the side she is going towards is the side that walks first. In a dead end that is
+ * the same order as "the army leads her out" — because that is what the geometry already says.
  */
 public final class CHeroArmy {
 	/**
@@ -59,16 +59,16 @@ public final class CHeroArmy {
 	 */
 	public static final int RETREAT_SCAN_TICKS = CUnitAcquisition.IDLE_ACQUIRE_SCAN_TICKS;
 
-	/**
-	 * How long the army keeps leading the hero out after a make-way, in steps: long enough for a block to clear a
-	 * corridor, short enough that the normal trailing formation comes back on its own. The caller asks again on the
-	 * next progress check if she is still stopped, so a longer delay costs nothing but a longer wait.
-	 */
-	public static final int MAKE_WAY_TICKS = CTimer.wholeSteps(1f);
+	/** Where the block is aimed when it leads, in world units in front of the hero, and how close it may come to her. */
+	private static final float LEAD_STEP = 400f;
+	private static final float LEAD_CLEARANCE = 100f;
 
-	/** Where the leading block is aimed, in world units in front of the hero, and how close it may come to her feet. */
-	private static final float MAKE_WAY_STEP = 400f;
-	private static final float MAKE_WAY_CLEARANCE = 100f;
+	/**
+	 * How far in front of the hero a unit has to stand to count as being on her side of the line, in world units: more
+	 * than the row spacing of the formation, so a unit level with her at the front of the trailing block is not read as
+	 * having overtaken her and sent running ahead.
+	 */
+	private static final float AHEAD_MARGIN = 150f;
 
 	private static final double RETREAT_DISTANCE_SQUARED = RETREAT_DISTANCE * (double) RETREAT_DISTANCE;
 
@@ -93,8 +93,8 @@ public final class CHeroArmy {
 			formUp(simulation, playerIndex, hero, listener);
 			return;
 		}
-		trail(simulation, playerIndex, hero, following(simulation, playerIndex, hero), dirX / length, dirY / length,
-				listener);
+		orderFormation(simulation, playerIndex, hero, following(simulation, playerIndex, hero), dirX / length,
+				dirY / length, listener);
 	}
 
 	/**
@@ -104,8 +104,12 @@ public final class CHeroArmy {
 	 */
 	public static void formUp(final CSimulation simulation, final int playerIndex, final CUnit hero,
 			final CPlayerUnitOrderListener listener) {
-		trail(simulation, playerIndex, hero, following(simulation, playerIndex, hero), facingX(hero), facingY(hero),
-				listener);
+		final float dirX = facingX(hero);
+		final float dirY = facingY(hero);
+		trail(simulation, playerIndex, hero, behind(hero, following(simulation, playerIndex, hero), dirX, dirY), dirX,
+				dirY, listener);
+		// The units already in front of her are left where they stand: ordering them back would send them through her,
+		// which is the one thing this rule set exists to prevent.
 	}
 
 	/**
@@ -129,25 +133,56 @@ public final class CHeroArmy {
 	}
 
 	/**
-	 * The hero is stopped by her own army: the army is sent on ahead of her, out of the ground she needs, and the block
-	 * is placed so that none of it is left on her feet. This is the case the trailing order cannot solve — a squad that
-	 * walked into a corridor in front of her is between her and the way out, and nothing in the engine pushes a unit
-	 * aside.
-	 * <p>
-	 * The army has the free path here: she is behind it, so it can walk out and she can follow. The caller keeps asking
-	 * for this while she stays stopped ({@link #MAKE_WAY_TICKS}) and then goes back to the trailing formation, which is
-	 * what keeps the block from swapping back through her before she has moved.
+	 * The formation, read per unit against the line the hero is walking on: the army never crosses her. A unit behind
+	 * her takes a slot in the trailing block; a unit ahead of her takes one further along the way she is going. That
+	 * single rule is all the tight ground needs: in a dead end, or in a corridor she has to back out of, the squad that
+	 * walked in ahead of her is <em>ahead of her in the new direction</em>, so it is told to keep walking out and she
+	 * follows into the ground it leaves. Nothing has to be timed or remembered, and no unit is ever sent to the other
+	 * side of her — which is what an engine with no unit pushing and a hero mode with no selection needs.
 	 */
-	public static void makeWay(final CSimulation simulation, final int playerIndex, final CUnit hero, final float dirX,
-			final float dirY, final CPlayerUnitOrderListener listener) {
-		final float x = hero.getX() + (dirX * MAKE_WAY_STEP);
-		final float y = hero.getY() + (dirY * MAKE_WAY_STEP);
-		final Walkers walkers = walkers(simulation, playerIndex, following(simulation, playerIndex, hero), x, y);
+	private static void orderFormation(final CSimulation simulation, final int playerIndex, final CUnit hero,
+			final List<CUnit> roster, final float dirX, final float dirY,
+			final CPlayerUnitOrderListener listener) {
+		trail(simulation, playerIndex, hero, behind(hero, roster, dirX, dirY), dirX, dirY, listener);
+		lead(simulation, playerIndex, hero, ahead(hero, roster, dirX, dirY), dirX, dirY, listener);
+	}
+
+	private static List<CUnit> behind(final CUnit hero, final List<CUnit> roster, final float dirX,
+			final float dirY) {
+		return side(hero, roster, dirX, dirY, false);
+	}
+
+	private static List<CUnit> ahead(final CUnit hero, final List<CUnit> roster, final float dirX, final float dirY) {
+		return side(hero, roster, dirX, dirY, true);
+	}
+
+	private static List<CUnit> side(final CUnit hero, final List<CUnit> roster, final float dirX, final float dirY,
+			final boolean ahead) {
+		final List<CUnit> side = new ArrayList<>(roster.size());
+		for (final CUnit unit : roster) {
+			final float along = ((unit.getX() - hero.getX()) * dirX) + ((unit.getY() - hero.getY()) * dirY);
+			if ((along > AHEAD_MARGIN) == ahead) {
+				side.add(unit);
+			}
+		}
+		return side;
+	}
+
+	/**
+	 * The leading block: the units already ahead of the hero keep walking ahead of her, and the block is pushed until
+	 * its back row is clear of her feet, since {@code CGroupMove} centres its rows on the point it is given.
+	 */
+	private static void lead(final CSimulation simulation, final int playerIndex, final CUnit hero,
+			final List<CUnit> roster, final float dirX, final float dirY,
+			final CPlayerUnitOrderListener listener) {
+		final float x = hero.getX() + (dirX * LEAD_STEP);
+		final float y = hero.getY() + (dirY * LEAD_STEP);
+		final Walkers walkers = walkers(simulation, playerIndex, roster, x, y);
 		if (walkers.isEmpty()) {
 			return;
 		}
 		final float[] slots = CGroupMove.slots(simulation, walkers.units, x, y);
-		placeClearOfHer(slots, hero.getX(), hero.getY(), dirX, dirY, MAKE_WAY_CLEARANCE);
+		placeClearOfHer(slots, hero.getX(), hero.getY(), dirX, dirY, LEAD_CLEARANCE);
 		issue(listener, walkers, slots);
 	}
 
