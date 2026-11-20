@@ -161,34 +161,6 @@ class CHeroArmyTest {
 		assertTrue(orders.calls.isEmpty(), "only a hero further off than the retreat distance takes a fight away");
 	}
 
-	/**
-	 * The tight ground: the hero is boxed in by her own army. The army has the free path, so it goes first and she
-	 * follows into the ground it leaves.
-	 */
-	@Test
-	void theArmyIsSentOnAheadWhenTheHeroIsBoxedIn() {
-		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit inTheCorridor = unit(1, 300f, 0f, CBehaviorStop.class);
-		final Orders orders = new Orders();
-
-		CHeroArmy.makeWay(game(hero, inTheCorridor), PLAYER, hero, 1f, 0f, orders.listener());
-
-		assertEquals(List.of(1), orders.unitHandleIds);
-		assertEquals(List.of(400f), orders.xs);
-		assertEquals(List.of(0f), orders.ys);
-	}
-
-	@Test
-	void theLeadingBlockIsPushedOffTheHerosFeet() {
-		// Two rows as CGroupMove centres them on the point it is given: aimed at her, so the back row is behind her.
-		final float[] slots = { 0f, 142f, 0f, -142f };
-
-		CHeroArmy.placeClearOfHer(slots, 0f, 0f, 0f, 1f, 100f);
-
-		assertEquals(384f, slots[1], 1e-4f);
-		assertEquals(100f, slots[3], 1e-4f);
-	}
-
 	@Test
 	void aUnitWithAnEnemyInSightKeepsItsFight() {
 		final CUnit hero = hero(CBehaviorStop.class);

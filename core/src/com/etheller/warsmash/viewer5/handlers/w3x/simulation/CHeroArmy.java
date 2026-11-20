@@ -15,7 +15,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityActivationReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTargetCheckReceiver;
 
@@ -42,8 +41,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTa
  * The front rank cuts both ways in tight ground. Walking forward, the hero goes first and the army follows; reversing
  * into a corridor, the army is suddenly between her and the way out, and nothing in the engine pushes a unit aside
  * ({@code CBehaviorMove} refuses a step into another unit's footprint, {@code CUnitPlacement} only separates units that
- * are standing still). There the roles swap: {@link #makeWay} sends the army on ahead of her so it clears the ground
- * she needs, which is the one arrangement where the side that has the free path goes first.
+ * are standing still). That is left as it is, and the phone shows it as the army standing on her.
  */
 public final class CHeroArmy {
 	/**
@@ -58,17 +56,6 @@ public final class CHeroArmy {
 	 * frame that falls between two steps must not miss the beat.
 	 */
 	public static final int RETREAT_SCAN_TICKS = CUnitAcquisition.IDLE_ACQUIRE_SCAN_TICKS;
-
-	/**
-	 * How long the army keeps leading the hero out after a make-way, in steps: long enough for a block to clear a
-	 * corridor, short enough that the normal trailing formation comes back on its own. The caller asks again on the
-	 * next progress check if she is still stopped, so a longer delay costs nothing but a longer wait.
-	 */
-	public static final int MAKE_WAY_TICKS = CTimer.wholeSteps(1f);
-
-	/** Where the leading block is aimed, in world units in front of the hero, and how close it may come to her feet. */
-	private static final float MAKE_WAY_STEP = 400f;
-	private static final float MAKE_WAY_CLEARANCE = 100f;
 
 	private static final double RETREAT_DISTANCE_SQUARED = RETREAT_DISTANCE * (double) RETREAT_DISTANCE;
 
@@ -126,29 +113,6 @@ public final class CHeroArmy {
 			}
 		}
 		trail(simulation, playerIndex, hero, retreating, facingX(hero), facingY(hero), listener);
-	}
-
-	/**
-	 * The hero is stopped by her own army: the army is sent on ahead of her, out of the ground she needs, and the block
-	 * is placed so that none of it is left on her feet. This is the case the trailing order cannot solve — a squad that
-	 * walked into a corridor in front of her is between her and the way out, and nothing in the engine pushes a unit
-	 * aside.
-	 * <p>
-	 * The army has the free path here: she is behind it, so it can walk out and she can follow. The caller keeps asking
-	 * for this while she stays stopped ({@link #MAKE_WAY_TICKS}) and then goes back to the trailing formation, which is
-	 * what keeps the block from swapping back through her before she has moved.
-	 */
-	public static void makeWay(final CSimulation simulation, final int playerIndex, final CUnit hero, final float dirX,
-			final float dirY, final CPlayerUnitOrderListener listener) {
-		final float x = hero.getX() + (dirX * MAKE_WAY_STEP);
-		final float y = hero.getY() + (dirY * MAKE_WAY_STEP);
-		final Walkers walkers = walkers(simulation, playerIndex, following(simulation, playerIndex, hero), x, y);
-		if (walkers.isEmpty()) {
-			return;
-		}
-		final float[] slots = CGroupMove.slots(simulation, walkers.units, x, y);
-		placeClearOfHer(slots, hero.getX(), hero.getY(), dirX, dirY, MAKE_WAY_CLEARANCE);
-		issue(listener, walkers, slots);
 	}
 
 	/** The trailing formation: the hero at the front of the block, the rest of it behind her. */
@@ -312,27 +276,6 @@ public final class CHeroArmy {
 		for (int i = 0; i < slots.length; i += 2) {
 			slots[i] -= dirX * front;
 			slots[i + 1] -= dirY * front;
-		}
-	}
-
-	/**
-	 * Pushes a formation forward along the way it marches until every slot is at least {@code clearance} ahead of the
-	 * hero, which is what makes the make-way order a way <em>out</em>: a block aimed at a point in front of her is
-	 * centred on it, so its back rows would otherwise land on the ground she is standing on.
-	 */
-	static void placeClearOfHer(final float[] slots, final float heroX, final float heroY, final float dirX,
-			final float dirY, final float clearance) {
-		float back = Float.MAX_VALUE;
-		for (int i = 0; i < slots.length; i += 2) {
-			back = Math.min(back, ((slots[i] - heroX) * dirX) + ((slots[i + 1] - heroY) * dirY));
-		}
-		if (back >= clearance) {
-			return;
-		}
-		final float shift = clearance - back;
-		for (int i = 0; i < slots.length; i += 2) {
-			slots[i] += dirX * shift;
-			slots[i + 1] += dirY * shift;
 		}
 	}
 

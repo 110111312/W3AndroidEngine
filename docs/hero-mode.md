@@ -192,15 +192,30 @@ Settled, and no longer up for renegotiation without a good reason:
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
-18. **When the hero is wedged against her own army, the army leads.** The engine never pushes a unit aside
-    (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
-    still), and hero mode has no selection with which the player could move a unit out of the way himself — so a
-    squad that walked into a corridor in front of the hero is a wall between her and the way out. The signal is her
-    own progress: commanded to walk and moved less than **10** world units over the half-second beat means stopped,
-    which a wall does too, and the answer is the same either way. The army is then sent **400** ahead along the
-    stick's direction, with the block pushed until its back row is **100** clear of her feet, and it keeps leading for
-    **one second**; then the trailing formation comes back, and if she is still stopped the next beat asks again. The
-    army always has the free path in this case — she is the one behind it.
+18. **The hero can be blocked by her own army, and this build does not get it out of the way.** The engine never
+    pushes a unit aside (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates
+    units that stand still), and hero mode has no selection with which the player could move a unit himself — so a
+    squad that walked into a corridor in front of the hero is a wall between her and the way out, and the whole follow
+    order is `CGroupMove.slots` with her front line, which is what puts them there.
+
+    The one thing the engine guarantees is that a unit ordered to a point **walks straight at it** — no avoidance, no
+    re-path — so a unit sent to a slot on the far side of the hero jams on her instead of going round, and that is the
+    reason every attempt to bring the army back through her has failed. Making way was tried twice, and both failed in
+    that geometry:
+
+    - **a stuck timer** (`MAKE_WAY_TICKS` was one second): her progress on the half-second beat, then the block aimed
+      400 ahead along the stick direction and pushed until its back row was 100 clear of her feet. Two things broke it:
+      the signal fires on the first beat after the player starts moving, because she was standing still a beat earlier,
+      and when the second is up the army is *ahead* of her, so the trailing formation calls it back through her — which
+      it cannot walk round. The phone saw units flipping toward her, away, toward;
+    - **a one-cell step aside**, ordered to whichever unit stood on the cell she was stepping into (via the engine's own
+      step test, `CUnitPlacement.blockedByUnit`): the nudge was sound, the log showed the blocked step and a free spot,
+      but the next slot order walked the unit straight back, so it fought the formation instead of the wall.
+
+    Both were removed rather than patched: what is left is the trailing block and the side rule (item 15), which does
+    not block her when she walks forward, and does block her when she has to back out of a corridor. Fixing that is the
+    open problem, and the constraint it has to satisfy is the line above: nothing may ever order a unit to a point her
+    body stands between it and.
 19. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
     to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
     preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
