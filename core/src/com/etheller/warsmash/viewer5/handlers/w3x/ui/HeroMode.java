@@ -600,8 +600,11 @@ final class HeroMode implements HeroTouchHost {
 		// Stop is issued without an ability when none carries it, exactly as the script's own order native does.
 		this.ui.unitOrderListener.issueImmediateOrder(this.hero.getHandleId(), abilityHandleId, OrderIds.stop, false);
 		// She stopped short of the point the stick named, so the army settles around her instead of walking on to it.
+		// The block is laid out across the way the stick was pointing, not across the way her model happens to be
+		// turned: the drawn facing lags a turn, and a block laid out across the wrong line is no formation at all.
+		// The stick's direction is the screen's, where y grows downwards; the map's y grows upwards.
 		CHeroArmy.formUp(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero,
-				this.ui.unitOrderListener);
+				this.emitter.getLastDirectionX(), -this.emitter.getLastDirectionY(), this.ui.unitOrderListener);
 	}
 
 	// ------------------------------------------------------------------ the tray

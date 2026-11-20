@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import com.badlogic.gdx.math.Rectangle;
 
 import com.etheller.warsmash.testing.TestObjects;
+import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityMove;
@@ -66,10 +67,11 @@ class CHeroArmyTest {
 		final Orders orders = new Orders();
 
 		// She faces +x on her own line, so the front line of the block she forms on stopping is her range along it.
-		CHeroArmy.formUp(game(hero, follower), PLAYER, hero, orders.listener());
+		CHeroArmy.formUp(game(hero, follower), PLAYER, hero, 0f, 0f, orders.listener());
 
 		assertEquals(List.of(600f), orders.xs);
-		assertEquals(List.of(0f), orders.ys);
+		// The block is laid out around the army's own centre, so the row keeps the follower's place across her line.
+		assertEquals(List.of(50f), orders.ys);
 	}
 
 	@Test
@@ -94,23 +96,31 @@ class CHeroArmyTest {
 		final CUnit walkingHome = unit(1, -800f, 0f, CBehaviorMove.class);
 		final Orders orders = new Orders();
 
-		CHeroArmy.formUp(game(hero, walkingHome), PLAYER, hero, orders.listener());
+		CHeroArmy.formUp(game(hero, walkingHome), PLAYER, hero, 0f, 0f, orders.listener());
 
-		// Walking on to the old point is what piled the squad up in front of her.
-		assertEquals(List.of(0f), orders.xs);
+		// Walking on to the old point is what piled the squad up in front of her, and a unit eight hundred behind does
+		// not get sent to her feet either: the block is laid out around the army's own centre, so it closes up by its
+		// own width and stops two hundred behind her line instead of walking through her.
+		assertEquals(List.of(-200f), orders.xs);
 		assertEquals(List.of(0f), orders.ys);
 	}
 
+	/**
+	 * The units in front of her are not called back through her, and they are not left standing either: leaving them
+	 * out is what the phone saw as an army that stops and never lines up.
+	 */
 	@Test
-	void aFollowerAlreadyInFrontIsLeftWhereItStandsWhenSheStops() {
+	void aFollowerAlreadyInFrontFormsItsOwnBlockInFrontOfHer() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit inFront = unit(1, 300f, 0f, CBehaviorMove.class);
+		final CUnit inFront = unit(1, 400f, 0f, CBehaviorMove.class);
 		final Orders orders = new Orders();
 
-		CHeroArmy.formUp(game(hero, inFront), PLAYER, hero, orders.listener());
+		CHeroArmy.formUp(game(hero, inFront), PLAYER, hero, 0f, 0f, orders.listener());
 
-		// Calling it back would send it through her, so it simply stops where it is.
-		assertTrue(orders.calls.isEmpty());
+		assertEquals(List.of(1), orders.unitHandleIds);
+		// Its back row is one gap in front of her own line, so nothing of the block stands on her.
+		assertEquals(List.of(150f), orders.xs);
+		assertEquals(List.of(0f), orders.ys);
 	}
 
 	@Test
@@ -263,6 +273,72 @@ class CHeroArmyTest {
 		assertTrue(orders.calls.isEmpty());
 	}
 
+	/**
+	 * The phone's worst case: a unit marching her way meets the tree she walked around, and pressing into it is what
+	 * stopped the army. The aim is moved to the nearest ground the unit's own footprint fits on, on her far side.
+	 */
+	@Test
+	void aFollowerIsAimedAtGoundItCanStandOnInsteadOfTheTreeInItsWay() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit follower = unit(1, 100f, 0f, CBehaviorStop.class);
+		final FakePathingGrid grid = fakeGrid();
+		// The cell the rules aim it at, and its neighbours on that side, are a clump of trees.
+		grid.block(84f, 94f, 32f, 32f);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(grid, hero, follower), PLAYER, hero, 300f, 0f, orders.listener());
+
+		assertEquals(List.of(1), orders.unitHandleIds);
+		// One cell further out of her corridor, which is the nearest cell the unit fits on.
+		assertEquals(List.of(68f), orders.xs);
+		assertEquals(List.of(110f), orders.ys);
+	}
+
+	@Test
+	void aFollowerWithNowhereToStandAroundItsAimIsNotOrdered() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit follower = unit(1, 100f, 0f, CBehaviorStop.class);
+		final FakePathingGrid grid = fakeGrid();
+		grid.block(-1000f, -1000f, 2000f, 2000f);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(grid, hero, follower), PLAYER, hero, 300f, 0f, orders.listener());
+
+		// Re-ordering it at the same wall four times a second is the stuck unit, not the fix for it.
+		assertTrue(orders.calls.isEmpty(), "a unit with no ground to walk to keeps what it was doing");
+	}
+
+	/** A formation slot in the trees is moved, or the block that forms in a corridor is half units and half trunks. */
+	@Test
+	void aFormationSlotInTheTreesIsMovedToGoundTheUnitCanStandOn() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit follower = unit(1, -800f, 0f, CBehaviorStop.class);
+		final FakePathingGrid grid = fakeGrid();
+		// The slot the block of one is aimed at: put a tree on it.
+		grid.block(-216f, -16f, 32f, 32f);
+		final Orders orders = new Orders();
+
+		CHeroArmy.formUp(game(grid, hero, follower), PLAYER, hero, 0f, 0f, orders.listener());
+
+		assertEquals(List.of(1), orders.unitHandleIds);
+		// One cell out of the tree, and nothing else about the block changed.
+		assertEquals(List.of(-232f), orders.xs);
+		assertEquals(List.of(0f), orders.ys);
+	}
+
+	@Test
+	void aSecondUnitIsNeverAimedAtTheGroundAnotherOneTook() {
+		final CUnit unit = unit(1, 0f, 0f, CBehaviorStop.class);
+		final List<float[]> taken = new ArrayList<>();
+		taken.add(new float[] { 100f, 0f });
+
+		final float[] aim = CHeroArmy.standable(unit, 100f, 0f, null, taken, 0f, 1f, 0f, 0f, 0f);
+
+		assertTrue(aim != null, "there is plenty of ground around the point the first unit took");
+		assertTrue(StrictMath.hypot(aim[0] - 100f, aim[1] - 0f) >= 48f,
+				"two units on one cell is the pile-up the formation exists to avoid");
+	}
+
 	@Test
 	void aUnitWithAnEnemyInSightKeepsItsFight() {
 		final CUnit hero = hero(CBehaviorStop.class);
@@ -317,12 +393,55 @@ class CHeroArmyTest {
 	}
 
 	private static CSimulation game(final CWorldCollision worldCollision, final CUnit... units) {
+		return game(worldCollision, null, units);
+	}
+
+	private static CSimulation game(final PathingGrid pathingGrid, final CUnit... units) {
+		return game(new FakeWorldCollision(), pathingGrid, units);
+	}
+
+	private static CSimulation game(final CWorldCollision worldCollision, final PathingGrid pathingGrid,
+			final CUnit... units) {
 		final CSimulation game = TestObjects.allocate(CSimulation.class);
 		TestObjects.set(game, "units", new ArrayList<>(Arrays.asList(units)));
 		TestObjects.set(game, "newUnits", new ArrayList<CUnit>());
 		TestObjects.set(game, "worldCollision", worldCollision);
+		TestObjects.set(game, "pathingGrid", pathingGrid);
 		TestObjects.set(game, "players", new ArrayList<>(List.of(player())));
 		return game;
+	}
+
+	/**
+	 * The map's furniture, as the rule set asks about it: rectangles a unit's footprint may not enter. Allocated
+	 * without its constructor, like the rest of the engine here — a real grid needs a loaded map.
+	 */
+	private static final class FakePathingGrid extends PathingGrid {
+		private final List<Rectangle> trees = new ArrayList<>();
+
+		@SuppressWarnings("unused")
+		FakePathingGrid() {
+			super(null, null);
+		}
+
+		void block(final float x, final float y, final float width, final float height) {
+			this.trees.add(new Rectangle(x, y, width, height));
+		}
+
+		@Override
+		public boolean isPathable(final float x, final float y, final MovementType pathingType,
+				final float collisionSize) {
+			return isPathable(x, y, pathingType);
+		}
+
+		@Override
+		public boolean isPathable(final float x, final float y, final MovementType pathingType) {
+			for (final Rectangle tree : this.trees) {
+				if (tree.contains(x, y)) {
+					return false;
+				}
+			}
+			return true;
+		}
 	}
 
 	/** The alliance table alone: {@code hasAlliance} reads it and nothing else a test reaches. */
@@ -357,6 +476,13 @@ class CHeroArmyTest {
 				}
 			}
 		}
+	}
+
+	private static FakePathingGrid fakeGrid() {
+		final FakePathingGrid grid = TestObjects.allocate(FakePathingGrid.class);
+		// Allocated without its constructor, so the field initialiser above did not run.
+		TestObjects.set(grid, "trees", new ArrayList<Rectangle>());
+		return grid;
 	}
 
 	private static CUnit hero(final Class<? extends CBehavior> behavior) {

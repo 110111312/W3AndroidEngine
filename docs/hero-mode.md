@@ -193,12 +193,12 @@ Settled, and no longer up for renegotiation without a good reason:
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
-18. **The army is not slotted while she walks.** A block of slots is a set of positions nobody has checked for
-    walkability: `CGroupMove.slots` lays its rows around the point it is given, and in a corridor or a corner most of
-    them land in trees, so the units stand wherever there is room — which is around her feet — and the stick re-aims
-    them at those cells four times a second. That was the bug the phone kept finding: she was not blocked by the map,
-    she was blocked by her own formation standing in the cell she was stepping into, and no amount of nudging it aside
-    fixed the next cell.
+18. **The army is not slotted while she walks, and every aim is checked against the ground before it is ordered.**
+    A block of slots is a set of positions nobody has checked for walkability: `CGroupMove.slots` lays its rows around
+    the point it is given, and in a corridor or a corner most of them land in trees, so the units stand wherever there
+    is room — which is around her feet — and the stick re-aims them at those cells four times a second. That was the
+    bug the phone kept finding: she was not blocked by the map, she was blocked by her own formation standing in the
+    cell she was stepping into, and no amount of nudging it aside fixed the next cell.
 
     So the march is per unit, and it is two numbers: **the row behind her** the unit belongs to, and **one side of her
     line** at least `CORRIDOR` (110, wider than her three-cell footprint) away from it: `marchTo`. A unit behind her
@@ -212,17 +212,43 @@ Settled, and no longer up for renegotiation without a good reason:
     while she walks away and the army only ever closes in from the `MARCH_BACK` clamp. Rows floor towards her, so the
     aim is always at least a step ahead of where the unit stands.
 
-    The block still exists, but only when she stops: `formUp` runs the old slot formation for the units behind her, with
-    the front row on her own line (or out at her attack range, for a ranged hero, who shoots over the front rank). That
-    is when a formation is both cheap and visible, and it is also the only moment it cannot block anything.
+    **The aim is then moved onto ground that unit can stand on.** `PathingGrid.isPathable` is asked, for the unit's own
+    footprint, about the point the rules named; if it is inside a tree or a wall the nearest point around it within
+    `SNAP_CELLS` (4) cells is taken instead, preferring one that stays out of her corridor and away from a point another
+    unit already took; if there is none, the unit is not ordered at all. This is the second phone run's bug: a unit
+    marching her way met the obstacle she had walked around, and pressing into it was the stuck unit — the engine's own
+    pathfinder cannot help with a destination it cannot reach, and the stick re-sent it four times a second. A unit that
+    is already on ground it can stand on is ordered exactly where the rule set says, not a cell off it.
+
+    The block still exists, but only when she stops: `formUp` runs the engine's slot formation, laid out across her way
+    from a point `MARCH_FACING` (600) along it from the army's own centre — `slots` takes its rows from the line between
+    the army and the point it is given, so its rows stand across her way rather than at whatever angle the army happened
+    to be standing at. Two blocks come out of it, because there are two populations:
+
+    - **the units level with her or behind her**, its front row on her own line (or out at her attack range, for a
+      ranged hero, who shoots over the front rank), by `placeBehind`;
+    - **the units already in front of her**, its back row a `MARCH_GAP` (150) beyond her line and beyond her reach, by
+      `placeAhead`, laid out back-most row first. Calling them back would send them through her, and leaving them where
+      they stood is what the phone reported next — an army that stops with half of it in front of the hero and never
+      lines up.
+
+    Both have their slots snapped to standable ground by the same search the march uses, so a block that forms in a
+    corridor forms instead of half-standing in the trees. The way the block is laid out across is the **stick's last
+    direction**, not her drawn facing, which lags a turn: after a turn and a quick release those differ, and a block
+    laid out across the wrong line is no formation at all.
 
     What this replaced, and why it kept failing: a progress timer that led the army for a second (the phone showed it
     flipping ahead, back, ahead — a timer cannot know which side of a unit is on); a side rule that slotted units ahead
     of her or behind her (the oscillation stopped, but the front row still stood level with her, 96 units wide, on the
-    cell she needed); and a "step one cell aside" order that asked the engine's own step test (`CUnitPlacement`
-    `blockedByUnit`, the test `CBehaviorMove` refuses a step by) who was in the way and moved that unit. The nudge was
-    sound — the log even showed the blocked step and a free spot for it — but it fought the formation: the next slot
-    order walked the unit straight back. Removing the slots removes the fight.
+    cell she needed); a block that marched with her by re-forming every beat, one `MARCH_GAP` behind her line (its
+    anchor swings around her on every turn, so on a circle the army runs round her instead of following her, and the
+    corridor it was pushed out of swept as she turned); a column that stepped 100 along her way without slots (turning
+    was clean, but nothing ever formed, and every unit that met an obstacle pressed into it); and a "step one cell
+    aside" order that asked the engine's own step test (`CUnitPlacement` `blockedByUnit`, the test `CBehaviorMove`
+    refuses a step by) who was in the way and moved that unit. The nudge was sound — the log even showed the blocked
+    step and a free spot for it — but it fought the formation: the next slot order walked the unit straight back.
+    Removing the slots while she walks removes the fight; keeping the walkability check on every aim removes the
+    press-into-the-tree; and giving the units in front their own block is what makes the stop look like a formation.
 19. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
     to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
     preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
