@@ -168,6 +168,54 @@ class DoubleTapMapperTest {
 		public void cancel() {
 			this.calls.add("cancel");
 		}
+
+		@Override
+		public boolean secondaryDown(final float x, final float y, final int pointerId) {
+			this.calls.add("held " + at(x, y));
+			return true;
+		}
+
+		@Override
+		public void secondaryMove(final float x, final float y) {
+			this.calls.add("heldMove " + at(x, y));
+		}
+
+		@Override
+		public void secondaryUp(final float x, final float y) {
+			this.calls.add("heldUp " + at(x, y));
+		}
+	}
+
+	/**
+	 * The mapper sits between the recognizer and the screen, so a finger the screen wants for itself has to pass
+	 * through it. When it did not, a second thumb on the hero tray became a two finger pan: the skill never fired and
+	 * the camera moved instead.
+	 */
+	@Test
+	void aSecondFingerReachesTheScreenInsteadOfStartingAPan() {
+		this.clock.set(0);
+		this.recognizer.onEvent(new PointerEvent(0, PointerEvent.Tool.FINGER, PointerEvent.Action.DOWN, 200, 700, 0,
+				1, 10, 0, 0));
+		this.recognizer.update(0);
+		this.clock.set(40);
+		this.recognizer.onEvent(new PointerEvent(0, PointerEvent.Tool.FINGER, PointerEvent.Action.MOVE, 260, 700, 0,
+				1, 10, 0, 40));
+		this.recognizer.update(40);
+		this.clock.set(120);
+		this.recognizer.onEvent(new PointerEvent(1, PointerEvent.Tool.FINGER, PointerEvent.Action.DOWN, 900, 800, 0,
+				1, 10, 0, 120));
+		this.recognizer.update(120);
+		this.clock.set(160);
+		this.recognizer.onEvent(new PointerEvent(1, PointerEvent.Tool.FINGER, PointerEvent.Action.MOVE, 880, 780, 0,
+				1, 10, 0, 160));
+		this.recognizer.update(160);
+		this.clock.set(200);
+		this.recognizer.onEvent(new PointerEvent(1, PointerEvent.Tool.FINGER, PointerEvent.Action.UP, 880, 780, 0, 1,
+				10, 0, 200));
+		this.recognizer.update(200);
+
+		assertEquals(List.of("dragStart 200,700", "held 900,800", "heldMove 880,780", "heldUp 880,780"),
+				this.recorder.calls);
 	}
 
 	private final AtomicLong clock = new AtomicLong();
