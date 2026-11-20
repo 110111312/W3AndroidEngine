@@ -107,7 +107,7 @@ final class HeroMode implements HeroTouchHost {
 	 * How long a tap made with the thumb walking may spend closing on a target that is out of reach before the thumb
 	 * wins. Mobile models chase a step, not across the lane: past this she abandons the tap and follows the stick.
 	 */
-	private static final float CHASE_SECONDS = 0.3f;
+	private static final float CHASE_SECONDS = 0.25f;
 	private static final float AIM_FULL_RANGE_DP = 80f;
 	/** Until this time the walk stick keeps its move orders to itself, so a cast made while walking can finish. */
 	private long stickHoldUntilMs;

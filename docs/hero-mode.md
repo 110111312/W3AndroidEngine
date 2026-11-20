@@ -216,16 +216,20 @@ Settled, and no longer up for renegotiation without a good reason:
     is not the smart order a right click sends — a smart order on a neutral building is a walk by design.
 
     **One tap, one swing.** The order is `attackonce`, not the sustained `attack`: after the swing the hero stops
-    unless the button is tapped again. A tap that lands while she is still swinging is remembered rather than lost,
-    and it arms one more swing on the behaviour that is already running instead of re-ordering her. That distinction
-    is the whole feature: a fresh attack order wipes the backswing latch, the cooldown snapshot and the wait before
-    the first swing, so re-ordering per tap would cost up to a quarter second before every swing and feel mushy. One
-    arm at most, so a burst of taps still buys one swing — otherwise a masher would get auto-attack back through the
-    keyboard. A tap on a different target is a new order, which is a new engagement and is meant to settle briefly.
+    unless the button is tapped again. A tap that lands after the swing it repeats has landed its hit is remembered
+    rather than lost, and it arms one more swing on the behaviour that is already running instead of re-ordering her.
+    That distinction is the whole feature: a fresh attack order wipes the backswing latch, the cooldown snapshot and
+    the wait before the first swing, so re-ordering per tap would cost up to a quarter second before every swing and
+    feel mushy. A tap that lands *before* that hit — in the windup, or before the swing has even started — buys
+    nothing, because it is the previous tap's impatience rather than a second intent: that is why a quick double tap
+    is one attack and not two. One arm at most, so a burst of taps still buys one swing; a queue would let a masher
+    stock swings and would be auto-attack through the back door. A tap on a different target is a new order, which is
+    a new engagement and is meant to settle briefly.
 
     **A tap while walking.** With a thumb on the stick the player has already said where she is going, so the tap
-    chases only a step: a target she can reach within 0.3 s of walking, and it gives up the moment the target outruns
-    that — a chase across the lane would take her somewhere the player did not send her. Standing still, the tap still
+    chases only a step: a target she can reach within a quarter second of walking, and it gives up the moment the
+    target outruns that — a chase across the lane would take her somewhere the player did not send her. Standing still,
+    the tap still
     walks her into range as far as the acquisition range. While the swing she asked for is owed, the stick's move
     orders go quiet: a move order ends the attack behaviour before its damage point, so without the quiet the swing
     was ordered and taken back in the same frame, and the button did nothing at all while walking. A swing that has

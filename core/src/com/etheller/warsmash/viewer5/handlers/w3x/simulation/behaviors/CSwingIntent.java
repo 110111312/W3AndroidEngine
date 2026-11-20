@@ -31,6 +31,19 @@ final class CSwingIntent {
 		return this.oneSwing;
 	}
 
+	/**
+	 * Whether a tap arriving now may arm another swing, given whether a swing of this intent is in flight and whether
+	 * that swing has landed its hit.
+	 *
+	 * <p>
+	 * The window a tap arms is the backswing and the cooldown after it. A tap that arrives before the swing it repeats
+	 * has landed is not a second swing but the same impatience, and buys nothing — which is why a quick double tap is
+	 * one attack on the phone and not two.
+	 */
+	boolean canArm(final boolean swingInFlight, final boolean hitLanded) {
+		return this.oneSwing && swingInFlight && hitLanded;
+	}
+
 	/** A tap for one more swing. Harmless on a sustained order, which never needs arming. */
 	void arm() {
 		this.armed = true;

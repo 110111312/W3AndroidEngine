@@ -61,6 +61,32 @@ class CSwingIntentTest {
 	}
 
 	@Test
+	void aQuickDoubleTapIsOneAttack() {
+		final CSwingIntent intent = new CSwingIntent(true);
+
+		// The second tap lands while the swing the first one bought is still in its windup, before the hit.
+		assertFalse(intent.canArm(true, false));
+		// Nothing was armed, so the swing that was already coming is the only one.
+		assertFalse(intent.nextSwingAllowed());
+	}
+
+	@Test
+	void aTapDuringTheBackswingBuysTheNextSwing() {
+		final CSwingIntent intent = new CSwingIntent(true);
+
+		// The hit has landed and the backswing is still playing: this tap means "again".
+		assertTrue(intent.canArm(true, true));
+	}
+
+	@Test
+	void aSustainedOrderIsNeverArmed() {
+		final CSwingIntent sustained = new CSwingIntent(false);
+
+		assertFalse(sustained.canArm(true, true));
+		assertTrue(sustained.nextSwingAllowed());
+	}
+
+	@Test
 	void armingASustainedOrderChangesNothing() {
 		final CSwingIntent sustained = new CSwingIntent(false);
 		sustained.arm();

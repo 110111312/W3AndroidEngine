@@ -224,6 +224,12 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 				|| !isSameTarget(target) || !checkTargetStillValid(game)) {
 			return false;
 		}
+		if (!this.intent.canArm(isSwinging(), this.damagePointLaunchTime == 0)) {
+			// Taken, and buys nothing: the swing this tap repeats has not landed yet, or has not even started. A quick
+			// double tap is one attack, because the second tap is the first one's impatience. Returning true keeps the
+			// behaviour exactly as it is; the caller then does not reset it either.
+			return true;
+		}
 		this.intent.arm();
 		return true;
 	}
