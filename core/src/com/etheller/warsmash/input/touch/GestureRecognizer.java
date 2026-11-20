@@ -23,6 +23,11 @@ public final class GestureRecognizer {
 
 	private State state = State.IDLE;
 	private int primaryId;
+	/**
+	 * The finger the listener took for itself with {@link GestureListener#secondaryDown}: it reports through the
+	 * secondary calls and never becomes part of the gesture, so a thumb can aim while the other one drags.
+	 */
+	private int secondaryId = -1;
 	private boolean pen;
 	private boolean secondary;
 	private boolean rightClick;
@@ -115,7 +120,7 @@ public final class GestureRecognizer {
 			this.listener.pointerAt(event.x, event.y);
 			break;
 		case PENDING:
-			if (!this.pen) {
+			if (!this.pen && !claimSecondary(event)) {
 				startTwoFinger(event);
 			}
 			break;
@@ -128,9 +133,14 @@ public final class GestureRecognizer {
 			}
 			break;
 		case DRAG:
-			if (!this.pen && ((event.timeMillis - this.downTime) <= this.settings.twoFingerWindowMs)) {
-				this.listener.cancel();
-				startTwoFinger(event);
+			if (!this.pen) {
+				if (claimSecondary(event)) {
+					break;
+				}
+				if ((event.timeMillis - this.downTime) <= this.settings.twoFingerWindowMs) {
+					this.listener.cancel();
+					startTwoFinger(event);
+				}
 			}
 			break;
 		default:
@@ -138,7 +148,25 @@ public final class GestureRecognizer {
 		}
 	}
 
+	/**
+	 * Offers a second finger to the listener before it becomes a pan. Only one is taken at a time; the rest go the
+	 * old way, so an interface that claims one finger cannot swallow a three finger gesture.
+	 */
+	private boolean claimSecondary(final PointerEvent event) {
+		if (this.secondaryId != -1) {
+			return false;
+		}
+		if (!this.listener.secondaryDown(event.x, event.y, event.pointerId)) {
+			return false;
+		}
+		this.secondaryId = event.pointerId;
+		this.pointers.put(event.pointerId, new float[] { event.x, event.y });
+		return true;
+	}
+
 	private void startTwoFinger(final PointerEvent event) {
+		// A pan has won: any finger the listener had taken for itself is over, and it is told through cancel().
+		this.secondaryId = -1;
 		this.pointers.put(event.pointerId, new float[] { event.x, event.y });
 		this.state = State.TWO_FINGER;
 		this.twoFingerStart = event.timeMillis;
@@ -153,6 +181,15 @@ public final class GestureRecognizer {
 	}
 
 	private void move(final PointerEvent event) {
+		if ((this.secondaryId != -1) && (event.pointerId == this.secondaryId)) {
+			final float[] secondaryPosition = this.pointers.get(event.pointerId);
+			if (secondaryPosition != null) {
+				secondaryPosition[0] = event.x;
+				secondaryPosition[1] = event.y;
+			}
+			this.listener.secondaryMove(event.x, event.y);
+			return;
+		}
 		final float[] position = this.pointers.get(event.pointerId);
 		if (position == null) {
 			return;
@@ -254,6 +291,12 @@ public final class GestureRecognizer {
 	}
 
 	private void up(final PointerEvent event) {
+		if ((this.secondaryId != -1) && (event.pointerId == this.secondaryId)) {
+			this.secondaryId = -1;
+			this.pointers.remove(event.pointerId);
+			this.listener.secondaryUp(event.x, event.y);
+			return;
+		}
 		final float[] position = this.pointers.get(event.pointerId);
 		if (position != null) {
 			position[0] = event.x;
@@ -336,6 +379,7 @@ public final class GestureRecognizer {
 		if ((this.state != State.IDLE) && (this.state != State.IGNORE)) {
 			this.listener.cancel();
 		}
+		this.secondaryId = -1;
 		this.pointers.clear();
 		this.state = State.IDLE;
 	}

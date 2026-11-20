@@ -28,4 +28,29 @@ public interface HeroTouchHost {
 	boolean beginLook(float screenX, float screenY);
 
 	void endLook();
+
+	// ------------------------------------------------------------------ the skill tray
+
+	/**
+	 * The finger has landed on a skill, an item or the attack button.
+	 *
+	 * @return true when the point is on one of them, so the press belongs to the tray and not to a look-around
+	 */
+	boolean beginSkill(float screenX, float screenY);
+
+	/** The finger that began on a button moved: a direction is being aimed, or a ground point dragged. */
+	void dragSkill(float screenX, float screenY);
+
+	/** The finger lifted: cast what was aimed, unless it came back onto the button it started from. */
+	void endSkill(float screenX, float screenY);
+
+	/** The press was cancelled: nothing is cast. */
+	void cancelSkill();
+
+	/**
+	 * A tap anywhere, offered before the console sees it.
+	 *
+	 * @return true when the tray took it — a skill, an item or a level — so no world click is synthesized
+	 */
+	boolean tap(float screenX, float screenY);
 }
