@@ -6,9 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+
+import com.badlogic.gdx.math.Rectangle;
 
 import com.etheller.warsmash.testing.TestObjects;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
@@ -22,6 +25,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CWeaponType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.attacks.CUnitAttackMissile;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CAllianceType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 
@@ -156,6 +161,64 @@ class CHeroArmyTest {
 		assertTrue(orders.calls.isEmpty(), "only a hero further off than the retreat distance takes a fight away");
 	}
 
+	/**
+	 * The tight ground: the hero is boxed in by her own army. The army has the free path, so it goes first and she
+	 * follows into the ground it leaves.
+	 */
+	@Test
+	void theArmyIsSentOnAheadWhenTheHeroIsBoxedIn() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit inTheCorridor = unit(1, 300f, 0f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.makeWay(game(hero, inTheCorridor), PLAYER, hero, 1f, 0f, orders.listener());
+
+		assertEquals(List.of(1), orders.unitHandleIds);
+		assertEquals(List.of(400f), orders.xs);
+		assertEquals(List.of(0f), orders.ys);
+	}
+
+	@Test
+	void theLeadingBlockIsPushedOffTheHerosFeet() {
+		// Two rows as CGroupMove centres them on the point it is given: aimed at her, so the back row is behind her.
+		final float[] slots = { 0f, 142f, 0f, -142f };
+
+		CHeroArmy.placeClearOfHer(slots, 0f, 0f, 0f, 1f, 100f);
+
+		assertEquals(384f, slots[1], 1e-4f);
+		assertEquals(100f, slots[3], 1e-4f);
+	}
+
+	@Test
+	void aUnitWithAnEnemyInSightKeepsItsFight() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
+		final CUnit enemy = unit(2, 40f, 40f, CBehaviorStop.class);
+		TestObjects.set(enemy, "playerIndex", PLAYER + 1);
+		final FakeWorldCollision worldCollision = new FakeWorldCollision();
+		worldCollision.near.add(enemy);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(worldCollision, hero, follower), PLAYER, hero, 300f, 400f, orders.listener());
+
+		// Marching to a slot through a battle is what reads as the army ignoring the enemy standing next to it.
+		assertTrue(orders.calls.isEmpty(), "a unit with an enemy in sight is left to the fight it is about to join");
+	}
+
+	@Test
+	void aUnitWalkingToItsTargetKeepsItsFight() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit follower = unit(1, 50f, 50f, CBehaviorMove.class);
+		final Object followerOrders = TestObjects.get(follower, "orders");
+		final Object walk = TestObjects.get(followerOrders, "currentBehavior");
+		TestObjects.set(walk, "rangedBehavior", TestObjects.allocate(CBehaviorAttack.class));
+		final Orders issued = new Orders();
+
+		CHeroArmy.follow(game(hero, follower), PLAYER, hero, 300f, 400f, issued.listener());
+
+		assertTrue(issued.calls.isEmpty(), "closing in on a target it already has is a fight too");
+	}
+
 	@Test
 	void theChaseIsLookedAtOnTheIdleScansHalfSecond() {
 		// The spec of the chase cap is the idle scan's cadence, not a number of its own.
@@ -176,10 +239,50 @@ class CHeroArmyTest {
 	}
 
 	private static CSimulation game(final CUnit... units) {
+		return game(new FakeWorldCollision(), units);
+	}
+
+	private static CSimulation game(final CWorldCollision worldCollision, final CUnit... units) {
 		final CSimulation game = TestObjects.allocate(CSimulation.class);
 		TestObjects.set(game, "units", new ArrayList<>(Arrays.asList(units)));
 		TestObjects.set(game, "newUnits", new ArrayList<CUnit>());
+		TestObjects.set(game, "worldCollision", worldCollision);
+		TestObjects.set(game, "players", new ArrayList<>(List.of(player())));
 		return game;
+	}
+
+	/** The alliance table alone: {@code hasAlliance} reads it and nothing else a test reaches. */
+	@SuppressWarnings("unchecked")
+	private static CPlayer player() {
+		final CPlayer player = TestObjects.allocate(CPlayer.class);
+		final EnumSet<CAllianceType>[] alliances = new EnumSet[24];
+		for (int i = 0; i < alliances.length; i++) {
+			alliances[i] = EnumSet.noneOf(CAllianceType.class);
+		}
+		TestObjects.set(player, "alliances", alliances);
+		return player;
+	}
+
+	/**
+	 * Who the engine says is nearby: the real query enumerates its grid, the tests hand over the units themselves and
+	 * the rule decides what "near" means.
+	 */
+	private static final class FakeWorldCollision extends CWorldCollision {
+		private final List<CUnit> near = new ArrayList<>();
+
+		FakeWorldCollision() {
+			super(new Rectangle(0, 0, 0, 0), 0f);
+		}
+
+		@Override
+		public void enumUnitsInRange(final float x, final float y, final float radius,
+				final CUnitEnumFunction callback) {
+			for (final CUnit unit : this.near) {
+				if (callback.call(unit)) {
+					return;
+				}
+			}
+		}
 	}
 
 	private static CUnit hero(final Class<? extends CBehavior> behavior) {

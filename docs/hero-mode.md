@@ -53,7 +53,10 @@ Units belong to the player but are not commanded one by one. Their standing orde
   multi-unit selection — rank-sorted slots with the hero at the front of the block, marching at the army's own slowest
   pace, never slowing the hero, and settling around her when she stops;
 - **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
-  elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition;
+  elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition; a unit
+  that already has a target, or an enemy inside its own acquisition range, is not pulled out of it to reach a slot;
+- **make way** when the hero is wedged against her own squad — a dead end, a corridor she has to back out of: the army
+  is sent on ahead of her, because the side with the free path goes first;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
   free; regrouping while the hero stands still is the script's job (D);
 - **not die stupidly** — no walking into towers, no standing in the middle of nothing, no chasing a lone unit into a
@@ -141,9 +144,21 @@ Settled, and no longer up for renegotiation without a good reason:
     marches as one block.
 16. **A fighting unit ignores hero movement** and keeps its target while the player moves, casts and attacks freely.
     Only a hero more than **1000** away turns the order into a retreat: break combat, join the formation. The
-    distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero.
+    distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero. A unit
+    counts as fighting when it is attacking, attack-moving, walking to a target it already picked, or standing with an
+    enemy inside its own acquisition range; the last case is what keeps the army from marching through a battle to
+    reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
+18. **When the hero is wedged against her own army, the army leads.** The engine never pushes a unit aside
+    (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
+    still), and hero mode has no selection with which the player could move a unit out of the way himself — so a
+    squad that walked into a corridor in front of the hero is a wall between her and the way out. The signal is her
+    own progress: commanded to walk and moved less than **10** world units over the half-second beat means stopped,
+    which a wall does too, and the answer is the same either way. The army is then sent **400** ahead along the
+    stick's direction, with the block pushed until its back row is **100** clear of her feet, and it keeps leading for
+    **one second**; then the trailing formation comes back, and if she is still stopped the next beat asks again. The
+    army always has the free path in this case — she is the one behind it.
 
 Two consequences that were not obvious when the design was written:
 

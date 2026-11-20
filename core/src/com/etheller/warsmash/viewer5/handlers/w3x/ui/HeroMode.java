@@ -60,6 +60,13 @@ final class HeroMode implements HeroTouchHost {
 	 */
 	private static final float HERO_SEARCH_SECONDS = 8f;
 
+	/**
+	 * How far the hero must move between progress checks to count as walking, in world units: a tenth of the slowest
+	 * walker's ground over the half-second beat, so a hero held back by a slow army still counts as walking and a hero
+	 * wedged against her own squad does not. See {@link #watchProgress(int)}.
+	 */
+	private static final float STUCK_DISTANCE = 10f;
+
 	private final MeleeUI ui;
 	private final TouchSettings settings;
 	private final HeroStick stick;
@@ -76,6 +83,11 @@ final class HeroMode implements HeroTouchHost {
 	private float worldPerScreenPixel = 1f;
 	/** The step the army's chase cap is next looked at on; see {@link CHeroArmy#RETREAT_SCAN_TICKS}. */
 	private int nextArmyScanTick = Integer.MIN_VALUE;
+	/** Where the last progress check left the hero; see {@link #watchProgress(int)}. */
+	private float progressX;
+	private float progressY;
+	/** The step the army stops leading until, after she was found stopped by it; see {@link CHeroArmy#makeWay}. */
+	private int leadOutUntilTick = Integer.MIN_VALUE;
 
 	HeroMode(final MeleeUI ui, final TouchSettings settings) {
 		this.ui = ui;
@@ -384,8 +396,24 @@ final class HeroMode implements HeroTouchHost {
 		issueHeroMoveOrder();
 		// The army walks around the same point, in formation and at its own pace. The hero's order above is untouched
 		// by it: she is never in the group, so the slowest follower cannot slow her down.
+		if (this.ui.war3MapViewer.simulation.getGameTurnTick() < this.leadOutUntilTick) {
+			// She is boxed in by her own squad: for a moment the army leads instead of trailing, so it clears the
+			// ground she is walking into.
+			issueMakeWay(directionX, directionY);
+			return;
+		}
 		CHeroArmy.follow(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero, this.orderTarget.x,
 				this.orderTarget.y, this.ui.unitOrderListener);
+	}
+
+	private void issueMakeWay(final float directionX, final float directionY) {
+		final float length = (float) StrictMath.hypot(directionX, directionY);
+		if (length < 1e-4f) {
+			return;
+		}
+		// The thumb is in screen space, where y grows downwards; the map's y grows upwards.
+		CHeroArmy.makeWay(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero,
+				directionX / length, -directionY / length, this.ui.unitOrderListener);
 	}
 
 	private void issueHeroMoveOrder() {
@@ -430,6 +458,31 @@ final class HeroMode implements HeroTouchHost {
 		this.nextArmyScanTick = tick + CHeroArmy.RETREAT_SCAN_TICKS;
 		CHeroArmy.giveUpFarChases(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero,
 				this.ui.unitOrderListener);
+		watchProgress(tick);
+	}
+
+	/**
+	 * The tight ground: the hero is commanded to walk and she is not moving, because her own army stands in the way.
+	 * Nothing in the engine pushes a unit aside, so the army is sent on ahead of her for a moment
+	 * ({@link CHeroArmy#makeWay}) and she follows into the ground it leaves.
+	 * <p>
+	 * The test is her own progress rather than a collision query: a wall stops her the same way, and a squad sent
+	 * forward then is a squad already out of the way when she finds the gap. It costs two distances on the beat the
+	 * scan already keeps.
+	 */
+	private void watchProgress(final int tick) {
+		final float dx = this.hero.getX() - this.progressX;
+		final float dy = this.hero.getY() - this.progressY;
+		this.progressX = this.hero.getX();
+		this.progressY = this.hero.getY();
+		if (!this.moving || !this.stick.isActive() || !this.stick.hasDirection()) {
+			return;
+		}
+		if (((dx * dx) + (dy * dy)) > (STUCK_DISTANCE * STUCK_DISTANCE)) {
+			return;
+		}
+		this.leadOutUntilTick = tick + CHeroArmy.MAKE_WAY_TICKS;
+		issueMakeWay(this.stick.getDirectionX(), this.stick.getDirectionY());
 	}
 
 	private void issueStopOrder() {
@@ -452,6 +505,8 @@ final class HeroMode implements HeroTouchHost {
 		// Stop is issued without an ability when none carries it, exactly as the script's own order native does.
 		this.ui.unitOrderListener.issueImmediateOrder(this.hero.getHandleId(), abilityHandleId, OrderIds.stop, false);
 		// She stopped short of the point the stick named, so the army settles around her instead of walking on to it.
+		// A make-way from the last second is over too: its direction was the stick's, and there is no stick anymore.
+		this.leadOutUntilTick = Integer.MIN_VALUE;
 		CHeroArmy.formUp(this.ui.war3MapViewer.simulation, this.ui.localPlayer.getId(), this.hero,
 				this.ui.unitOrderListener);
 	}
