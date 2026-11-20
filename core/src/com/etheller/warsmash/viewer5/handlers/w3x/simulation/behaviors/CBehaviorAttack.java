@@ -209,6 +209,11 @@ public class CBehaviorAttack extends CAbstractRangedBehavior {
 		return (this.intent != null) && this.intent.isOneSwing();
 	}
 
+	/** True while a swing is in flight, from its start until the backswing is over. */
+	public boolean isSwinging() {
+		return (this.damagePointLaunchTime != 0) || (this.backSwingTime != 0);
+	}
+
 	/**
 	 * A tap for one more swing at the target this behaviour is already fighting. False when this is a new fight — a
 	 * different target, a behaviour that is not the one running, or a target that is no longer valid — and the caller

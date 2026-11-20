@@ -223,15 +223,16 @@ Settled, and no longer up for renegotiation without a good reason:
     arm at most, so a burst of taps still buys one swing — otherwise a masher would get auto-attack back through the
     keyboard. A tap on a different target is a new order, which is a new engagement and is meant to settle briefly.
 
-    **A tap while walking.** With a thumb on the stick the player has already said where she is going, so the tap only
-    takes a target she can strike from where she stands; out of reach it is nothing and she keeps walking, the way the
-    mobile grammars behave. Standing still, the tap still walks her into range. While the swing she asked for is owed,
-    the stick's move orders go quiet: a move order ends the attack behaviour before its damage point, so without the
-    quiet the swing was ordered and taken back in the same frame, and the button did nothing at all while walking. The
-    thumb's direction is not lost — she walks again the moment the swing is over, without a lift and a re-press — and
-    letting go of the stick mid-swing sends no stop for the same reason: the attack ends on its own and leaves her
-    standing. That quiet only covers a swing the button bought, so a script that orders the hero to attack still lets
-    the player walk her out of it.
+    **A tap while walking.** With a thumb on the stick the player has already said where she is going, so the tap
+    chases only a step: a target she can reach within 0.3 s of walking, and it gives up the moment the target outruns
+    that — a chase across the lane would take her somewhere the player did not send her. Standing still, the tap still
+    walks her into range as far as the acquisition range. While the swing she asked for is owed, the stick's move
+    orders go quiet: a move order ends the attack behaviour before its damage point, so without the quiet the swing
+    was ordered and taken back in the same frame, and the button did nothing at all while walking. A swing that has
+    started is finished whatever the thumb does, for the same reason, and the thumb's direction is not lost: she walks
+    again the moment the swing is over, without a lift and a re-press. Letting go of the stick mid-swing sends no stop
+    either: the attack ends on its own and leaves her standing. That quiet only covers a swing the button bought, so a
+    script that orders the hero to attack still lets the player walk her out of it.
 22. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
     the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
     the tray keeps its own masked copy per icon.

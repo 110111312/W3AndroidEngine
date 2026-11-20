@@ -103,6 +103,11 @@ final class HeroMode implements HeroTouchHost {
 	private final Vector2 aimUi2 = new Vector2();
 	private final float[] aimScratch = new float[2];
 	/** How far a thumb has to drag for the aim to reach the full cast range, whatever the spell's range is. */
+	/**
+	 * How long a tap made with the thumb walking may spend closing on a target that is out of reach before the thumb
+	 * wins. Mobile models chase a step, not across the lane: past this she abandons the tap and follows the stick.
+	 */
+	private static final float CHASE_SECONDS = 0.3f;
 	private static final float AIM_FULL_RANGE_DP = 80f;
 	/** Until this time the walk stick keeps its move orders to itself, so a cast made while walking can finish. */
 	private long stickHoldUntilMs;
@@ -125,6 +130,8 @@ final class HeroMode implements HeroTouchHost {
 	private int aimingSlot = -1;
 	/** A single-target skill that is waiting for the tap on its target, or -1. */
 	private int armedSlot = -1;
+	/** The target the last tap took, so the stick knows how far the chase it owns may run. */
+	private CWidget tapTarget;
 	/** A press that landed on the attack button or an item, remembered so the lift can act on it. */
 	private boolean pressedAttack;
 	private int pressedItem = -1;
@@ -391,7 +398,18 @@ final class HeroMode implements HeroTouchHost {
 			return false;
 		}
 		final CBehaviorAttack attack = this.hero.getAttackBehavior();
-		return (this.hero.getCurrentBehavior() == attack) && attack.isTapSwing();
+		if ((this.hero.getCurrentBehavior() != attack) || !attack.isTapSwing()) {
+			return false;
+		}
+		if (attack.isSwinging()) {
+			// The swing is in flight: it finishes, whatever the thumb does, because a move order now would end it
+			// before its damage point and the tap would buy nothing.
+			return true;
+		}
+		// She is still closing on the target, or waiting out the wait before her first swing. That is only worth
+		// keeping the thumb quiet for while she can still get there: a target that keeps stepping away does not get
+		// to drag her, the thumb walks her again and the tap is abandoned.
+		return (this.tapTarget != null) && this.hero.canReach(this.tapTarget, chaseReach());
 	}
 
 	@Override
@@ -1016,30 +1034,35 @@ final class HeroMode implements HeroTouchHost {
 		if (attack == null) {
 			return;
 		}
-		// A thumb on the stick has already said where she is going, so a tap may only take a target she can strike from
-		// where she stands. An out-of-reach tap while walking is not a chase order: it is nothing, and she keeps
-		// walking, the way the mobile grammars behave. Standing still, the tap still walks her into range as before.
+		// A thumb on the stick has already said where she is going, so a tap while walking may only take a target she
+		// can close on within the chase budget: a step, not a march across the lane. Further than that the thumb wins
+		// and the tap is nothing. Standing still, the tap still walks her into range as far as the acquisition range.
 		final boolean walking = this.stick.isActive() && this.stick.hasDirection();
 		final CWidget target = HeroAttackTarget.nearest(HeroAttackTarget.candidates(simulation),
 				HeroAttackTarget.rangeOf(this.hero.getUnitType().getDefaultAcquisitionRange()),
 				candidate -> this.hero.distance(candidate),
 				candidate -> HeroAttackTarget.isPickable(simulation, playerIndex, this.hero, candidate)
-						&& (!walking || canStrikeNow(candidate))
+						&& (!walking || this.hero.canReach(candidate, chaseReach()))
 						&& acceptsAttackOrder(simulation, playerIndex, attack, candidate));
 		if (target == null) {
 			return;
 		}
+		this.tapTarget = target;
 		this.ui.unitOrderListener.issueTargetOrder(this.hero.getHandleId(), attack.getHandleId(), OrderIds.attackonce,
 				target.getHandleId(), false);
 	}
 
-	/** Whether the hero could swing at this widget from where she stands: her own weapon's reach, as the engine tests it. */
-	private boolean canStrikeNow(final CWidget candidate) {
+	/**
+	 * How far the hero can reach in order to land a swing on something she is not standing next to: her weapon's reach
+	 * plus the ground she covers in {@link #CHASE_SECONDS}. A chase longer than that would take the thumb's hero away
+	 * from where the thumb is sending her, which is the whole thing a moving tap must not do.
+	 */
+	private float chaseReach() {
 		float reach = 0f;
 		for (final CUnitAttack weapon : this.hero.getCurrentAttacks()) {
 			reach = Math.max(reach, weapon.getRange());
 		}
-		return this.hero.canReach(candidate, reach);
+		return reach + (Math.max(0, this.hero.getSpeed()) * CHASE_SECONDS);
 	}
 
 	/** Whether the hero's own attack ability takes this widget, which is the only test of "attackable" here. */
