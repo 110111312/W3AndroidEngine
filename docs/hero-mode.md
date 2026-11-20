@@ -158,12 +158,17 @@ Settled, and no longer up for renegotiation without a good reason:
     she was blocked by her own formation standing in the cell she was stepping into, and no amount of nudging it aside
     fixed the next cell.
 
-    So the march is per unit, and it is two numbers. Each unit keeps **its own depth** along her way, and is held at
-    least `CORRIDOR` (110, wider than her three-cell footprint) to **one side of her line**: `marchTo`. The point is
-    measured from the hero, so it travels as she walks, and a unit is never given a cell that is not its own ground.
-    Two rules fall out of it: a unit more than `MARCH_BACK` (300) behind her aims at that depth instead, so a straggler
-    catches up; a unit already ahead of her keeps its own depth, so it marches on at its own pace and is never sent back
-    through her. Her own path is the one piece of ground known to be walkable, which is why following it cannot jam.
+    So the march is per unit, and it is two numbers: **the row behind her** the unit belongs to, and **one side of her
+    line** at least `CORRIDOR` (110, wider than her three-cell footprint) away from it: `marchTo`. A unit behind her
+    aims at the nearest row of `MARCH_ROW` (100) floored towards her, never further back than `MARCH_BACK` (300); a unit
+    already ahead of her keeps the depth it has, so it marches on at its own pace and is never sent back through her.
+    The aim point is measured from the hero, so it travels as she walks — the army moves *with* her. Her own path is
+    the one piece of ground known to be walkable, which is why following it cannot jam.
+
+    The row is the whole difference between following and standing still, and the first phone run of this rule found it:
+    aiming at the unit's own depth puts the aim point on its own feet, which does not move, so the unit stands there
+    while she walks away and the army only ever closes in from the `MARCH_BACK` clamp. Rows floor towards her, so the
+    aim is always at least a step ahead of where the unit stands.
 
     The block still exists, but only when she stops: `formUp` runs the old slot formation for the units behind her, with
     the front row on her own line (or out at her attack range, for a ranged hero, who shoots over the front rank). That

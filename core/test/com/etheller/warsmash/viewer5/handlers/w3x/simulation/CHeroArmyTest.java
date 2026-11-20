@@ -237,6 +237,20 @@ class CHeroArmyTest {
 	}
 
 	@Test
+	void aFollowerNearerThanARowWalksTheRowAheadOfIt() {
+		// Its own depth would put the aim point on its own feet, and a point that does not move leaves the army standing
+		// while the hero walks away: the row behind her travels with her, so the unit keeps walking too.
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit close = unit(1, -140f, 0f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, close), PLAYER, hero, 300f, 0f, orders.listener());
+
+		assertEquals(List.of(-100f), orders.xs);
+		assertEquals(List.of(110f), orders.ys);
+	}
+
+	@Test
 	void aFollowerOutsideTheCorridorIsGivenNoOrder() {
 		// It is already where the march wants it: ordering it to its own feet would only make the engine separate it
 		// from the units around it, which is the shuffling this rule set exists to avoid.

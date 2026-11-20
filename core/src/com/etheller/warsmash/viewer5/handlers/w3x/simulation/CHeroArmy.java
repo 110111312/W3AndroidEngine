@@ -69,6 +69,13 @@ public final class CHeroArmy {
 	private static final float MARCH_BACK = 300f;
 
 	/**
+	 * The spacing of the rows a follower behind her aims at, in world units. Aiming at its own depth would aim at its
+	 * own feet - the aim point then does not move - so an army that had fallen behind would stand still and never catch
+	 * up. Rows are multiples of this behind her, so the aim travels as she does, and a unit keeps the row it is in.
+	 */
+	private static final float MARCH_ROW = 100f;
+
+	/**
 	 * How far off her line a follower is kept, in world units: wider than her own footprint — three pathing cells for a
 	 * hero — plus a cell, so the cell she is stepping into is never a target of her own army's.
 	 */
@@ -149,13 +156,15 @@ public final class CHeroArmy {
 	 * Where a follower aims while the hero walks: its own place along her way, and at least {@link #CORRIDOR} to one
 	 * side of her line. Two rules fall out of it, and they are the whole of it:
 	 * <ul>
-	 * <li>a unit more than {@link #MARCH_BACK} behind her aims at that depth instead of its own, so a straggler catches
-	 * up;</li>
+	 * <li>a unit behind her aims at the nearest row behind her, floored so it is never aimed backwards, and never
+	 * further back than {@link #MARCH_BACK} - so a straggler walks to the catch-up depth instead of trailing the army
+	 * for the rest of the map;</li>
 	 * <li>a unit that is already ahead of her keeps its own depth, so it marches on at its own pace and is never sent
 	 * back through her.</li>
 	 * </ul>
-	 * Aiming at the depth a unit already has is what makes the army move <em>with</em> her rather than to her: the point
-	 * is measured from the hero, so it travels as she does, and a unit is never given a cell that is not its own ground.
+	 * Every aim point is measured from the hero, so it travels as she does: the army moves <em>with</em> her. Aiming at
+	 * the depth a unit already has would not - that point does not move, and the unit would stand on it while she walked
+	 * away.
 	 */
 	static float[] marchTo(final float unitX, final float unitY, final float heroX, final float heroY, final float wayX,
 			final float wayY) {
@@ -163,7 +172,17 @@ public final class CHeroArmy {
 		final float leftY = wayX;
 		final float along = ((unitX - heroX) * wayX) + ((unitY - heroY) * wayY);
 		final float lateral = ((unitX - heroX) * leftX) + ((unitY - heroY) * leftY);
-		final float depth = along < 0f ? StrictMath.max(-MARCH_BACK, along) : along;
+		final float depth;
+		if (along >= 0f) {
+			// A unit already ahead of her keeps its own depth: it marches on at its own pace, and it is never sent back
+			// through her.
+			depth = along;
+		} else {
+			// The nearest row behind her, floored so that a unit is never aimed behind where it already stands. A unit
+			// half a row behind her aims level with her, which is where the front rank of the block stands when she
+			// stops - the aim is the point that travels with her, not the unit's own feet, or the army would freeze.
+			depth = -StrictMath.min(MARCH_BACK, (float) StrictMath.floor(-along / MARCH_ROW) * MARCH_ROW);
+		}
 		final float side = StrictMath.abs(lateral) < CORRIDOR ? (lateral < 0f ? -CORRIDOR : CORRIDOR) : lateral;
 		return new float[] { heroX + (wayX * depth) + (leftX * side), heroY + (wayY * depth) + (leftY * side) };
 	}
