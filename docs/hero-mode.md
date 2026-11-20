@@ -186,12 +186,24 @@ Settled, and no longer up for renegotiation without a good reason:
     preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
     and several spells the 1.29 data declares are not implemented at all, so the table maps ability classes (with
     rawcode overrides) and anything outside it falls back on what the spell accepts.
-19. **An aim is a drag from the press, not the thumb's position.** The skill button is at the corner of the screen
-    and the hero is in the middle: reading the thumb absolutely would put the circle where the button is the moment
-    it is pressed, and every drag would move the circle the wrong way. So the press point is the origin and the
-    circle starts on the hero, moving with the thumb, out past the cast range if the thumb goes that far — the engine
-    walks a caster into range, and with the drag measured from the hero a mis-tap is a few units, not half the map.
-    This replaced a clamp to the cast range that was in an earlier draft of this section.
+19. **An aim is a drag from the press, scaled to the spell, and stopped at its range.** The skill button is at the
+    corner of the screen and the hero is in the middle: reading the thumb absolutely would put the circle where the
+    button is the moment it is pressed, and every drag would move the circle the wrong way. So the press point is the
+    origin, the direction is the one the thumb went, and the distance is the drag scaled by range over 80 dp — a
+    sweep of about the tray-to-hero gap fills the ring for a short spell and a long one alike, which is what makes
+    the ring mean something. Past the ring the circle stops: a spell's reach is what the ring shows, and the engine
+    walks a caster into range of a target beyond it.
+    Two numbers the phone supplied: laying the world point of the finger straight onto the map (1:1) put the far end
+    of any range out of reach, and the data's unlimited range — Blink declares 99999 — used as a scale put the circle
+    ten thousand units away. A declared range at or above 5000, or none at all, now scales and stops at 1200.
+24. **A cast keeps the walk stick's orders off for its own moment.** A move order interrupts a spell here, as in the
+    game the engine comes from, and a held stick re-issues its move order every few frames, so every skill cast while
+    walking was cancelled before it fired — instant ones included, because a cast with an animation is still a cast.
+    For `HeroCastHold`'s time, the stick issues nothing; the thumb keeps its direction and takes over again when the
+    hold ends, so the hero stops, casts, and carries on. The time is per skill (300 ms was too short for both Fan of
+    Knives and Blink; 700 and 800 are measured on the phone), it is a table rather than a data field because nothing
+    in the ability data describes a cast's length — a unit's cast point is only a multiplier on a model's spell
+    sequence — and 1500 ms is the ceiling whichever skill asks.
 20. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
     a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
     item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.

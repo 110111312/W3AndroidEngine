@@ -407,7 +407,8 @@ final class HeroMode implements HeroTouchHost {
 	/** Keeps the stick's move orders off for as long as this skill's cast needs, so walking does not cancel it. */
 	private void holdStickFor(final CAbility ability) {
 		final long now = TimeUtils.millis();
-		this.stickHoldUntilMs = Math.max(this.stickHoldUntilMs, now + HeroCastHold.holdMs(ability));
+		final long hold = Math.min(HeroCastHold.holdMs(ability), HeroCastHold.MAX_MS);
+		this.stickHoldUntilMs = Math.max(this.stickHoldUntilMs, now + hold);
 	}
 
 	private float canvasY(final float screenY) {
@@ -569,7 +570,6 @@ final class HeroMode implements HeroTouchHost {
 		this.pressX = screenX;
 		this.pressY = screenY;
 		updateAim(screenX, screenY);
-		Gdx.app.log("Warsmash", "aim began on skill " + slot + " at " + (int) screenX + "," + (int) screenY);
 		return true;
 	}
 
@@ -589,7 +589,6 @@ final class HeroMode implements HeroTouchHost {
 		this.aimingSlot = -1;
 		final boolean moved = Math.hypot(screenX - this.pressX,
 				screenY - this.pressY) > this.settings.tapSlopPx;
-		Gdx.app.log("Warsmash", "aim lift on skill " + slot + (moved ? " after a drag" : " without moving"));
 		if (!moved) {
 			// A finger that never left its button is a tap, however it arrived: a second thumb on the tray while the
 			// other one walks sends exactly this, and reading it as "dragged back to cancel" cancelled every one.
@@ -599,7 +598,6 @@ final class HeroMode implements HeroTouchHost {
 		final Vector2 point = toUi(screenX, screenY, this.uiPoint);
 		if (this.tray.stillOnSlot(slot, point.x, point.y)) {
 			// Dragged out and brought back onto the button it started from: the player changed their mind.
-			Gdx.app.log("Warsmash", "aim cancelled back on the button");
 			return;
 		}
 		updateAim(screenX, screenY);
@@ -725,9 +723,10 @@ final class HeroMode implements HeroTouchHost {
 				planeZ);
 		final CAbility ability = (this.aimingSlot >= 0) ? this.tray.skills[this.aimingSlot].ability : null;
 		final float range = (ability == null) ? 0f : HeroTray.castRangeOf(ability);
-		final float perPx = (range > 0f) ? range / aimDragForFullRangePx() : 0f;
+		final float reach = HeroAim.scaleRange(range);
+		final float perPx = reach / aimDragForFullRangePx();
 		HeroAim.fromScaledDrag(this.hero.getX(), this.hero.getY(), this.aimPress.x, this.aimPress.y, this.aimDrag.x,
-				this.aimDrag.y, (float) Math.hypot(screenX - this.pressX, screenY - this.pressY), perPx, range,
+				this.aimDrag.y, (float) Math.hypot(screenX - this.pressX, screenY - this.pressY), perPx, reach,
 				this.aimScratch);
 		this.aimLocation.x = this.aimScratch[0];
 		this.aimLocation.y = this.aimScratch[1];

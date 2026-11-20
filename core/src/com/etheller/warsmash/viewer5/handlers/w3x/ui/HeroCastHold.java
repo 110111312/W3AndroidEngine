@@ -15,8 +15,10 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
  * screen never sees. Skill classes that are not named here fall back to {@link #DEFAULT_MS}.
  */
 final class HeroCastHold {
-	/** Enough for a cast whose animation nobody measured; Blink alone is around a third of a second. */
-	static final long DEFAULT_MS = 400L;
+	/** Enough for a cast whose animation nobody measured. */
+	static final long DEFAULT_MS = 800L;
+	/** A cast can never be worth more of a pause than this, whatever the table says. */
+	static final long MAX_MS = 1500L;
 
 	private HeroCastHold() {
 	}
@@ -27,17 +29,18 @@ final class HeroCastHold {
 			return 0L;
 		}
 		switch (ability.getAlias().getValue()) {
-		case 0x4145666b: // AEfk, Fan of Knives, the Warden's own spin
+		case 0x4145666b: // AEfk, Fan of Knives: its spin outlasts a blink, as the phone showed
+			return 700L;
 		case 0x41556373: // AUcs, Carrion Swarm
-			return 300L;
-		case 0x4145626c: // AEbl, Blink: a short wind-up, then the body is elsewhere
-			return 320L;
+			return 700L;
+		case 0x4145626c: // AEbl, Blink: 320 ms was not enough, the phone cut it off
+			return 800L;
 		case 0x41457368: // AEsh, Shadow Strike
-			return 380L;
+			return 800L;
 		case 0x4148627a: // AHbz, Blizzard: the caster holds the storm up before it falls
-			return 500L;
+			return 900L;
 		case 0x41457665: // AEve, Vengeance: a transformation, the longest of her four
-			return 450L;
+			return 1000L;
 		default:
 			return DEFAULT_MS;
 		}

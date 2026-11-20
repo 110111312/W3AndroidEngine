@@ -23,6 +23,20 @@ final class HeroAim {
 		out[1] = heroY + (dragY - pressY);
 	}
 
+	/** Above this the ability data is saying "as far as it likes", as Blink's 99999 does, not naming a distance. */
+	static final float UNLIMITED_RANGE = 5000f;
+	/** What a spell with no reach of its own is laid out against, so its aim still moves like the others. */
+	static final float DEFAULT_RANGE = 1200f;
+
+	/**
+	 * The reach a spell's aim is scaled and stopped by. A spell that declares no reach, or the data's unlimited one,
+	 * gets {@link #DEFAULT_RANGE} instead: scaling by 99999 put the aim ten thousand units past the camera for a
+	 * thumb's width of drag.
+	 */
+	static float scaleRange(final float declaredRange) {
+		return ((declaredRange > 0f) && (declaredRange < UNLIMITED_RANGE)) ? declaredRange : DEFAULT_RANGE;
+	}
+
 	/**
 	 * Where a scaled aim points: from the hero the way the thumb went, as far as {@code screenDragPx * worldPerPx},
 	 * and never past {@code maxDistance}.

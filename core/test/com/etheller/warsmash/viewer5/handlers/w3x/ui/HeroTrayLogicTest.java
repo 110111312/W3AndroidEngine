@@ -55,6 +55,19 @@ class HeroTrayLogicTest {
 		assertEquals(300f, out[0], 0.01f);
 	}
 
+	/**
+	 * Blink declares 99999 as its range, which is the data saying "as far as it likes" rather than a distance. Used as
+	 * a scale it put the aim ten thousand units out for a thumb's width; the sentinel has to read as "no reach of its
+	 * own" instead.
+	 */
+	@Test
+	void theUnlimitedRangeSentinelIsNotTreatedAsADistance() {
+		assertEquals(700f, HeroAim.scaleRange(700f), 0.01f);
+		assertEquals(HeroAim.DEFAULT_RANGE, HeroAim.scaleRange(99999f), 0.01f);
+		assertEquals(HeroAim.DEFAULT_RANGE, HeroAim.scaleRange(0f), 0.01f);
+		assertEquals(HeroAim.DEFAULT_RANGE, HeroAim.scaleRange(-1f), 0.01f);
+	}
+
 	/** The direction comes from the world points, the distance from how far the thumb went, even up and left. */
 	@Test
 	void aScaledAimKeepsTheThumbsDirectionAndStopsShortOfNothingElse() {
@@ -72,7 +85,8 @@ class HeroTrayLogicTest {
 	/** A skill the table does not name still gets a hold, because a cast that has an animation is still a cast. */
 	@Test
 	void everySkillGetsACastHoldEvenWhenItIsNotNamed() {
-		assertEquals(HeroCastHold.DEFAULT_MS, 400L);
+		assertEquals(800L, HeroCastHold.DEFAULT_MS);
+		assertTrue(HeroCastHold.DEFAULT_MS < HeroCastHold.MAX_MS);
 	}
 
 	@Test
