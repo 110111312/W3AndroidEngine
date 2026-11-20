@@ -1,5 +1,6 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import com.badlogic.gdx.math.Rectangle;
 
 import com.etheller.warsmash.testing.TestObjects;
+import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
@@ -277,6 +279,30 @@ class CHeroArmyTest {
 		assertEquals(List.of(1), orders.unitHandleIds);
 	}
 
+	@Test
+	void aUnitInHerWayIsSentToTheSideItLeansTo() {
+		assertArrayEquals(new float[] { 0f, 52f, 0f, -12f },
+				CHeroArmy.asideFrom(0f, 20f, 0f, 0f, 1f, 0f), 1e-4f);
+		assertArrayEquals(new float[] { 0f, -52f, 0f, 12f },
+				CHeroArmy.asideFrom(0f, -20f, 0f, 0f, 1f, 0f), 1e-4f);
+	}
+
+	@Test
+	void aUnitExactlyOnHerLineAlwaysGoesTheSameWay() {
+		// Which side is decided by where the unit already is, so a unit on her line cannot flip between the two and
+		// shuffle in and out of her way.
+		assertArrayEquals(new float[] { 0f, 32f, 0f, -32f }, CHeroArmy.asideFrom(0f, 0f, 0f, 0f, 1f, 0f), 1e-4f);
+	}
+
+	@Test
+	void aUnitIsNeverSentForwardOrBack() {
+		// A step aside keeps the unit's place along her way: it walks out of her path and nothing else changes.
+		final float[] aside = CHeroArmy.asideFrom(40f, 25f, 0f, 0f, 1f, 0f);
+
+		assertEquals(40f, aside[0], 1e-4f);
+		assertEquals(40f, aside[2], 1e-4f);
+	}
+
 	private static CSimulation game(final CUnit... units) {
 		return game(new FakeWorldCollision(), units);
 	}
@@ -351,6 +377,11 @@ class CHeroArmyTest {
 		TestObjects.set(unit, "finalSpeed", 270);
 		TestObjects.set(unit, "movement", new CUnitMovementState());
 		TestObjects.set(unit, "orders", orders);
+		// Every real unit has a type; the step it takes and the cell it stands on are read from it.
+		final CUnitType type = TestObjects.allocate(CUnitType.class);
+		TestObjects.set(type, "collisionSize", 32f);
+		TestObjects.set(type, "movementType", MovementType.FOOT);
+		TestObjects.set(unit, "unitType", type);
 		final List<CAbility> abilities = new ArrayList<>();
 		abilities.add(new CAbilityMove(MOVE_ABILITY_HANDLE_ID));
 		TestObjects.set(unit, "abilities", abilities);

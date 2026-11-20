@@ -3,6 +3,8 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
+import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
@@ -43,7 +45,9 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTa
  * ({@code CBehaviorMove} refuses a step into another unit's footprint, {@code CUnitPlacement} only separates units that
  * are standing still). So the army never crosses her: a unit behind her is given a slot behind her, a unit ahead of her
  * is given a slot ahead of her, and the side she is going towards is the side that walks first. In a dead end that is
- * the same order as "the army leads her out" — because that is what the geometry already says.
+ * the same order as "the army leads her out" — because that is what the geometry already says. There is one thing no
+ * slot can answer: a unit standing in the slot the formation gave it, which is also the cell she is stepping into. That
+ * one is told to step one cell aside; see {@link #makeRoom}.
  */
 public final class CHeroArmy {
 	/**
@@ -70,6 +74,22 @@ public final class CHeroArmy {
 	 */
 	private static final float AHEAD_MARGIN = 150f;
 
+	/**
+	 * Her next step, in world units: one pathing cell along the way she is walking. That is the step
+	 * {@code CBehaviorMove} refuses when another unit's footprint is on it.
+	 */
+	private static final float STEP_AHEAD = 32f;
+
+	/**
+	 * How far to the side a unit standing on that step is sent, and how far the search for a free cell may wander from
+	 * there: one cell, and a reach of three, so a unit is nudged out of her way instead of walked across the map.
+	 */
+	private static final float STEP_ASIDE = 32f;
+	private static final float STEP_ASIDE_REACH = 96f;
+
+	/** On top of the two footprints, how near her step a unit may stand and still be taken for the one in her way. */
+	private static final float STEP_ASIDE_SLACK = 16f;
+
 	private static final double RETREAT_DISTANCE_SQUARED = RETREAT_DISTANCE * (double) RETREAT_DISTANCE;
 
 	private CHeroArmy() {
@@ -93,8 +113,11 @@ public final class CHeroArmy {
 			formUp(simulation, playerIndex, hero, listener);
 			return;
 		}
-		orderFormation(simulation, playerIndex, hero, following(simulation, playerIndex, hero), dirX / length,
-				dirY / length, listener);
+		final float wayX = dirX / length;
+		final float wayY = dirY / length;
+		final List<CUnit> roster = following(simulation, playerIndex, hero);
+		makeRoom(simulation, playerIndex, hero, wayX, wayY, roster, listener);
+		orderFormation(simulation, playerIndex, hero, roster, wayX, wayY, listener);
 	}
 
 	/**
@@ -145,6 +168,86 @@ public final class CHeroArmy {
 			final CPlayerUnitOrderListener listener) {
 		trail(simulation, playerIndex, hero, behind(hero, roster, dirX, dirY), dirX, dirY, listener);
 		lead(simulation, playerIndex, hero, ahead(hero, roster, dirX, dirY), dirX, dirY, listener);
+	}
+
+	/**
+	 * The one case a slot cannot answer: a unit standing where the formation wants it, which is also the cell the hero
+	 * is about to step into. It has no reason to move, and she cannot pass it, because {@code CBehaviorMove} refuses a
+	 * step into another unit's footprint. So the unit nearest her next step is told to step one cell aside — to the side
+	 * it already leans to, so the same order comes out on every beat instead of shuffling it between the two sides.
+	 * <p>
+	 * That unit is dropped from the roster for this beat, so the formation does not call it straight back, and nothing
+	 * is remembered: the next beat reads where the unit actually is and promises nothing more. Only the army is moved —
+	 * the roster is the units that are not in a fight, and a unit in a fight keeps it.
+	 */
+	private static void makeRoom(final CSimulation simulation, final int playerIndex, final CUnit hero,
+			final float wayX, final float wayY, final List<CUnit> roster, final CPlayerUnitOrderListener listener) {
+		final MovementType movementType = hero.getMovementType();
+		final PathingGrid pathingGrid = simulation.getPathingGrid();
+		if (roster.isEmpty() || (movementType == null) || (movementType == MovementType.FLY) || (pathingGrid == null)) {
+			return;
+		}
+		final CWorldCollision collision = simulation.getWorldCollision();
+		final float collisionSize = hero.getUnitType().getCollisionSize();
+		final float stepX = hero.getX() + (wayX * STEP_AHEAD);
+		final float stepY = hero.getY() + (wayY * STEP_AHEAD);
+		// The test the step is refused by: another unit's footprint on the cell her foot would land in.
+		if (!CUnitPlacement.blockedByUnit(hero, stepX, stepY, collision, pathingGrid, collisionSize, movementType)) {
+			return;
+		}
+		CUnit blocker = null;
+		float nearest = Float.MAX_VALUE;
+		for (final CUnit unit : roster) {
+			final float apart = (float) StrictMath.hypot(unit.getX() - stepX, unit.getY() - stepY);
+			final float touching = ((collisionSize + unit.getUnitType().getCollisionSize()) * 0.5f) + STEP_ASIDE_SLACK;
+			if ((apart <= touching) && (apart < nearest)) {
+				blocker = unit;
+				nearest = apart;
+			}
+		}
+		if (blocker == null) {
+			// Blocked by a unit in a fight, or by one that is not hers: not this rule's to move.
+			return;
+		}
+		final float[] free = freeSpot(blocker,
+				asideFrom(blocker.getX(), blocker.getY(), hero.getX(), hero.getY(), wayX, wayY), simulation);
+		if (free == null) {
+			return;
+		}
+		final CAbility move = moveAbility(simulation, blocker, playerIndex, new AbilityPointTarget(free[0], free[1]));
+		if (move == null) {
+			return;
+		}
+		listener.issuePointOrder(blocker.getHandleId(), move.getHandleId(), OrderIds.move, free[0], free[1], false);
+		roster.remove(blocker);
+	}
+
+	/**
+	 * The first of the points this unit can stand on, or the nearest free cell to it, or null when neither side has room
+	 * within {@link #STEP_ASIDE_REACH}. {@code findNearestFreeCell} answers with the point it was given when its spiral
+	 * finds nothing, so its answer has to be asked again whether it is really free.
+	 */
+	private static float[] freeSpot(final CUnit unit, final float[] points, final CSimulation simulation) {
+		final MovementType movementType = unit.getMovementType();
+		if (movementType == null) {
+			return null;
+		}
+		final CWorldCollision collision = simulation.getWorldCollision();
+		final PathingGrid pathingGrid = simulation.getPathingGrid();
+		final float collisionSize = unit.getUnitType().getCollisionSize();
+		for (int i = 0; i < points.length; i += 2) {
+			if (CUnitPlacement.fitsAt(unit, points[i], points[i + 1], collision, pathingGrid, collisionSize,
+					movementType)) {
+				return new float[] { points[i], points[i + 1] };
+			}
+			final float[] free = CUnitPlacement.findNearestFreeCell(unit, points[i], points[i + 1], collision, pathingGrid,
+					collisionSize, movementType);
+			if (CUnitPlacement.fitsAt(unit, free[0], free[1], collision, pathingGrid, collisionSize, movementType)
+					&& (StrictMath.hypot(free[0] - unit.getX(), free[1] - unit.getY()) <= STEP_ASIDE_REACH)) {
+				return free;
+			}
+		}
+		return null;
 	}
 
 	private static List<CUnit> behind(final CUnit hero, final List<CUnit> roster, final float dirX,
@@ -355,6 +458,21 @@ public final class CHeroArmy {
 	 * hero, which is what makes the make-way order a way <em>out</em>: a block aimed at a point in front of her is
 	 * centred on it, so its back rows would otherwise land on the ground she is standing on.
 	 */
+	/**
+	 * The two points one cell either side of a unit standing on the hero's way, as x, y, x, y: first the side the unit
+	 * already leans to, so a unit on her line always goes the same way and never shuffles between the two. Both are
+	 * given in one call so the caller can take the other side when the first one has no room.
+	 */
+	static float[] asideFrom(final float unitX, final float unitY, final float heroX, final float heroY,
+			final float wayX, final float wayY) {
+		final float leftX = -wayY;
+		final float leftY = wayX;
+		final float lean = ((unitX - heroX) * leftX) + ((unitY - heroY) * leftY);
+		final float first = lean < 0f ? -1f : 1f;
+		return new float[] { unitX + (leftX * STEP_ASIDE * first), unitY + (leftY * STEP_ASIDE * first),
+				unitX - (leftX * STEP_ASIDE * first), unitY - (leftY * STEP_ASIDE * first) };
+	}
+
 	static void placeClearOfHer(final float[] slots, final float heroX, final float heroY, final float dirX,
 			final float dirY, final float clearance) {
 		float back = Float.MAX_VALUE;

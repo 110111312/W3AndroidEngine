@@ -57,7 +57,8 @@ Units belong to the player but are not commanded one by one. Their standing orde
   that already has a target, or an enemy inside its own acquisition range, is not pulled out of it to reach a slot;
 - **never cross** her, so that tight ground opens on its own: a unit behind her takes a slot behind her, a unit ahead of
   her keeps walking ahead, and in a dead end or a corridor she backs out of that is exactly the "the army leads her
-  out" order — the side with the free path goes first;
+  out" order — the side with the free path goes first — while a unit standing on the very cell she is stepping into is
+  told to step one cell aside;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
   free; regrouping while the hero stands still is the script's job (D);
 - **not die stupidly** — no walking into towers, no standing in the middle of nothing, no chasing a lone unit into a
@@ -162,7 +163,16 @@ Settled, and no longer up for renegotiation without a good reason:
     unit aside (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that
     stand still) and hero mode has no selection with which the player could move one himself, so the side rule is the
     only thing that can unblock her at all. The first attempt watched her progress and led for a second instead; the
-    phone showed the army flipping ahead, back, ahead, because a timer cannot know which side of her a unit is on.
+    phone showed the army flipping ahead, back, ahead, because a timer cannot know which side of her a unit is on. The
+    second phone run found the one case a slot cannot answer: a unit standing exactly where the formation wants it, on
+    the cell she is about to step into. It has no reason to move and she cannot pass it, so the order that reaches it
+    is "one cell aside": `makeRoom` asks the engine's own step test (`CUnitPlacement.blockedByUnit`, the same one
+    `CBehaviorMove` refuses the step by) whether her next cell is taken, takes the army unit standing nearest to that
+    cell, and orders it to the first free cell one cell to its side — the side it already leans to, so the same order
+    comes out on every beat instead of shuffling it between the two sides. It keeps its place along her way, so it
+    never walks forward or back, and it is dropped from that beat's formation so the block does not call it straight
+    back. Nothing is remembered: the next beat reads where the unit actually is. A unit in a fight is not in the roster
+    and is not moved — she waits for that one, as the original game would.
 
 Two consequences that were not obvious when the design was written:
 
