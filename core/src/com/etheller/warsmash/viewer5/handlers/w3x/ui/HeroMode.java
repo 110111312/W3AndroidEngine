@@ -174,6 +174,8 @@ final class HeroMode implements HeroTouchHost {
 			}
 			// The hero is decided now; only her render peer is left, and that appears with the frame that draws her.
 			this.resolved = true;
+			// She fights when she is told to: the attack button arms every swing, and nothing picks a target for her.
+			this.hero.setAutoAcquire(false);
 			Log.info("Hero mode: following " + this.hero.getName() + " (" + this.hero.getTypeId() + ") of player "
 					+ this.hero.getPlayerIndex());
 		}
@@ -940,8 +942,9 @@ final class HeroMode implements HeroTouchHost {
 	/**
 	 * The attack button: an order on the nearest thing the hero's weapons accept, so that a hero can be picked out of
 	 * the crowd and a gate can be broken. Units and destructables alike, with a neutral building left in and the
-	 * hero's own side left out — see {@link HeroAttackTarget}. The order is {@link OrderIds#attack} rather than the
-	 * smart order a right click makes, because a smart order on a neutral building is a walk, by design.
+	 * hero's own side left out — see {@link HeroAttackTarget}. The order is {@link OrderIds#attackonce} rather than the
+	 * sustained {@link OrderIds#attack}, so one tap buys one swing; a tap on the target she is already swinging at arms
+	 * one more swing on the order that is running instead of resetting it.
 	 */
 	private void attackNearestTarget() {
 		final CSimulation simulation = this.ui.war3MapViewer.simulation;
@@ -958,7 +961,7 @@ final class HeroMode implements HeroTouchHost {
 		if (target == null) {
 			return;
 		}
-		this.ui.unitOrderListener.issueTargetOrder(this.hero.getHandleId(), attack.getHandleId(), OrderIds.attack,
+		this.ui.unitOrderListener.issueTargetOrder(this.hero.getHandleId(), attack.getHandleId(), OrderIds.attackonce,
 				target.getHandleId(), false);
 	}
 
@@ -967,7 +970,7 @@ final class HeroMode implements HeroTouchHost {
 			final CAbilityAttack attack, final CWidget candidate) {
 		final CWidgetAbilityTargetCheckReceiver receiver = CWidgetAbilityTargetCheckReceiver.INSTANCE;
 		receiver.reset();
-		attack.checkCanTarget(simulation, this.hero, playerIndex, OrderIds.attack, false, candidate, receiver);
+		attack.checkCanTarget(simulation, this.hero, playerIndex, OrderIds.attackonce, false, candidate, receiver);
 		return receiver.getTarget() != null;
 	}
 

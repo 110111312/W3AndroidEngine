@@ -207,13 +207,21 @@ Settled, and no longer up for renegotiation without a good reason:
 20. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
     a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
     item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.
-21. **The big attack button gives target focus.** The hero auto-attacks without being told, but auto-attack picks
-    its own target; the button orders an attack on the nearest thing in reach, so a hero can be picked out of the
-    crowd — and so a gate can be broken. What it may pick is not "an enemy": a destructable gate and a Neutral
-    Passive building are legitimate targets, because Neutral Passive is allied to everybody only so that a right
-    click walks instead of attacking. The hero's own side is not, which is why the rule asks
-    `isNeutralPassive` rather than the alliance alone. The order is the attack order the console's attack button
-    sends, not the smart order a right click sends — a smart order on a neutral building is a walk by design.
+21. **The big attack button gives target focus, and the hero never fights on her own.** She swings only when the
+    button is tapped: her own target scan is off, so an enemy that walks up to a standing hero is ignored. The button
+    orders an attack on the nearest thing in reach, so a hero can be picked out of the crowd — and so a gate can be
+    broken. What it may pick is not "an enemy": a destructable gate and a Neutral Passive building are legitimate
+    targets, because Neutral Passive is allied to everybody only so that a right click walks instead of attacking.
+    The hero's own side is not, which is why the rule asks `isNeutralPassive` rather than the alliance alone. The order
+    is not the smart order a right click sends — a smart order on a neutral building is a walk by design.
+
+    **One tap, one swing.** The order is `attackonce`, not the sustained `attack`: after the swing the hero stops
+    unless the button is tapped again. A tap that lands while she is still swinging is remembered rather than lost,
+    and it arms one more swing on the behaviour that is already running instead of re-ordering her. That distinction
+    is the whole feature: a fresh attack order wipes the backswing latch, the cooldown snapshot and the wait before
+    the first swing, so re-ordering per tap would cost up to a quarter second before every swing and feel mushy. One
+    arm at most, so a burst of taps still buys one swing — otherwise a masher would get auto-attack back through the
+    keyboard. A tap on a different target is a new order, which is a new engagement and is meant to settle briefly.
 22. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
     the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
     the tray keeps its own masked copy per icon.
@@ -222,8 +230,10 @@ Settled, and no longer up for renegotiation without a good reason:
 
 Two consequences that were not obvious when the design was written:
 
-- **the hero must attack by itself.** With no right-click and no attack button, a hero that only walks can never
-  fight. The hero acquires and attacks targets while standing, and stops when the stick is pushed.
+- **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
+  the button exists at all. That was first built as an auto-acquire so she would fight while the player was busy, and
+  the phone rejected it: a hero who picks her own fights makes the player feel she is not under their control. She now
+  fights only when the button is tapped, one swing per tap.
 - **a mission with no hero cannot be hero mode.** Rather than hand the player a dead screen, hero mode stays inert
   and the RTS console is used for that mission until hero play can cover it.
 

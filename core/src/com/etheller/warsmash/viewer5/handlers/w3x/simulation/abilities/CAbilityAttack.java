@@ -65,7 +65,7 @@ public class CAbilityAttack extends AbstractCAbility {
 				return;
 			}
 		}
-		if ((orderId == OrderIds.smart) || (orderId == OrderIds.attack)) {
+		if ((orderId == OrderIds.smart) || (orderId == OrderIds.attack) || (orderId == OrderIds.attackonce)) {
 			boolean canTarget = false;
 			CUnitAttack lastUnavailableAttack = null;
 			for (final CUnitAttack attack : unit.getCurrentAttacks()) {
@@ -230,9 +230,15 @@ public class CAbilityAttack extends AbstractCAbility {
 		CBehavior behavior = null;
 		for (final CUnitAttack attack : caster.getCurrentAttacks()) {
 			if (target.canBeTargetedBy(game, caster, attack.getTargetsAllowed())) {
-				behavior = caster.getAttackBehavior().reset(game, OrderIds.attack, attack, target, false,
+				final CBehaviorAttack attackBehavior = caster.getAttackBehavior();
+				if (attackBehavior.armOneMoreSwing(game, target)) {
+					// A tap on the target this unit is already fighting: one more swing on the order that is running.
+					// Nothing is reset and no first-swing wait is drawn again, so a tap never costs the swing in flight.
+					return attackBehavior;
+				}
+				behavior = attackBehavior.reset(game, orderId, attack, target, false,
 						CBehaviorAttackListener.DO_NOTHING);
-				caster.getAttackBehavior().delayFirstSwing(game);
+				attackBehavior.delayFirstSwing(game);
 				break;
 			}
 		}
