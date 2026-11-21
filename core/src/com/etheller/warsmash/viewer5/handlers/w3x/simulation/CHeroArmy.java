@@ -581,9 +581,11 @@ public final class CHeroArmy {
 
 	/**
 	 * A unit in a fight: attacking, attack-moving (which the engine treats as walking, but which finds targets of its
-	 * own), walking to a target it already picked, or standing with an enemy inside its own acquisition range — the idle
+	 * own), walking to a target it already picked, or idle with an enemy inside its own acquisition range — the idle
 	 * scan would take that enemy up half a second later, so the stick does not pull the unit out of the fight it is
-	 * about to join. Without the last case the army walks through a battle to reach its slots.
+	 * about to join. No other behaviour counts: the engine only auto-acquires an idle unit, so a scripted hold, or a
+	 * unit standing on its slot beside an enemy, engages nothing — holding it out of the army for that froze it beside
+	 * a visible enemy for six seconds on the phone, the stale combat state.
 	 */
 	/**
 	 * Diagnostic only, and never runs under the unit tests (no Gdx there): which of the four cases of
@@ -635,17 +637,20 @@ public final class CHeroArmy {
 
 	private static boolean fights(final CUnit unit, final CSimulation simulation) {
 		final CBehavior behavior = unit.getCurrentBehavior();
+		if (behavior == null) {
+			// Idle: the engine's idle scan takes up an enemy inside acquisition range within half a second, so the
+			// stick does not pull the unit out of the fight it is about to join.
+			return enemyInSight(unit, simulation);
+		}
 		if ((behavior instanceof CBehaviorAttack) || (behavior instanceof CBehaviorAttackMove)) {
 			return true;
 		}
 		if (behavior instanceof CBehaviorMove) {
 			// Closing in on a target it already has: a move that wraps the attack, which is how the engine's own
-			// acquisition reads a walker.
-			if (((CBehaviorMove) behavior).getRangedBehavior() instanceof CBehaviorAttack) {
-				return true;
-			}
+			// acquisition reads a walker. Any other move is only a walk.
+			return ((CBehaviorMove) behavior).getRangedBehavior() instanceof CBehaviorAttack;
 		}
-		return enemyInSight(unit, simulation);
+		return false;
 	}
 
 	private static boolean enemyInSight(final CUnit unit, final CSimulation simulation) {

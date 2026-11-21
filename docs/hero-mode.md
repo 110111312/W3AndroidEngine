@@ -96,7 +96,11 @@ Units belong to the player but are not commanded one by one. Their standing orde
   pace, never slowing the hero, and settling around her when she stops;
 - **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
   elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition; a unit
-  that already has a target, or an enemy inside its own acquisition range, is not pulled out of it to reach a slot;
+  that already has a target, or an idle unit with an enemy inside its own acquisition range, is not pulled out of it
+  to reach a slot. The idle qualifier is load-bearing: the engine only auto-acquires an idle unit, so counting a unit
+  in any other behaviour — a scripted hold, a unit standing on its slot — as fighting froze it beside a visible enemy
+  it never picked up, held out of the army, for as long as the enemy stood there. Found on the phone as a unit frozen
+  six seconds beside an enemy 805 away, and fixed by matching the engine's own gate.
 - **make way** when the hero is wedged against her own squad — a dead end, a corridor she has to back out of: the army
   is sent on ahead of her, because the side with the free path goes first;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
