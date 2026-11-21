@@ -1,0 +1,271 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hero mode — macro panel sketch (landscape)</title>
+<style>
+  :root{
+    --gold:#c8a552; --gold-dim:#8a7136; --panel:#171209; --panel2:#211a10;
+    --text:#e8dcb8; --sub:#9a8b62; --danger:#b0563f;
+  }
+  *{box-sizing:border-box; font-family:'Segoe UI',system-ui,sans-serif;}
+  body{background:#0a0805; color:var(--text); margin:0; padding:20px;}
+  .stage{display:flex; gap:30px; align-items:flex-start; flex-wrap:wrap;}
+
+  /* ---------- the phone, landscape 19.5:9 (RMX3357) ---------- */
+  .phone{width:844px; height:390px; border:3px solid #333; border-radius:18px; position:relative;
+    background:linear-gradient(120deg,#1c2b18 0%,#15221a 55%,#0f1a12 100%); overflow:hidden; flex:none;}
+  .worldlabel{position:absolute; top:150px; width:100%; text-align:center; color:#3f5a41; font-size:11px;}
+  .hero{position:absolute; left:42%; top:55%; width:15px; height:15px; border-radius:50%;
+    background:#dceaff; box-shadow:0 0 13px 4px rgba(150,200,255,.45);}
+  .minimap{position:absolute; top:9px; left:9px; width:78px; height:78px; background:#101a10;
+    border:2px solid var(--gold-dim); font-size:10px; color:var(--sub); display:flex; align-items:center; justify-content:center;}
+  .resources{position:absolute; top:10px; right:12px; font-size:13px; color:var(--text); background:rgba(0,0,0,.35);
+    padding:3px 10px; border:1px solid #2c2415; border-radius:6px;}
+  .foodwrap{position:relative;}
+  .foodbadge{position:absolute; top:-4px; right:-9px; width:8px; height:8px; border-radius:50%;
+    background:#ffd76a; box-shadow:0 0 8px 3px rgba(255,215,106,.7); animation:pulse 1.4s infinite;}
+  .foodbadge.off{background:#666; box-shadow:none; animation:none;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  .stick{position:absolute; left:24px; bottom:20px; width:100px; height:100px; border-radius:50%;
+    border:3px solid rgba(200,165,82,.35); background:rgba(0,0,0,.18);}
+  .stick .knob{position:absolute; left:50%; top:50%; width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:50%;
+    border:2px solid rgba(200,165,82,.6); background:rgba(200,165,82,.25);}
+
+  .tray{position:absolute; right:0; bottom:0; width:200px; height:170px;}
+  .tray .attack{position:absolute; right:12px; bottom:12px; width:58px; height:58px; border-radius:50%;
+    border:2px solid var(--gold-dim); background:#3a2418;}
+  .tray .skill{position:absolute; width:42px; height:42px; border-radius:50%; border:2px solid var(--gold-dim); background:#241a10;}
+  .tray .s1{right:80px;  bottom:12px;}
+  .tray .s2{right:106px; bottom:44px;}
+  .tray .s3{right:110px; bottom:84px;}
+  .tray .s4{right:90px;  bottom:120px;}
+  .tray .item{position:absolute; width:32px; height:32px; border-radius:50%; border:2px solid #4a3d22; background:#1c150c;}
+  .tray .i1{right:80px; bottom:60px;}
+  .tray .i2{right:50px; bottom:86px;}
+
+  /* the two plan buttons, above the skill arc, stacked */
+  .planbtn{position:absolute; right:14px; width:52px; height:52px; border-radius:10px; border:2px solid var(--gold);
+    background:rgba(23,18,9,.92); color:var(--text); font-size:20px; cursor:pointer; z-index:5;}
+  .planbtn small{position:absolute; bottom:3px; left:0; width:100%; text-align:center; font-size:9px; color:var(--sub);}
+  #btnBuild{bottom:222px;}
+  #btnArmy {bottom:162px;}
+
+  /* the sheet: right-middle band, above tray and buttons, never over stick or skills */
+  .sheet{position:absolute; right:8px; top:36px; bottom:126px; width:470px; overflow-y:auto;
+    background:var(--panel); border:2px solid var(--gold); border-radius:10px; z-index:10; display:none;}
+  .sheethead{position:sticky; top:0; background:var(--panel2); padding:6px 10px; font-size:12px; letter-spacing:1px;
+    border-bottom:1px solid var(--gold-dim); display:flex; justify-content:space-between; align-items:center;}
+  .closebtn{background:none; border:none; color:var(--sub); font-size:13px; cursor:pointer;}
+  .status{margin:6px 6px 0; padding:4px 8px; font-size:11px; color:var(--text);
+    background:#233018; border:1px solid #3f5a41; border-radius:6px; display:flex; justify-content:space-between; align-items:center;}
+  .pausebtn{background:none; border:1px solid var(--gold-dim); border-radius:4px; color:var(--sub); font-size:10px; cursor:pointer; padding:1px 6px;}
+  .sect{margin:8px 10px 4px; font-size:10px; letter-spacing:1px; color:var(--sub);}
+  .grouphead{margin:6px 10px 2px; font-size:10px; letter-spacing:1px; color:#6f7f5a;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(54px,1fr)); gap:8px; margin:2px 10px 8px;}
+  .icell{position:relative; width:54px; cursor:pointer;}
+  .ico{width:46px; height:46px; margin:0 auto; border-radius:7px; border:1px solid rgba(0,0,0,.5);
+    display:flex; align-items:center; justify-content:center; font-size:22px;}
+  .cap{font-size:9px; text-align:center; color:var(--text); margin-top:2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .stat{font-size:8px; text-align:center; color:var(--gold); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .stat.lockeds{color:var(--sub);}
+  .ownb{position:absolute; top:-5px; right:1px; background:#2c2415; border:1px solid var(--gold-dim);
+    font-size:9px; line-height:11px; padding:0 3px; border-radius:4px; color:var(--sub); z-index:2;}
+  .icell.locked{opacity:.45;}
+  .icell .prio{position:absolute; top:-6px; left:3px; width:16px; height:16px; font-size:10px; line-height:15px;
+    text-align:center; background:var(--gold); color:#14100b; border-radius:4px; font-weight:bold; z-index:2;}
+  .icell .minus{position:absolute; top:-6px; right:1px; width:16px; height:16px; font-size:11px; line-height:14px;
+    text-align:center; background:var(--danger); color:#f7e8d8; border-radius:4px; z-index:2;}
+  .icell .minus:hover{filter:brightness(1.3);}
+  .empty{margin:4px 10px 8px; font-size:11px; color:var(--sub); font-style:italic;}
+
+  /* ---------- the legend ---------- */
+  .legend{max-width:340px; font-size:13px; line-height:1.55;}
+  .legend h1{font-size:16px; color:var(--gold); margin:0 0 10px;}
+  .legend h2{font-size:12px; color:var(--gold); letter-spacing:1px; margin:16px 0 6px;}
+  .legend ul{margin:0 0 0 18px; padding:0;}
+  .legend li{margin:3px 0;}
+  .k{color:var(--gold);}
+  .note{color:var(--sub); font-size:11px; margin-top:14px;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone">
+    <div class="minimap">minimap</div>
+    <div class="resources">🪙 1240 &nbsp; 🪵 430 &nbsp; <span class="foodwrap">🍖 43/50<span class="foodbadge" id="foodbadge"></span></span></div>
+    <div class="worldlabel">the world keeps running — the sheet never covers the stick or the skills</div>
+    <div class="hero"></div>
+    <div class="stick"><div class="knob"></div></div>
+    <div class="tray">
+      <div class="skill s1"></div><div class="skill s2"></div><div class="skill s3"></div><div class="skill s4"></div>
+      <div class="item i1"></div><div class="item i2"></div>
+      <div class="attack"></div>
+    </div>
+    <button class="planbtn" id="btnBuild" onclick="openSheet('build')">🏗<small>build</small></button>
+    <button class="planbtn" id="btnArmy"  onclick="openSheet('army')">⚔<small>army</small></button>
+    <div class="sheet" id="sheet"></div>
+  </div>
+
+  <div class="legend">
+    <h1>Macro panel — landscape sketch</h1>
+    Phone held sideways (844×390, the Realme's 19.5:9). Two plan buttons above the skill arc;
+    each opens its sheet into the right-middle band: <span class="k">available above, your order below</span>,
+    both as <b>icon grids</b> now. The sheet never covers the stick, the skills, or the world where the hero stands.
+
+    <h2>Clickable — try the semantics</h2>
+    <ul>
+      <li><span class="k">tap an available icon</span> → a ticket enters the order at the end</li>
+      <li><span class="k">tap a ticket</span> → number drops, runs sooner; <span class="k">right-click</span> → runs later</li>
+      <li><span class="k">tap the −</span> (top right) → removes it</li>
+      <li><span class="k">shift-click a ticket</span> → it finishes: disappears, your owned ×N rises,
+          and when the last <b>0</b> is done the <b>1</b>s become <b>0</b>s</li>
+    </ul>
+
+    <h2>The spending rule, one sentence</h2>
+    Supply first, then the <b>lowest number across both sheets</b> — same-number items compete for the
+    same gold. A greyed ticket (missing requirement, 🔒) <b>never blocks</b> anyone; an unaffordable one
+    just waits, visibly.
+
+    <h2>Compare with your imagination</h2>
+    <ul>
+      <li>icon size (46px) and grid density — we have much to show</li>
+      <li>ticket anatomy: <b>number top-left, − top-right</b>, status under the name</li>
+      <li>available icons carry your owned count (<b>×N</b> badge)</li>
+      <li>the army sheet groups its icons by the building that trains</li>
+      <li>sheet width: it eats about half the screen</li>
+      <li>the supply line with its pause, only on the build sheet</li>
+    </ul>
+
+    <div class="note">Throwaway sketch, but it lives in the repo now (docs/mockups/). Numbers are shared:
+    Build's 0 and Army's 0 compete for the same gold; a 1 in either sheet waits for every 0 in both.</div>
+  </div>
+</div>
+
+<script>
+let cur = null, paused = false, nextId = 1;
+const build = { name:'BUILD PLAN', avail:[
+  {n:'Farm',          c:'#8a6d3b', e:'🌾', own:2},
+  {n:'Barracks',      c:'#7a3b2e', e:'🏰', own:1},
+  {n:'Watch Tower',   c:'#6b5a3b', e:'🗼', own:1},
+  {n:'Blacksmith',    c:'#5f5f6b', e:'🔨', own:0},
+  {n:'Stronghold',    c:'#3b517a', e:'🏯', own:0},
+  {n:'Tauren Totem',  c:'#3f6b3f', e:'🗿', own:0},
+  {n:'Voodoo Lounge', c:'#4a3b5a', e:'🍵', own:0},
+], tickets:[] };
+const army = { name:'ARMY PLAN', groups:[
+  {g:'GREAT HALL',   items:[{n:'Peon',         c:'#8a6d3b', e:'⛏', own:5}]},
+  {g:'BARRACKS',     items:[{n:'Grunt',        c:'#7a3b2e', e:'🪓', own:3},
+                            {n:'Headhunter',   c:'#3f6b3f', e:'🏹', own:2}]},
+  {g:'TAUREN TOTEM', items:[{n:'Shaman',       c:'#3b517a', e:'🔮', own:0, locked:true, why:'needs Stronghold'},
+                            {n:'Witch Doctor', c:'#4a3b5a', e:'🧪', own:0}]},
+], tickets:[] };
+
+build.tickets = [
+  {id:nextId++, n:'Farm',       c:'#8a6d3b', e:'🌾', p:0},
+  {id:nextId++, n:'Stronghold', c:'#3b517a', e:'🏯', p:1, sub:'wait 180g'},
+  {id:nextId++, n:'Blacksmith', c:'#5f5f6b', e:'🔨', p:2},
+];
+army.tickets = [
+  {id:nextId++, n:'Grunt',  c:'#7a3b2e', e:'🪓', p:0},
+  {id:nextId++, n:'Grunt',  c:'#7a3b2e', e:'🪓', p:0, sub:'same 0 = compete'},
+  {id:nextId++, n:'Shaman', c:'#3b517a', e:'🔮', p:1, locked:true, sub:'needs Stronghold'},
+];
+
+function availItems(data){ return data===build ? data.avail : data.groups.flatMap(g=>g.items); }
+function findTicket(id){ return [...build.tickets, ...army.tickets].find(t=>t.id===id); }
+
+function openSheet(kind){
+  cur = (kind==='build') ? build : army;
+  document.getElementById('sheet').style.display='block';
+  render();
+}
+function closeSheet(){ cur=null; document.getElementById('sheet').style.display='none'; }
+function togglePause(){
+  paused=!paused;
+  document.getElementById('foodbadge').classList.toggle('off', paused);
+  render();
+}
+
+function addTicket(item){
+  const ts=cur.tickets;
+  const p = ts.length ? Math.max(...ts.map(t=>t.p))+1 : 0;
+  ts.push({id:nextId++, n:item.n, c:item.c, e:item.e, p:p,
+           locked:!!item.locked, sub: item.locked ? item.why : null});
+  render();
+}
+function complete(t){
+  cur.tickets = cur.tickets.filter(x=>x.id!==t.id);
+  const a = availItems(cur).find(x=>x.n===t.n); if(a) a.own++;
+  renumberIfEmpty(t.p);
+  render();
+}
+function renumberIfEmpty(p){
+  const all=[...build.tickets,...army.tickets];
+  if(!all.some(t=>t.p===p)){ all.forEach(t=>{ if(t.p>p) t.p--; }); }
+}
+
+function availCell(a){
+  return `<div class="icell ${a.locked?'locked':''}" data-add="${a.n}">
+    <div class="ownb">×${a.own}</div>
+    <div class="ico" style="background:${a.c}">${a.e}</div>
+    <div class="cap">${a.n}</div></div>`;
+}
+function ticketCell(t){
+  return `<div class="icell ticket ${t.locked?'locked':''}" data-id="${t.id}">
+    <div class="prio">${t.p}</div>
+    <div class="minus" data-minus="${t.id}">−</div>
+    <div class="ico" style="background:${t.c}">${t.e}</div>
+    <div class="cap">${t.n}</div>
+    ${t.sub?`<div class="stat ${t.locked?'lockeds':''}">${t.locked?'🔒 ':''}${t.sub}</div>`:''}
+  </div>`;
+}
+
+function render(){
+  if(!cur) return;
+  const el=document.getElementById('sheet');
+  const isBuild = (cur===build);
+  let html = `<div class="sheethead">${cur.name}<button class="closebtn" onclick="closeSheet()">✕</button></div>`;
+  if(isBuild){
+    html += `<div class="status"><span>Food 43/50 · 🏗 Farm building</span>
+             <button class="pausebtn" onclick="togglePause()">${paused?'paused':'pause'}</button></div>`;
+  }
+  html += `<div class="sect">AVAILABLE — WHAT YOU HAVE</div>`;
+  if(isBuild){
+    html += `<div class="grid">` + cur.avail.map(availCell).join('') + `</div>`;
+  } else {
+    html += cur.groups.map(g=>`<div class="grouphead">${g.g}</div>
+        <div class="grid">` + g.items.map(availCell).join('') + `</div>`).join('');
+  }
+  html += `<div class="sect">ORDER — WHAT YOU'RE ABOUT TO HAVE</div>`;
+  const ts=[...cur.tickets].sort((a,b)=>a.p-b.p);
+  html += `<div class="grid">` + (ts.length ? ts.map(ticketCell).join('')
+        : `<div class="empty">empty — the plan does nothing</div>`) + `</div>`;
+  el.innerHTML=html;
+}
+
+document.getElementById('sheet').addEventListener('click', e=>{
+  const minus=e.target.closest('[data-minus]');
+  if(minus){ const t=findTicket(+minus.dataset.minus);
+    build.tickets=build.tickets.filter(x=>x.id!==t.id); army.tickets=army.tickets.filter(x=>x.id!==t.id);
+    renumberIfEmpty(t.p); render(); return; }
+  const avail=e.target.closest('[data-add]');
+  if(avail){ const a=availItems(cur).find(x=>x.n===avail.dataset.add); if(a) addTicket(a); return; }
+  const tick=e.target.closest('.ticket');
+  if(tick){ const t=findTicket(+tick.dataset.id); if(!t) return;
+    if(e.shiftKey){ complete(t); }
+    else if(!t.locked){ t.p=Math.max(0,t.p-1); render(); } }
+});
+document.getElementById('sheet').addEventListener('contextmenu', e=>{
+  const tick=e.target.closest('.ticket');
+  if(tick){ e.preventDefault();
+    const t=findTicket(+tick.dataset.id);
+    if(t && !t.locked){ t.p++; render(); } }
+});
+
+openSheet('build');
+</script>
+</body>
+</html>
