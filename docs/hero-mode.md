@@ -92,10 +92,17 @@ item on the ground, which is a smart order on that item.
 Units belong to the player but are not commanded one by one. Their standing orders:
 
 - **follow** the hero as a formation: when the hero moves, the army receives the same group move the console gives a
-  multi-unit selection — rank-sorted slots around the hero's destination, marching as one block at the army's own
-  slowest pace, never slowing the hero;
+  multi-unit selection — rank-sorted slots with the hero at the front of the block, marching at the army's own slowest
+  pace, never slowing the hero, and settling around her when she stops;
 - **engage** what comes within reach of the hero or of themselves — and keep fighting it even while the hero moves
-  elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition;
+  elsewhere; a fight is only left when the hero has run far off, and that order is a retreat, not a reposition; a unit
+  that already has a target, or an idle unit with an enemy inside its own acquisition range, is not pulled out of it
+  to reach a slot. The idle qualifier is load-bearing: the engine only auto-acquires an idle unit, so counting a unit
+  in any other behaviour — a scripted hold, a unit standing on its slot — as fighting froze it beside a visible enemy
+  it never picked up, held out of the army, for as long as the enemy stood there. Found on the phone as a unit frozen
+  six seconds beside an enemy 805 away, and fixed by matching the engine's own gate.
+- **make way** when the hero is wedged against her own squad — a dead end, a corridor she has to back out of: the army
+  is sent on ahead of her, because the side with the free path goes first;
 - **return** — an idle unit rejoins the formation on the hero's next move, so a fight that ends reforms the army for
   free; regrouping while the hero stands still is the script's job (D);
 - **not die stupidly** — no walking into towers, no standing in the middle of nothing, no chasing a lone unit into a
@@ -128,7 +135,7 @@ The point of this section is that none of it needs a rewrite: the engine already
 | follow camera | `GameCameraManager.setTargetController` (`:787-800`), `followTargetController` (`:164-205`) | **already exists**; the only UI caller today is press-and-hold on the portrait (`MeleeUIInfoPanel.java:1607-1618`) |
 | stick → movement | `core/src/.../input/touch/` — `RtsTouchAdapter`, `GestureRecognizer`, `GestureListener`, `TouchSettings` | **no joystick code exists**; one-finger drag is currently selection box *or* aim, two-finger drag is camera pan, so the stick needs its own zone and a new gesture |
 | swapping the HUD | `MeleeToggleUI` (`ui/toggle/`), `WarsmashGdxMapScreen.java:315` | the seam exists: the HUD is a list of `WarsmashToggleableUI` that Alt+Z cycles, and today the list holds one entry, so hero mode is a **second entry**, not a replacement |
-| units following the hero | `CGroupMove.java:120-246` (`slots`), `:44-113` (`linkMoving`, `limitSpeed`), `MeleeUIInput.java:945-1013` (the console's own caller), `HeroMode.java:372-400` (the call site to extend) | **hero-mode follow is the console's formation group move, not `CBehaviorFollow`.** That behavior exists (`:41-44`, issued from `CAbilityMove.java:203`) but its `update` plays STAND and never looks for targets — an army on it would walk with you and never fight. `CGroupMove.slots` instead gives each follower a rank-sorted slot around the hero's destination, and the wire format already carries per-unit arrays |
+| units following the hero | `CHeroArmy.java` (the rule: who walks, who keeps fighting, the 1000), called from `HeroMode.issueMoveOrder` and `HeroMode.updateArmy`; `CGroupMove.java:120-246` (`slots`), `:44-113` (`linkMoving`, `limitSpeed`), `MeleeUIInput.java:945-1013` (the console's own caller) | **hero-mode follow is the console's formation group move, not `CBehaviorFollow`.** That behavior exists (`:41-44`, issued from `CAbilityMove.java:203`) but its `update` plays STAND and never looks for targets — an army on it would walk with you and never fight. `CGroupMove.slots` instead gives each follower a rank-sorted slot around the hero's destination, and the wire format already carries per-unit arrays |
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
 | computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | untouched: the *enemy* keeps playing RTS |
@@ -172,21 +179,52 @@ Settled, and no longer up for renegotiation without a good reason:
     corner, the resource bar stays at the top right, and the quest/menu/chat buttons move beside the minimap. Nothing
     brings the console back — there is no key for it, and the one exception is a map with no hero for the local
     player, which plays on the console because hero mode would have nothing to hand the player.
-15. **When the hero moves, the army moves in formation.** Each idle follower gets a `CGroupMove` slot around the
-    hero's stick destination — the engine's own group move, rank-sorted so melee front and ranged back are
-    data-driven. The hero is excluded from the group's speed link: the stick answers at the hero's own speed, and
-    the army links among itself so it marches as one block.
+15. **When the hero moves, the army moves in formation, and the hero keeps the front of it.** Each idle follower
+    gets a `CGroupMove` slot — the engine's own group move, rank-sorted so melee front and ranged back are
+    data-driven — but the block's front row stands on the hero's own line, because `CGroupMove` centres its rows on
+    the point it is given and a block centred on her destination walks inside her and body-blocks her (the first
+    phone run). The front line is her position for a melee hero, who wants the army behind her, and her position
+    plus her own attack range for a ranged one, who fights from behind the rank in front of her. When she stops, the
+    army forms up around her rather than walking on to the point the last stick order named. The hero is excluded
+    from the group's speed link: the stick answers at the hero's own speed, and the army links among itself so it
+    marches as one block.
 16. **A fighting unit ignores hero movement** and keeps its target while the player moves, casts and attacks freely.
     Only a hero more than **1000** away turns the order into a retreat: break combat, join the formation. The
-    distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero.
+    distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero. A unit
+    counts as fighting when it is attacking, attack-moving, walking to a target it already picked, or standing with an
+    enemy inside its own acquisition range; the last case is what keeps the army from marching through a battle to
+    reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
-18. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
+18. **She crosses the army; the army never crosses her.** The engine never pushes a unit aside
+    (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
+    still), and a unit ordered to a point **walks straight at it** — no avoidance, no re-path — so a unit sent to a slot
+    with her body on the way jams on her. That one fact is what killed both earlier attempts at "make way": a stuck
+    timer that sent the block ahead for one second and then called it back through her, and a one-cell step aside that
+    the next slot order walked straight back. Both are gone, and the rule is now per unit per beat, with no timer and
+    no memory:
+
+    - **A unit in the ground she is walking into keeps its place.** `placeBehind` already leaves every slot at or
+      behind her front line, so a unit ahead of her could only reach its slot by walking back across her: it is given
+      no order at all, and stays where it stands. This is what a reversed stick produces on its own — every unit of the
+      block is ahead of her along the new way, so the whole block holds instead of marching through her.
+    - **The unit on the step she is about to take moves one cell aside** (`CUnitPlacement.blockedByUnit` is the test,
+      the side the unit already leans to is the choice, both sides tried, and the unit sits out that beat so the order
+      does not call it back). A unit in a fight is never the one moved.
+    - **Once she is past a unit, its slot is on her side of her line and it follows** — the front line first, then the
+      rank behind it as she walks past that too. The walker blocked by that rank steps it aside; the rank itself does
+      not move until then.
+    - **The chase cap is exempt**: a unit more than `RETREAT_DISTANCE` out comes home whether or not she is between it
+      and the block.
+
+    What the phone sees: she walks into the squad, they part one at a time as she reaches them, and the block reforms
+    behind her with the melee nearest her, because rank decides the rows, not proximity.
+19. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
     to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
     preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
     and several spells the 1.29 data declares are not implemented at all, so the table maps ability classes (with
     rawcode overrides) and anything outside it falls back on what the spell accepts.
-19. **An aim is a drag from the press, scaled to the spell, and stopped at its range.** The skill button is at the
+20. **An aim is a drag from the press, scaled to the spell, and stopped at its range.** The skill button is at the
     corner of the screen and the hero is in the middle: reading the thumb absolutely would put the circle where the
     button is the moment it is pressed, and every drag would move the circle the wrong way. So the press point is the
     origin, the direction is the one the thumb went, and the distance is the drag scaled by range over 80 dp — a
@@ -196,7 +234,7 @@ Settled, and no longer up for renegotiation without a good reason:
     Two numbers the phone supplied: laying the world point of the finger straight onto the map (1:1) put the far end
     of any range out of reach, and the data's unlimited range — Blink declares 99999 — used as a scale put the circle
     ten thousand units away. A declared range at or above 5000, or none at all, now scales and stops at 1200.
-24. **A cast keeps the walk stick's orders off for its own moment.** A move order interrupts a spell here, as in the
+21. **A cast keeps the walk stick's orders off for its own moment.** A move order interrupts a spell here, as in the
     game the engine comes from, and a held stick re-issues its move order every few frames, so every skill cast while
     walking was cancelled before it fired — instant ones included, because a cast with an animation is still a cast.
     For `HeroCastHold`'s time, the stick issues nothing; the thumb keeps its direction and takes over again when the
@@ -204,10 +242,10 @@ Settled, and no longer up for renegotiation without a good reason:
     Knives and Blink; 700 and 800 are measured on the phone), it is a table rather than a data field because nothing
     in the ability data describes a cast's length — a unit's cast point is only a multiplier on a model's spell
     sequence — and 1500 ms is the ceiling whichever skill asks.
-20. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
+22. **The item buttons are the inner arc.** The first two usable items sit beside the big attack button, the rest in
     a row on the bottom edge, four at most. "Usable" is the data's own flag for an item that is actively used; an
     item that cannot be used right now is drawn disabled, and an item with no active use gets no button at all.
-21. **The big attack button gives target focus, and the hero never fights on her own.** She swings only when the
+23. **The big attack button gives target focus, and the hero never fights on her own.** She swings only when the
     button is tapped: her own target scan is off, so an enemy that walks up to a standing hero is ignored. The button
     orders an attack on the nearest thing in reach, so a hero can be picked out of the crowd — and so a gate can be
     broken. What it may pick is not "an enemy": a destructable gate and a Neutral Passive building are legitimate
@@ -237,12 +275,11 @@ Settled, and no longer up for renegotiation without a good reason:
     again the moment the swing is over, without a lift and a re-press. Letting go of the stick mid-swing sends no stop
     either: the attack ends on its own and leaves her standing. That quiet only covers a swing the button bought, so a
     script that orders the hero to attack still lets the player walk her out of it.
-22. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
+24. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
     the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
     the tray keeps its own masked copy per icon.
-23. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a press
+25. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a press
     on a skill does not have to lift the stick first; a second finger that is not on the tray stays a camera pan.
-
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
