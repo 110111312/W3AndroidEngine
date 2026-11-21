@@ -37,6 +37,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.GetAbilit
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.hero.CAbilityHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.inventory.CAbilityInventory;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro.BuildingPlanExecutor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityActivationReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
@@ -129,6 +130,8 @@ final class HeroMode implements HeroTouchHost {
 	private float worldPerScreenPixel = 1f;
 	/** The step the army's chase cap is next looked at on; see {@link CHeroArmy#RETREAT_SCAN_TICKS}. */
 	private int nextArmyScanTick = Integer.MIN_VALUE;
+	/** The base playing itself, or null until hero mode is running; see {@link BuildingPlanExecutor}. */
+	private BuildingPlanExecutor planExecutor;
 	/** The skill a finger is aiming right now, or -1. */
 	private int aimingSlot = -1;
 	/** A single-target skill that is waiting for the tap on its target, or -1. */
@@ -168,6 +171,7 @@ final class HeroMode implements HeroTouchHost {
 		updateCamera();
 		updateStick();
 		updateArmy();
+		updatePlan();
 	}
 
 	// ------------------------------------------------------------------ resolution
@@ -202,6 +206,11 @@ final class HeroMode implements HeroTouchHost {
 		}
 		this.heroRender = renderHero;
 		this.active = true;
+		if (this.planExecutor == null) {
+			// The base runs on the player's own plan from here on: the plan is seeded from whatever this mission gave.
+			this.planExecutor = new BuildingPlanExecutor(this.ui.war3MapViewer.simulation,
+					this.ui.war3MapViewer.getLocalPlayerIndex(), this.ui.unitOrderListener);
+		}
 		this.heroAbility = findHeroAbility();
 		measureWorldPerScreenPixel();
 		applyHeroLayout();
@@ -555,6 +564,23 @@ final class HeroMode implements HeroTouchHost {
 				return;
 			}
 		}
+	}
+
+	/** The plan executor, for the macro panel (E3) to read the plan and toggle the supply line. */
+	BuildingPlanExecutor getPlanExecutor() {
+		return this.planExecutor;
+	}
+
+	/**
+	 * The base, on the same beat as the army: the executor throttles itself to one pass a second, so this is only the
+	 * gate that keeps a paused game from spending anything.
+	 */
+	private void updatePlan() {
+		if ((this.planExecutor == null) || this.ui.war3MapViewer.isGamePaused()) {
+			// Orders queued while paused would all fire on the frame it unpauses.
+			return;
+		}
+		this.planExecutor.step(this.ui.war3MapViewer.simulation.getGameTurnTick());
 	}
 
 	/**
