@@ -217,8 +217,11 @@ Settled, and no longer up for renegotiation without a good reason:
     counts as fighting when it is attacking, attack-moving, walking to a target it already picked, or standing with an
     enemy inside its own acquisition range; the last case is what keeps the army from marching through a battle to
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
-17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
-    kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
+17. **The army is every fighting unit the local player owns minus the hero**, re-derived per order. No roster is
+    kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units, and the roster test excludes
+    builders by their build ability (`AbstractCAbilityBuild`) — the same test the base's plan uses to find one. A
+    worker in the army would be walked out of its mine every time the hero moved, and the plan could only walk it
+    back; the console never did that, because a worker was only in a selection the player put it in.
 18. **She crosses the army; the army never crosses her.** The engine never pushes a unit aside
     (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
     still), and a unit ordered to a point **walks straight at it** — no avoidance, no re-path — so a unit sent to a slot

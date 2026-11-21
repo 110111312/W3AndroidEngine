@@ -8,6 +8,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorAttack;
@@ -495,7 +496,7 @@ public final class CHeroArmy {
 				unitX - (leftX * distance * first), unitY - (leftY * distance * first) };
 	}
 
-	/** Every movable unit the player owns except the hero. {@link CGroupMove#canTakeSlot} leaves out buildings. */
+	/** Every fighting unit the player owns except the hero. {@link CGroupMove#canTakeSlot} leaves out buildings. */
 	private static List<CUnit> following(final CSimulation simulation, final int playerIndex, final CUnit hero) {
 		final List<CUnit> army = new ArrayList<>();
 		for (final CUnit unit : simulation.getUnitsIncludingNew()) {
@@ -511,7 +512,20 @@ public final class CHeroArmy {
 
 	private static boolean isArmy(final CUnit unit, final CUnit hero, final int playerIndex) {
 		return (unit != hero) && (unit.getPlayerIndex() == playerIndex) && !unit.isDead()
-				&& CGroupMove.canTakeSlot(unit);
+				&& CGroupMove.canTakeSlot(unit) && !isBuilder(unit);
+	}
+
+	/**
+	 * Whether this unit builds for a living, and so is not part of the army.
+	 * <p>
+	 * A worker in the army is walked out of the mine it was in every time the hero moves, and the base's plan can only
+	 * walk it back -- two orders a second apart disagreeing about the same unit, which is the one thing the console
+	 * never did (a worker was only in a selection the player put it in). The test is the build ability and not the
+	 * {@code PEON} classification, because it is the ability the base's plan already looks for when it needs a builder
+	 * ({@code BuildingPlanExecutor}), so the two cannot disagree about who counts as a worker.
+	 */
+	private static boolean isBuilder(final CUnit unit) {
+		return unit.getFirstAbilityOfType(AbstractCAbilityBuild.class) != null;
 	}
 
 	/**
