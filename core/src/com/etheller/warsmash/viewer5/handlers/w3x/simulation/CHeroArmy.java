@@ -275,20 +275,29 @@ public final class CHeroArmy {
 			if (Math.abs(lateral) >= halfWidth) {
 				continue;
 			}
-			// Just far enough to clear it: a unit near the edge is nudged, not sent across the corridor.
-			final float push = (halfWidth - Math.abs(lateral)) + LANE_MARGIN;
-			final float[] sides = asideFrom(unit.getX(), unit.getY(), hero.getX(), hero.getY(), wayX, wayY, push);
+			// The aim steps progressively further from her line. The cells just outside the corridor are usually
+			// taken by the units waiting there, so a make-way that stops at the first ring cannot part a crowd — the
+			// last build refused the order instead, and the lane never opened.
 			float[] spot = null;
-			for (int i = 0; (i < sides.length) && (spot == null); i += 2) {
-				final float[] free = freeSpot(unit, new float[] { sides[i], sides[i + 1] }, simulation);
-				if ((free == null) || (clearanceOf(free[0], free[1], hero, wayX, wayY) < halfWidth)) {
-					continue;
+			for (int extra = 0; (extra <= 192) && (spot == null); extra += 64) {
+				final float[] sides = asideFrom(unit.getX(), unit.getY(), hero.getX(), hero.getY(), wayX, wayY,
+						(halfWidth + LANE_MARGIN + extra) - Math.abs(lateral));
+				for (int i = 0; (i < 4) && (spot == null); i += 2) {
+					final float[] free = freeSpot(unit, new float[] { sides[i], sides[i + 1] }, simulation);
+					if (free == null) {
+						continue;
+					}
+					// A cell the engine would call "already here" is a no-op order: the unit stands, the same order
+					// comes again next beat, and the lane looks open while nobody has moved.
+					final float step = (float) StrictMath.hypot(free[0] - unit.getX(), free[1] - unit.getY());
+					if ((step < 16f) || (clearanceOf(free[0], free[1], hero, wayX, wayY) < halfWidth)) {
+						continue;
+					}
+					spot = free;
 				}
-				spot = free;
 			}
 			if (spot == null) {
-				// Neither side has a cell that is really out of her way: trees, or a wall. Nothing is ordered — a
-				// shuffle inside the corridor is what made the same order come out on every beat.
+				// Neither side, at any distance, has a cell that is really out of her way: trees, or a wall.
 				log(String.format(Locale.US, "  make-way FAILED u%-4d %s ahead=%5.0f side=%5.0f no cell clear of her",
 						unit.getHandleId(), at(unit), ahead, lateral));
 				continue;
@@ -459,11 +468,17 @@ public final class CHeroArmy {
 			float closest = Float.MAX_VALUE;
 			int who = -1;
 			for (final CUnit unit : candidates) {
+				if (unit == mover) {
+					continue;
+				}
 				final float apart = (float) StrictMath.hypot(unit.getX() - stepX, unit.getY() - stepY);
 				if (apart < closest) {
 					closest = apart;
 					who = unit.getHandleId();
 				}
+			}
+			if (who < 0) {
+				return null;
 			}
 			log(String.format(Locale.US, "  blocked-nobody walker=u%d nearest u%d at %.0f", mover.getHandleId(), who,
 					closest));
