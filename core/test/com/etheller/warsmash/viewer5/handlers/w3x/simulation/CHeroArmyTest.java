@@ -43,7 +43,8 @@ class CHeroArmyTest {
 	@Test
 	void anIdleFollowerFormsUpOnTheHerosOwnLine() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
+		// Behind her, on the block's side: a unit ahead of her keeps its place instead, see the case further down.
+		final CUnit follower = unit(1, -50f, -50f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
 		CHeroArmy.follow(game(hero, follower), PLAYER, hero, 300f, 400f, orders.listener());
@@ -60,7 +61,7 @@ class CHeroArmyTest {
 	void aRangedHeroKeepsTheFrontRankAtHerReach() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		giveRangedAttack(hero, 600);
-		final CUnit follower = unit(1, 50f, 50f, CBehaviorStop.class);
+		final CUnit follower = unit(1, -50f, 0f, CBehaviorStop.class);
 		final Orders orders = new Orders();
 
 		// The stick points straight along +x, so the front line is the hero's position plus her range on that axis.
@@ -89,7 +90,7 @@ class CHeroArmyTest {
 	@Test
 	void theArmyFormsUpAroundTheHeroWhenSheStops() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit follower = unit(1, 800f, 0f, CBehaviorMove.class);
+		final CUnit follower = unit(1, -800f, 0f, CBehaviorMove.class);
 		final Orders orders = new Orders();
 
 		CHeroArmy.formUp(game(hero, follower), PLAYER, hero, orders.listener());
@@ -102,7 +103,7 @@ class CHeroArmyTest {
 	@Test
 	void aFollowerAlreadyWalkingIsSentToTheNewFormation() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit follower = unit(1, 50f, 50f, CBehaviorMove.class);
+		final CUnit follower = unit(1, -50f, -50f, CBehaviorMove.class);
 		final Orders orders = new Orders();
 
 		CHeroArmy.follow(game(hero, follower), PLAYER, hero, 300f, 400f, orders.listener());
@@ -192,6 +193,51 @@ class CHeroArmyTest {
 	}
 
 	@Test
+	void aUnitInTheGroundSheIsWalkingIntoKeepsItsPlace() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit ahead = unit(1, 100f, 0f, CBehaviorStop.class);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, ahead), PLAYER, hero, 300f, 0f, orders.listener());
+
+		// Its slot is at or behind her front line, so taking it would mean walking back across her, and a unit told to
+		// walk at a point does not go round a friendly: it jams on her. It waits instead.
+		assertTrue(orders.calls.isEmpty(), "a unit in her way is not ordered back through her");
+		assertTrue(CHeroArmy.aheadOfHer(hero, ahead, 1f, 0f));
+	}
+
+	@Test
+	void theFrontLineFollowsOnceSheIsPastIt() {
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit frontLine = unit(1, -20f, 0f, CBehaviorStop.class);
+
+		// She reverses: walking towards -x, the unit behind her is now in the ground she is walking into.
+		final Orders before = new Orders();
+		CHeroArmy.follow(game(hero, frontLine), PLAYER, hero, -300f, 0f, before.listener());
+		assertTrue(before.calls.isEmpty(), "she walks through it; it does not walk through her");
+
+		// Once she is past it, its slot is behind her on her own side of her line, and it takes it.
+		TestObjects.set(hero, "x", -200f);
+		final Orders after = new Orders();
+		CHeroArmy.follow(game(hero, frontLine), PLAYER, hero, -500f, 0f, after.listener());
+
+		assertEquals(List.of(1), after.unitHandleIds);
+		// The block is behind her, so the slot it was given is on the side she came from.
+		assertEquals(-200f, after.xs.get(0), 1e-4f);
+	}
+
+	@Test
+	void aUnitOnTheWayStepsToTheSideItAlreadyLeansTo() {
+		// One cell either side of a unit one cell left of a walk along +x: the side it leans to comes first.
+		final float[] points = CHeroArmy.asideFrom(0f, 10f, 0f, 0f, 1f, 0f);
+
+		assertEquals(0f, points[0], 1e-4f);
+		assertEquals(42f, points[1], 1e-4f);
+		assertEquals(0f, points[2], 1e-4f);
+		assertEquals(-22f, points[3], 1e-4f);
+	}
+
+	@Test
 	void theChaseIsLookedAtOnTheIdleScansHalfSecond() {
 		// The spec of the chase cap is the idle scan's cadence, not a number of its own.
 		assertEquals(CTimer.wholeSteps(0.5f), CHeroArmy.RETREAT_SCAN_TICKS);
@@ -200,8 +246,8 @@ class CHeroArmyTest {
 	@Test
 	void onlyThePlayersOwnUnitsAreOrdered() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit own = unit(1, 50f, 50f, CBehaviorStop.class);
-		final CUnit anotherPlayers = unit(2, 60f, 60f, CBehaviorStop.class);
+		final CUnit own = unit(1, -50f, -50f, CBehaviorStop.class);
+		final CUnit anotherPlayers = unit(2, -60f, -60f, CBehaviorStop.class);
 		TestObjects.set(anotherPlayers, "playerIndex", PLAYER + 1);
 		final Orders orders = new Orders();
 

@@ -192,30 +192,29 @@ Settled, and no longer up for renegotiation without a good reason:
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
 17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
     kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
-18. **The hero can be blocked by her own army, and this build does not get it out of the way.** The engine never
-    pushes a unit aside (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates
-    units that stand still), and hero mode has no selection with which the player could move a unit himself — so a
-    squad that walked into a corridor in front of the hero is a wall between her and the way out, and the whole follow
-    order is `CGroupMove.slots` with her front line, which is what puts them there.
+18. **She crosses the army; the army never crosses her.** The engine never pushes a unit aside
+    (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
+    still), and a unit ordered to a point **walks straight at it** — no avoidance, no re-path — so a unit sent to a slot
+    with her body on the way jams on her. That one fact is what killed both earlier attempts at "make way": a stuck
+    timer that sent the block ahead for one second and then called it back through her, and a one-cell step aside that
+    the next slot order walked straight back. Both are gone, and the rule is now per unit per beat, with no timer and
+    no memory:
 
-    The one thing the engine guarantees is that a unit ordered to a point **walks straight at it** — no avoidance, no
-    re-path — so a unit sent to a slot on the far side of the hero jams on her instead of going round, and that is the
-    reason every attempt to bring the army back through her has failed. Making way was tried twice, and both failed in
-    that geometry:
+    - **A unit in the ground she is walking into keeps its place.** `placeBehind` already leaves every slot at or
+      behind her front line, so a unit ahead of her could only reach its slot by walking back across her: it is given
+      no order at all, and stays where it stands. This is what a reversed stick produces on its own — every unit of the
+      block is ahead of her along the new way, so the whole block holds instead of marching through her.
+    - **The unit on the step she is about to take moves one cell aside** (`CUnitPlacement.blockedByUnit` is the test,
+      the side the unit already leans to is the choice, both sides tried, and the unit sits out that beat so the order
+      does not call it back). A unit in a fight is never the one moved.
+    - **Once she is past a unit, its slot is on her side of her line and it follows** — the front line first, then the
+      rank behind it as she walks past that too. The walker blocked by that rank steps it aside; the rank itself does
+      not move until then.
+    - **The chase cap is exempt**: a unit more than `RETREAT_DISTANCE` out comes home whether or not she is between it
+      and the block.
 
-    - **a stuck timer** (`MAKE_WAY_TICKS` was one second): her progress on the half-second beat, then the block aimed
-      400 ahead along the stick direction and pushed until its back row was 100 clear of her feet. Two things broke it:
-      the signal fires on the first beat after the player starts moving, because she was standing still a beat earlier,
-      and when the second is up the army is *ahead* of her, so the trailing formation calls it back through her — which
-      it cannot walk round. The phone saw units flipping toward her, away, toward;
-    - **a one-cell step aside**, ordered to whichever unit stood on the cell she was stepping into (via the engine's own
-      step test, `CUnitPlacement.blockedByUnit`): the nudge was sound, the log showed the blocked step and a free spot,
-      but the next slot order walked the unit straight back, so it fought the formation instead of the wall.
-
-    Both were removed rather than patched: what is left is the trailing block and the side rule (item 15), which does
-    not block her when she walks forward, and does block her when she has to back out of a corridor. Fixing that is the
-    open problem, and the constraint it has to satisfy is the line above: nothing may ever order a unit to a point her
-    body stands between it and.
+    What the phone sees: she walks into the squad, they part one at a time as she reaches them, and the block reforms
+    behind her with the melee nearest her, because rank decides the rows, not proximity.
 19. **Four cast types, and the type is a table, not a probe.** No target fires on a tap; single target takes a tap
     to choose and a tap on the target to cast; direction and ground both aim by dragging, and differ only in the
     preview — a line from the hero, or a circle of the spell's area. Nothing in the ability data says "directional",
