@@ -1,0 +1,150 @@
+package com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
+import com.etheller.warsmash.util.War3ID;
+
+/**
+ * The spending order, proved without a simulation: a number runs when affordable, same-number tickets compete first
+ * affordable, one purchase per pass, a number must be done before the next starts, and a requirement-stuck ticket
+ * never blocks.
+ */
+class MacroRuleTest {
+	private static final War3ID FOOTMAN = War3ID.fromString("hfoo");
+	private static final War3ID BARRACKS = War3ID.fromString("hbar");
+	private static final War3ID RIFLEMAN = War3ID.fromString("hrif");
+	private static final War3ID TECH = War3ID.fromString("Rhme");
+
+	private static MacroTicket build(final War3ID rawcode) {
+		return MacroTicket.build(rawcode);
+	}
+
+	@Test
+	void theLowestNumberRunsFirst() {
+		final MacroTicket first = build(FOOTMAN);
+		final MacroTicket second = build(BARRACKS);
+		final TicketState next = MacroRule.next(List.of(List.of(TicketState.ready(0, first),
+				TicketState.ready(1, second))));
+		assertSame(first, next.getTicket());
+	}
+
+	@Test
+	void onePurchasePerPassReturnsASingleTicket() {
+		final TicketState next = MacroRule.next(List.of(List.of(TicketState.ready(0, build(FOOTMAN)),
+				TicketState.ready(0, build(BARRACKS)))));
+		// Not a list: the shape of the answer is the rule.
+		assertEquals(0, next.getNumber());
+	}
+
+	@Test
+	void twoSameNumberTicketsAcrossBothPlansCompeteForTheGold() {
+		final MacroTicket mine = build(FOOTMAN);
+		final MacroTicket army = build(RIFLEMAN);
+		final TicketState next = MacroRule.next(
+				List.of(List.of(TicketState.waiting(0, mine)), List.of(TicketState.ready(0, army))));
+		assertSame(army, next.getTicket());
+	}
+
+	@Test
+	void aOneWaitsUntilEveryZeroInBothPlansIsDone() {
+		// The building plan still has a zero it cannot afford, and the army plan's only ticket is already at one.
+		final MacroTicket armyOne = build(RIFLEMAN);
+		assertItHoldsItsNumber(MacroRule.next(
+				List.of(List.of(TicketState.waiting(0, build(FOOTMAN))), List.of(TicketState.ready(1, armyOne)))));
+
+		// The building plan's zero is done and gone, so the army's ticket slid down to zero and now runs.
+		final TicketState slid = MacroRule.next(List.of(List.of(), List.of(TicketState.ready(0, armyOne))));
+		assertSame(armyOne, slid.getTicket());
+	}
+
+	@Test
+	void completingTheLastZeroSlidesTheOnesDown() {
+		final MacroPlan plan = new MacroPlan();
+		plan.append(build(FOOTMAN));
+		plan.append(build(BARRACKS));
+		final MacroTicket ones = plan.get(1);
+		plan.remove(plan.get(0));
+		assertEquals(0, plan.indexOf(ones));
+		final TicketState next = MacroRule.next(List.of(List.of(TicketState.ready(plan.indexOf(ones), ones))));
+		assertSame(ones, next.getTicket());
+	}
+
+	@Test
+	void anUnaffordableTicketWaitsVisibly() {
+		final TicketState waiting = TicketState.waiting(0, build(BARRACKS));
+		final TicketState next = MacroRule.next(List.of(List.of(waiting, TicketState.ready(1, build(FOOTMAN)))));
+		// It waits, and it holds the number: the one behind does not overtake it.
+		assertNull(next);
+		assertFalse(waiting.isReady());
+		assertFalse(waiting.isStuck());
+	}
+
+	@Test
+	void aRequirementStuckTicketIsNeverReturned() {
+		final TicketState stuck = TicketState.stuck(0, MacroTicket.research(TECH),
+				Stuck.of(Stuck.Reason.MISSING_REQUIREMENT));
+		final TicketState next = MacroRule.next(List.of(List.of(stuck)));
+		assertNull(next);
+		assertTrue(stuck.isStuck());
+		assertEquals(Stuck.Reason.MISSING_REQUIREMENT, stuck.getStuck().getReason());
+	}
+
+	@Test
+	void aStuckTicketBlocksNothing() {
+		final MacroTicket next = build(BARRACKS);
+		final TicketState state = MacroRule.next(List.of(List.of(TicketState.stuck(0, MacroTicket.research(TECH),
+				Stuck.of(Stuck.Reason.NO_PRODUCER)), TicketState.ready(1, next))));
+		assertSame(next, state.getTicket());
+	}
+
+	@Test
+	void aNumberWhoseOnlyTicketsAreStuckIsPassedOver() {
+		final MacroTicket next = build(BARRACKS);
+		final TicketState state = MacroRule.next(List.of(List.of(
+				TicketState.stuck(0, MacroTicket.research(TECH), Stuck.of(Stuck.Reason.MISSING_REQUIREMENT)),
+				TicketState.stuck(0, MacroTicket.upgrade(BARRACKS), Stuck.of(Stuck.Reason.NO_HALL)),
+				TicketState.ready(1, next))));
+		assertSame(next, state.getTicket());
+	}
+
+	@Test
+	void aPendingTicketHoldsItsNumberOpen() {
+		final TicketState next = MacroRule.next(List.of(List.of(TicketState.pending(0, build(BARRACKS)),
+				TicketState.ready(1, build(FOOTMAN)))));
+		// Its order is out, so the number is not done and nothing behind it starts.
+		assertNull(next);
+	}
+
+	@Test
+	void anEmptyPlanReturnsNothing() {
+		assertNull(MacroRule.next(List.of(List.of())));
+		assertNull(MacroRule.next(List.of()));
+	}
+
+	@Test
+	void theRuleIsTheSameForEveryKind() {
+		// A number is a number whatever the ticket asks for: the rule never looks at the kind.
+		final MacroTicket upgrade = MacroTicket.upgrade(BARRACKS);
+		final MacroTicket research = MacroTicket.research(TECH);
+		final MacroTicket building = MacroTicket.build(FOOTMAN);
+		final TicketState state = MacroRule.next(List.of(List.of(TicketState.stuck(0, building,
+				Stuck.of(Stuck.Reason.NO_BUILDER)), TicketState.pending(0, upgrade), TicketState.ready(1, research))));
+		assertNull(state);
+
+		final TicketState withoutThePending = MacroRule.next(List.of(List.of(
+				TicketState.stuck(0, building, Stuck.of(Stuck.Reason.NO_BUILDER)), TicketState.ready(1, research))));
+		assertSame(research, withoutThePending.getTicket());
+	}
+
+	private static void assertItHoldsItsNumber(final TicketState next) {
+		assertNull(next, "a number that is not done must not let the next one start");
+	}
+}
