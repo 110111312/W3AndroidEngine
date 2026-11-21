@@ -129,7 +129,10 @@ at a good moment, with an obvious consequence.
   keeping list order; the builder returns to harvesting between jobs; placement is automatic near the base. A supply
   status line above the list keeps the food cap ahead of the army — never a list item, pausable. A stuck head waits
   visibly, and nothing below it starts in its lane. An empty list keeps the base sane.
-- **the unit plan**: what gets trained, up to how much food — its shape is settled next.
+- **the unit plan**: **per-type counts** — how many of each type the army keeps. The executor counts alive
+  units (plus in production) per type and trains the shortfall in row order; a row that cannot train yet is skipped,
+  never blocking; the plan trains and never culls, so a tier shift is a lowered row and battles. The default plan is
+  the army the mission started with, workers included.
 - **see the army**: how many units, what they are, whether they are alive — without selecting anything.
 
 Defaults are derived from the live base, so they differ per mission by themselves: a campaign mission that starts
@@ -314,6 +317,13 @@ Settled, and no longer up for renegotiation without a good reason:
     mission that starts with buildings is respected by rules that read them, a mission with no workers gets an
     inert plan, and an unreadable techtree degrades to doing nothing. A per-campaign default profile is a follow-up
     only if a specific mission proves it necessary.
+30. **The unit plan is per-type counts, standing.** A row says how many of a type the army keeps; the executor
+    counts alive units (plus ones in production) and trains the shortfall in row order, skipping rows whose tech is
+    not met — standing goals, so no row may starve another (E1's queues block; E2's rows do not). The plan trains and
+    never culls: lowering or clearing a row lets battles do the replacing, which is how a tier shift is done.
+31. **The default unit plan is the army the mission started with** — per-type counts of the starting units, workers
+    kept at their starting count. A start with no army gets an empty plan that trains nothing until the player adds
+    rows. The hero is not a row.
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
@@ -347,8 +357,7 @@ edge. Anything hero mode puts in a corner is offset by `(minWorldWidth - worldWi
 1. **The engagement rules** (issue D): what a unit will engage, when it retreats by judgment rather than by the
    hero's distance, how it regroups to the hero — or to the altar, when the hero is unspawned — while the hero
    stands still.
-2. **The unit plan** (issue E2): its shape — an ordered loop or a standing food target — and its default. The
-   building plan is settled (E1); the panel's on-screen home is decided with E2.
+2. **Where the macro panel lives on screen** — one home for both plans, decided when the panel is built.
 3. **Campaign exceptions**: missions that switch heroes, missions with no hero, missions built around controlling
    several units at once.
 
@@ -364,7 +373,7 @@ issues, one per plan.
 | C | the army follows | hero moves → the army moves in formation (`CGroupMove` slots, army speed-linked, hero never slowed); a fighting unit ignores hero movement until the hero is **1000** away, then it is a retreat |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
 | E1 | building plan | one ordered list of buildings and researches the base executes by itself; supply as a status line; defaults derived from the live base |
-| E2 | unit plan | what gets trained and up to how much food; shape to be settled |
+| E2 | unit plan | per-type counts that self-heal after a fight; the default is the mission's starting army; the plan never culls |
 
 ## The stick's art
 
