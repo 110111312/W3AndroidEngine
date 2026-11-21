@@ -193,43 +193,47 @@ class CHeroArmyTest {
 	}
 
 	@Test
-	void aUnitInTheGroundSheIsWalkingIntoKeepsItsPlace() {
+	void aWalkThatWouldGoThroughHerIsHeld() {
 		final CUnit hero = hero(CBehaviorStop.class);
 		final CUnit ahead = unit(1, 100f, 0f, CBehaviorStop.class);
-		final Orders orders = new Orders();
+		final CUnit behind = unit(2, -100f, 0f, CBehaviorStop.class);
 
-		CHeroArmy.follow(game(hero, ahead), PLAYER, hero, 300f, 0f, orders.listener());
-
-		// Its slot is at or behind her front line, so taking it would mean walking back across her, and a unit told to
-		// walk at a point does not go round a friendly: it jams on her. It waits instead.
-		assertTrue(orders.calls.isEmpty(), "a unit in her way is not ordered back through her");
-		assertTrue(CHeroArmy.aheadOfHer(hero, ahead, 1f, 0f));
+		// Its slot is beyond her, so the straight walk it would take goes through her feet: it keeps its place.
+		assertTrue(CHeroArmy.wouldCrossHer(hero, ahead, -100f, 0f, 1f, 0f));
+		// A slot beside her line is not on her, and the walk clears her.
+		assertTrue(!CHeroArmy.wouldCrossHer(hero, ahead, 100f, -200f, 1f, 0f));
+		// The front row's slot is her own feet: reached from behind her that is forming up on her line, reached from in
+		// front of her it is the jam itself.
+		assertTrue(!CHeroArmy.wouldCrossHer(hero, behind, 0f, 0f, 1f, 0f));
+		assertTrue(CHeroArmy.wouldCrossHer(hero, ahead, 0f, 0f, 1f, 0f));
+		// A slot in front of her line is the rank a ranged hero shoots over: reaching it means walking past her.
+		assertTrue(!CHeroArmy.wouldCrossHer(hero, ahead, 600f, 0f, 1f, 0f));
 	}
 
 	@Test
 	void theFrontLineFollowsOnceSheIsPastIt() {
 		final CUnit hero = hero(CBehaviorStop.class);
-		final CUnit frontLine = unit(1, -20f, 0f, CBehaviorStop.class);
+		final CUnit frontLine = unit(1, -60f, 0f, CBehaviorStop.class);
 
-		// She reverses: walking towards -x, the unit behind her is now in the ground she is walking into.
+		// She reverses: walking towards -x, the unit behind her is now in the ground she walks into, and its slot is
+		// her own feet. Walking back onto her from in front is the jam: it keeps its place, she walks through the gap.
 		final Orders before = new Orders();
 		CHeroArmy.follow(game(hero, frontLine), PLAYER, hero, -300f, 0f, before.listener());
 		assertTrue(before.calls.isEmpty(), "she walks through it; it does not walk through her");
 
-		// Once she is past it, its slot is behind her on her own side of her line, and it takes it.
+		// Once she is past it, the same slot is reached from behind her, which is what forming up on her line is.
 		TestObjects.set(hero, "x", -200f);
 		final Orders after = new Orders();
 		CHeroArmy.follow(game(hero, frontLine), PLAYER, hero, -500f, 0f, after.listener());
 
 		assertEquals(List.of(1), after.unitHandleIds);
-		// The block is behind her, so the slot it was given is on the side she came from.
 		assertEquals(-200f, after.xs.get(0), 1e-4f);
 	}
 
 	@Test
 	void aUnitOnTheWayStepsToTheSideItAlreadyLeansTo() {
 		// One cell either side of a unit one cell left of a walk along +x: the side it leans to comes first.
-		final float[] points = CHeroArmy.asideFrom(0f, 10f, 0f, 0f, 1f, 0f);
+		final float[] points = CHeroArmy.asideFrom(0f, 10f, 0f, 0f, 1f, 0f, 32f);
 
 		assertEquals(0f, points[0], 1e-4f);
 		assertEquals(42f, points[1], 1e-4f);

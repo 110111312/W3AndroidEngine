@@ -2,6 +2,9 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+
+import com.badlogic.gdx.Gdx;
 
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
@@ -46,8 +49,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.PointAbilityTa
  * ({@code CBehaviorMove} refuses a step into another unit's footprint, {@code CUnitPlacement} only separates units that
  * are standing still). So she crosses the army instead of the army crossing her, in three rules:
  * <ul>
- * <li>a unit standing in the ground she is walking into is not given its slot this beat ({@link #aheadOfHer}) - every
- * slot is at or behind her front line, so taking it would mean walking back across her;</li>
+ * <li>a unit whose straight walk to its slot would go through her is not given that slot this beat
+ * ({@link #wouldCrossHer}) - every slot is at or behind her front line, so on a reversed stick that is most of them;</li>
  * <li>the unit on the step she is about to take is told to move one cell aside ({@link #makeRoom});</li>
  * <li>once she is past a unit, that unit's slot is on her side of her line again and it follows - the front line
  * first, the rank behind it once she has walked past that too.</li>
@@ -70,10 +73,20 @@ public final class CHeroArmy {
 	public static final int RETREAT_SCAN_TICKS = CUnitAcquisition.IDLE_ACQUIRE_SCAN_TICKS;
 
 	/**
-	 * How far ahead of the hero along her way a unit may stand and still be given its slot: half a pathing cell. A unit
-	 * further ahead than that is in the ground she is walking into; see {@link #aheadOfHer}.
+	 * On top of the two footprints, how near the hero a straight walk may pass and still be given its slot; see
+	 * {@link #wouldCrossHer}. A cell's slack: the step test the engine refuses steps with has an edge, not a point.
 	 */
+	private static final float CROSS_SLACK = 8f;
+
+	/** How far ahead of her line a slot may lie and still count as on it, in world units: half a pathing cell. */
 	private static final float AHEAD_MARGIN = 16f;
+
+	/**
+	 * How far ahead of her along her way her own army has to be for the block to count as the ground she is walking
+	 * into, in world units: about three rows of a formation, so the block in front of her rather than the row on her
+	 * toes. Past that the army is behind her and the ordinary trailing formation is what it should be doing.
+	 */
+	private static final float CROSSING_RANGE = 400f;
 
 	/**
 	 * One pathing cell along the way a unit walks - the step {@code CBehaviorMove} refuses when another unit's footprint
@@ -83,12 +96,34 @@ public final class CHeroArmy {
 	private static final float STEP_ASIDE = 32f;
 	private static final float STEP_ASIDE_REACH = 96f;
 
+	/**
+	 * The corridor she needs, in world units of clear ground on either side of her line and of depth ahead of her, and
+	 * how far beyond the edge of it a unit is put. {@link #clearLane} empties it; a unit outside it is left alone.
+	 */
+	private static final float LANE_HALF_WIDTH = 64f;
+	private static final float LANE_DEPTH = 200f;
+	private static final float LANE_MARGIN = 24f;
+
+	/** How many units one beat may be told to make way, so a crowd does not turn into an order storm. */
+	private static final int LANE_CLEAR_LIMIT = 4;
+
 	/** On top of the two footprints, how near a step a unit may stand and still be taken for the one in the way. */
 	private static final float STEP_ASIDE_SLACK = 16f;
 
 	private static final double RETREAT_DISTANCE_SQUARED = RETREAT_DISTANCE * (double) RETREAT_DISTANCE;
 
 	private CHeroArmy() {
+	}
+
+	/** Temporary: the phone run reads back what the order saw; removed once the formation settles. */
+	private static void log(final String message) {
+		if (Gdx.app != null) {
+			Gdx.app.log("HeroArmy", message);
+		}
+	}
+
+	private static String at(final CUnit unit) {
+		return String.format(Locale.US, "(%6.0f,%6.0f)", unit.getX(), unit.getY());
 	}
 
 	/**
@@ -111,12 +146,23 @@ public final class CHeroArmy {
 		}
 		final float wayX = dirX / length;
 		final float wayY = dirY / length;
+		log(String.format(Locale.US, "follow tick=%d hero=%s way=(%5.2f,%5.2f) reach=%.0f", 
+				simulation.getGameTurnTick(), at(hero), wayX, wayY, reach(hero)));
 		final List<CUnit> roster = following(simulation, playerIndex, hero);
 		// Whoever stands on the step she is about to take moves aside and sits out this beat, so the formation order
 		// below does not call it straight back into the way it just left her.
 		final CUnit aside = makeRoom(simulation, playerIndex, hero, roster, wayX, wayY, listener);
 		if (aside != null) {
 			roster.remove(aside);
+		}
+		if ((aside != null) || blocksHer(hero, roster, wayX, wayY)) {
+			// She is walking into her own block. Nobody is given a slot this beat — every slot is on the far side of
+			// her from the block, and taking one means walking back across her — but whoever is standing in the ground
+			// she needs is told to get out of it. That is the make-way: it is the only thing ordered while she crosses,
+			// and it ends by itself when nothing is ahead of her, at which point the trailing formation runs again.
+			log("  crossing: make way, no slot orders");
+			clearLane(simulation, playerIndex, hero, roster, wayX, wayY, listener);
+			return;
 		}
 		trail(simulation, playerIndex, hero, roster, wayX, wayY, true, listener);
 	}
@@ -128,6 +174,8 @@ public final class CHeroArmy {
 	 */
 	public static void formUp(final CSimulation simulation, final int playerIndex, final CUnit hero,
 			final CPlayerUnitOrderListener listener) {
+		log(String.format(Locale.US, "formUp tick=%d hero=%s facing=(%.2f,%.2f)", simulation.getGameTurnTick(),
+				at(hero), facingX(hero), facingY(hero)));
 		trail(simulation, playerIndex, hero, following(simulation, playerIndex, hero), facingX(hero), facingY(hero),
 				true, listener);
 	}
@@ -158,7 +206,7 @@ public final class CHeroArmy {
 	 * The trailing formation: the hero at the front of the block, the rest of it behind her.
 	 *
 	 * @param holdAhead whether a unit standing in the ground she is walking into keeps its place instead of walking back
-	 *        across her; see {@link #aheadOfHer}
+	 *        across her; see {@link #wouldCrossHer}
 	 */
 	private static void trail(final CSimulation simulation, final int playerIndex, final CUnit hero,
 			final List<CUnit> roster, final float dirX, final float dirY, final boolean holdAhead,
@@ -175,12 +223,22 @@ public final class CHeroArmy {
 		final List<Integer> kept = new ArrayList<>();
 		for (int i = 0; i < walkers.units.size(); i++) {
 			final CUnit unit = walkers.units.get(i);
-			if (holdAhead && aheadOfHer(hero, unit, dirX, dirY) && !isBeyondReach(unit, hero)) {
-				continue;
+			final float along = ((unit.getX() - hero.getX()) * dirX) + ((unit.getY() - hero.getY()) * dirY);
+			final float side = ((unit.getX() - hero.getX()) * -dirY) + ((unit.getY() - hero.getY()) * dirX);
+			final float slotX = slots[i * 2];
+			final float slotY = slots[(i * 2) + 1];
+			final boolean hold = holdAhead && wouldCrossHer(hero, unit, slotX, slotY, dirX, dirY)
+					&& !isBeyondReach(unit, hero);
+			if (!hold) {
+				kept.add(i);
 			}
-			kept.add(i);
+			log(String.format(Locale.US, "  u%-4d %s along=%6.0f side=%6.0f slot=%s %s", unit.getHandleId(), at(unit),
+					along, side, String.format(Locale.US, "(%6.0f,%6.0f)", slotX, slotY),
+					hold ? "HOLD" : String.format(Locale.US, "order d=%.0f",
+							StrictMath.hypot(slotX - unit.getX(), slotY - unit.getY()))));
 		}
 		stepAsideForTheWalkers(simulation, playerIndex, walkers.units, kept, slots, listener);
+		log("  kept=" + kept.size() + " of " + walkers.units.size());
 		if (kept.isEmpty()) {
 			return;
 		}
@@ -188,17 +246,139 @@ public final class CHeroArmy {
 	}
 
 	/**
-	 * Whether the unit stands in the ground the hero is about to walk into. {@link #placeBehind} leaves every slot at or
-	 * behind her front line, so a unit ahead of her can only reach its slot by walking back across her, and
-	 * {@code CBehaviorMove} walks straight at the point it is given: it refuses the step into her footprint instead of
-	 * going round her. The unit keeps its place instead, and its slot comes back to it on the beat after she is past.
+	 * The make-way: every unit of the army standing in the corridor she is walking down is told to step out of it, to
+	 * the side it already leans to, and to the first free cell the engine's own placement search finds there — so a
+	 * squad in a corridor, or against a tree line, opens a lane instead of standing in it. Units outside the corridor
+	 * are not touched, which is the "else wait" half of it, and a unit in a fight is not in the roster at all.
 	 * <p>
-	 * This is the whole of "she crosses the army, the army never crosses her". Reversing the stick does not re-aim the
-	 * block into a march through her either, because every unit of it is ahead of her along the new way and holds; she
-	 * walks into the gap the rule leaves and the block reforms around her from the far side.
+	 * Only a few per beat, so a crowd is parted over a moment rather than in one order storm; she is walking, so the
+	 * beat comes around again before she reaches the ones that were left.
 	 */
-	static boolean aheadOfHer(final CUnit hero, final CUnit unit, final float dirX, final float dirY) {
-		return (((unit.getX() - hero.getX()) * dirX) + ((unit.getY() - hero.getY()) * dirY)) > AHEAD_MARGIN;
+	private static void clearLane(final CSimulation simulation, final int playerIndex, final CUnit hero,
+			final List<CUnit> roster, final float wayX, final float wayY,
+			final CPlayerUnitOrderListener listener) {
+		int moved = 0;
+		for (final CUnit unit : roster) {
+			if (moved >= LANE_CLEAR_LIMIT) {
+				return;
+			}
+			final float offsetX = unit.getX() - hero.getX();
+			final float offsetY = unit.getY() - hero.getY();
+			final float ahead = (offsetX * wayX) + (offsetY * wayY);
+			if ((ahead <= AHEAD_MARGIN) || (ahead > LANE_DEPTH)) {
+				continue;
+			}
+			final float lateral = (offsetX * -wayY) + (offsetY * wayX);
+			// The width this unit has to clear: the corridor plus its own half, so its edge is out of her way and not
+			// just its centre. A unit already wider than that is beside the corridor and is left alone.
+			final float halfWidth = LANE_HALF_WIDTH + (footprint(unit) * 0.5f);
+			if (Math.abs(lateral) >= halfWidth) {
+				continue;
+			}
+			// Just far enough to clear it: a unit near the edge is nudged, not sent across the corridor.
+			final float push = (halfWidth - Math.abs(lateral)) + LANE_MARGIN;
+			final float[] sides = asideFrom(unit.getX(), unit.getY(), hero.getX(), hero.getY(), wayX, wayY, push);
+			float[] spot = null;
+			for (int i = 0; (i < sides.length) && (spot == null); i += 2) {
+				final float[] free = freeSpot(unit, new float[] { sides[i], sides[i + 1] }, simulation);
+				if ((free == null) || (clearanceOf(free[0], free[1], hero, wayX, wayY) < halfWidth)) {
+					continue;
+				}
+				spot = free;
+			}
+			if (spot == null) {
+				// Neither side has a cell that is really out of her way: trees, or a wall. Nothing is ordered — a
+				// shuffle inside the corridor is what made the same order come out on every beat.
+				log(String.format(Locale.US, "  make-way FAILED u%-4d %s ahead=%5.0f side=%5.0f no cell clear of her",
+						unit.getHandleId(), at(unit), ahead, lateral));
+				continue;
+			}
+			final CAbility move = moveAbility(simulation, unit, playerIndex,
+					new AbilityPointTarget(spot[0], spot[1]));
+			if (move == null) {
+				continue;
+			}
+			listener.issuePointOrder(unit.getHandleId(), move.getHandleId(), OrderIds.move, spot[0], spot[1], false);
+			log(String.format(Locale.US, "  make-way u%-4d %s ahead=%5.0f side=%5.0f -> (%6.0f,%6.0f)", 
+					unit.getHandleId(), at(unit), ahead, lateral, spot[0], spot[1]));
+			moved++;
+		}
+	}
+
+	/** How far a point is from the hero's line along her way, which is what "out of the corridor" is measured by. */
+	private static float clearanceOf(final float x, final float y, final CUnit hero, final float wayX,
+			final float wayY) {
+		return Math.abs(((x - hero.getX()) * -wayY) + ((y - hero.getY()) * wayX));
+	}
+
+	/**
+	 * Whether any of the army stands in the ground she is walking into, within a block's reach of her: see
+	 * {@link #CROSSING_RANGE}.
+	 */
+	private static boolean blocksHer(final CUnit hero, final List<CUnit> roster, final float wayX,
+			final float wayY) {
+		for (final CUnit unit : roster) {
+			final float ahead = ((unit.getX() - hero.getX()) * wayX) + ((unit.getY() - hero.getY()) * wayY);
+			if ((ahead > AHEAD_MARGIN) && (ahead <= CROSSING_RANGE)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a unit told to walk to this slot would go through the hero. The test is the straight line it would walk,
+	 * because that is what the engine does: {@code CBehaviorMove} walks at the point it is given and refuses a step into
+	 * another unit's footprint rather than going round it.
+	 * <p>
+	 * A segment rather than a side, because a unit can be behind her and still have to cross her — a stray on her left
+	 * with a slot on her right cuts through her feet as surely as a stray in front of her walking back. The earlier
+	 * half-plane version held 1859 units in one phone run of which a quarter never came near her, and let sixty orders
+	 * through that did.
+	 * <p>
+	 * Three walks through her are let go, and the difference between them and the one this rule is for is the whole of
+	 * it:
+	 * <ul>
+	 * <li>a unit already inside her footprint: it is as close as it will get, and the step test {@code makeRoom} uses is
+	 * what frees the cell it is walking into;</li>
+	 * <li>a slot <em>on</em> her feet, reached from behind her: walking up and stopping there is what forming up on her
+	 * line is. From in front of her it is the jam itself, so that one is held — which is the case this rule exists for,
+	 * since {@code placeBehind} leaves the front row exactly on her line;</li>
+	 * <li>a slot beyond her front line, which only a ranged hero produces: that rank stands in front of her by design,
+	 * she shoots over it, and reaching it means going past her.</li>
+	 * </ul>
+	 */
+	static boolean wouldCrossHer(final CUnit hero, final CUnit unit, final float slotX, final float slotY,
+			final float dirX, final float dirY) {
+		final float ahead = ((slotX - hero.getX()) * dirX) + ((slotY - hero.getY()) * dirY);
+		if (ahead > AHEAD_MARGIN) {
+			return false;
+		}
+		final float clearance = (footprint(hero) + footprint(unit)) * 0.5f + CROSS_SLACK;
+		final float fromX = unit.getX();
+		final float fromY = unit.getY();
+		if (StrictMath.hypot(fromX - hero.getX(), fromY - hero.getY()) <= clearance) {
+			return false;
+		}
+		if (StrictMath.hypot(slotX - hero.getX(), slotY - hero.getY()) <= clearance) {
+			return (((fromX - hero.getX()) * dirX) + ((fromY - hero.getY()) * dirY)) > AHEAD_MARGIN;
+		}
+		final float alongX = slotX - fromX;
+		final float alongY = slotY - fromY;
+		final float lengthSquared = (alongX * alongX) + (alongY * alongY);
+		float reach = 0f;
+		if (lengthSquared > 0f) {
+			reach = (((hero.getX() - fromX) * alongX) + ((hero.getY() - fromY) * alongY)) / lengthSquared;
+			reach = Math.max(0f, Math.min(1f, reach));
+		}
+		final float nearestX = fromX + (alongX * reach);
+		final float nearestY = fromY + (alongY * reach);
+		return StrictMath.hypot(nearestX - hero.getX(), nearestY - hero.getY()) <= clearance;
+	}
+
+	/** How wide a unit's footprint is, in the same units every other distance in this class uses. */
+	private static float footprint(final CUnit unit) {
+		return unit.getUnitType() == null ? 32f : unit.getUnitType().getCollisionSize();
 	}
 
 	/**
@@ -259,6 +439,7 @@ public final class CHeroArmy {
 		if (!CUnitPlacement.blockedByUnit(mover, stepX, stepY, collision, pathingGrid, collisionSize, movementType)) {
 			return null;
 		}
+		log(String.format(Locale.US, "  blocked walker=u%d step=(%.0f,%.0f)", mover.getHandleId(), stepX, stepY));
 		CUnit blocker = null;
 		float nearest = Float.MAX_VALUE;
 		for (final CUnit unit : candidates) {
@@ -274,12 +455,26 @@ public final class CHeroArmy {
 			}
 		}
 		if (blocker == null) {
-			// Blocked by a unit in a fight, or by one that is not hers: not this rule's to move.
+			// Blocked by a unit in a fight, by one that is not hers, or by the hero herself: not this rule's to move.
+			float closest = Float.MAX_VALUE;
+			int who = -1;
+			for (final CUnit unit : candidates) {
+				final float apart = (float) StrictMath.hypot(unit.getX() - stepX, unit.getY() - stepY);
+				if (apart < closest) {
+					closest = apart;
+					who = unit.getHandleId();
+				}
+			}
+			log(String.format(Locale.US, "  blocked-nobody walker=u%d nearest u%d at %.0f", mover.getHandleId(), who,
+					closest));
 			return null;
 		}
 		final float[] free = freeSpot(blocker,
-				asideFrom(blocker.getX(), blocker.getY(), mover.getX(), mover.getY(), wayX, wayY), simulation);
+				asideFrom(blocker.getX(), blocker.getY(), mover.getX(), mover.getY(), wayX, wayY, STEP_ASIDE),
+				simulation);
 		if (free == null) {
+			log(String.format(Locale.US, "  aside FAILED blocker=u%d %s no free cell", blocker.getHandleId(),
+					at(blocker)));
 			return null;
 		}
 		final CAbility move = moveAbility(simulation, blocker, playerIndex, new AbilityPointTarget(free[0], free[1]));
@@ -287,6 +482,8 @@ public final class CHeroArmy {
 			return null;
 		}
 		listener.issuePointOrder(blocker.getHandleId(), move.getHandleId(), OrderIds.move, free[0], free[1], false);
+		log(String.format(Locale.US, "  aside u%-4d %s -> (%6.0f,%6.0f) for u%d", blocker.getHandleId(), at(blocker),
+				free[0], free[1], mover.getHandleId()));
 		return blocker;
 	}
 
@@ -296,12 +493,15 @@ public final class CHeroArmy {
 	 * finds nothing, so its answer is asked again whether it is really free.
 	 */
 	private static float[] freeSpot(final CUnit unit, final float[] points, final CSimulation simulation) {
+		final PathingGrid pathingGrid = simulation.getPathingGrid();
+		if ((pathingGrid == null) || (unit.getUnitType() == null)) {
+			return null;
+		}
 		final MovementType movementType = unit.getMovementType();
 		if (movementType == null) {
 			return null;
 		}
 		final CWorldCollision collision = simulation.getWorldCollision();
-		final PathingGrid pathingGrid = simulation.getPathingGrid();
 		final float collisionSize = unit.getUnitType().getCollisionSize();
 		for (int i = 0; i < points.length; i += 2) {
 			if (CUnitPlacement.fitsAt(unit, points[i], points[i + 1], collision, pathingGrid, collisionSize,
@@ -324,21 +524,28 @@ public final class CHeroArmy {
 	 * in one call so the caller can take the other side when the first has no room.
 	 */
 	static float[] asideFrom(final float unitX, final float unitY, final float walkerX, final float walkerY,
-			final float wayX, final float wayY) {
+			final float wayX, final float wayY, final float distance) {
 		final float leftX = -wayY;
 		final float leftY = wayX;
 		final float lean = ((unitX - walkerX) * leftX) + ((unitY - walkerY) * leftY);
 		final float first = lean < 0f ? -1f : 1f;
-		return new float[] { unitX + (leftX * STEP_ASIDE * first), unitY + (leftY * STEP_ASIDE * first),
-				unitX - (leftX * STEP_ASIDE * first), unitY - (leftY * STEP_ASIDE * first) };
+		return new float[] { unitX + (leftX * distance * first), unitY + (leftY * distance * first),
+				unitX - (leftX * distance * first), unitY - (leftY * distance * first) };
 	}
 
 	/** Every movable unit the player owns except the hero. {@link CGroupMove#canTakeSlot} leaves out buildings. */
 	private static List<CUnit> following(final CSimulation simulation, final int playerIndex, final CUnit hero) {
 		final List<CUnit> army = new ArrayList<>();
 		for (final CUnit unit : simulation.getUnitsIncludingNew()) {
-			if (isArmy(unit, hero, playerIndex) && takesTheOrder(unit, hero, simulation)) {
+			if (!isArmy(unit, hero, playerIndex)) {
+				continue;
+			}
+			if (takesTheOrder(unit, hero, simulation)) {
 				army.add(unit);
+			}
+			else {
+				log(String.format(Locale.US, "  out u%-4d %s fight=%s far=%s", unit.getHandleId(), at(unit),
+						fights(unit, simulation), isBeyondReach(unit, hero)));
 			}
 		}
 		return army;
