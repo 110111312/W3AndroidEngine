@@ -121,13 +121,22 @@ Units that carry useful abilities (a healer, a caster) use them in support of th
 ## The macro layer
 
 The player still builds and trains, because an army that also builds itself is a different game. What changes is the
-form: a few decisions, taken at a good moment, with an obvious consequence.
+form: the base runs on **plans** that engine code executes, and the panel edits the plans — a few decisions, taken
+at a good moment, with an obvious consequence.
 
-- **train**: a short list of what this player can make, one tap each, queued at the building that makes it;
-- **build**: the same for structures, with placement either chosen on the map or left to a sensible default;
+- **the building plan** (with research and upgrades): one ordered list of what the base does next. Items start
+  head-first when affordable and their requirements are met; construction and research run in parallel, each lane
+  keeping list order; the builder returns to harvesting between jobs; placement is automatic near the base. A supply
+  status line above the list keeps the food cap ahead of the army — never a list item, pausable. A stuck head waits
+  visibly, and nothing below it starts in its lane. An empty list keeps the base sane.
+- **the unit plan**: what gets trained, up to how much food — its shape is settled next.
 - **see the army**: how many units, what they are, whether they are alive — without selecting anything.
 
-Whether this is a panel, a radial menu or a row of icons is open.
+Defaults are derived from the live base, so they differ per mission by themselves: a campaign mission that starts
+with a barracks does not get a second one, a mission with no workers gets an inert plan, and a techtree the rules
+cannot read degrades to doing nothing. No per-campaign tables unless a real mission proves one necessary.
+
+Whether the panel is a panel, a radial menu or a row of icons is open.
 
 ## Where it lands in the code
 
@@ -146,7 +155,9 @@ The point of this section is that none of it needs a rewrite: the engine already
 | units following the hero | `CHeroArmy.java` (the rule: who walks, who keeps fighting, the 1000), called from `HeroMode.issueMoveOrder` and `HeroMode.updateArmy`; `CGroupMove.java:120-246` (`slots`), `:44-113` (`linkMoving`, `limitSpeed`), `MeleeUIInput.java:945-1013` (the console's own caller) | **hero-mode follow is the console's formation group move, not `CBehaviorFollow`.** That behavior exists (`:41-44`, issued from `CAbilityMove.java:203`) but its `update` plays STAND and never looks for targets — an army on it would walk with you and never fight. `CGroupMove.slots` instead gives each follower a rank-sorted slot around the hero's destination, and the wire format already carries per-unit arrays |
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
-| computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | untouched: the *enemy* keeps playing RTS |
+| the plan executor | `AIProduction.java:142-213` (producer scan, train, `requirementsMet`/`canAfford` at `:106-128`), `AIConstruction.java:35-65` (free worker), `:246-285` (site search), `:175-180` (obstruction test), `AIHarvest.java:74-120` (idle-worker sweep), `CSimulation.getDefaultPlayerUnitOrderExecutor` (`:1765-1767`) | **the computer AI is the template, not only the enemy's** — its primitives are engine Java, package-private and JASS-driven today; hero mode's executor copies the shapes and issues through the replay-safe per-player executor |
+| income (rally-harvest) | `CUnitUpdate.java:332-348` → `CAbilityHarvest.java:225-270` | **already works**: a worker trained with a rally point on a mine or a tree starts gathering on its own |
+| computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | the *enemy* keeps playing RTS; its economy is also the template for the player's plan executor (see above) |
 
 Two consequences worth stating before any code:
 
@@ -286,8 +297,23 @@ Settled, and no longer up for renegotiation without a good reason:
 24. **The circle is cut from a private copy of the icon.** The game hands the same texture to the card, the tooltips,
     the item icons and the portrait, so an alpha mask written into it would round the corners everywhere it is used;
     the tray keeps its own masked copy per icon.
-25. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a press
-    on a skill does not have to lift the stick first; a second finger that is not on the tray stays a camera pan.
+25. **A finger on the tray aims while the other thumb walks.** The gesture layer learns a second pointer, so a
+    press on a skill does not have to lift the stick first; a second finger that is not on the tray stays a camera pan.
+26. **The macro layer is plans, not buttons.** The base runs on a building plan and a unit plan that engine code
+    executes; the panel edits the plans. Each plan is its own issue, and each starts with a default the player can
+    change in game.
+27. **The building plan is one ordered list of buildings and researches.** Items start head-first when affordable
+    and their requirements are met; construction and research run in parallel, each lane keeping list order; one
+    construction job at a time, and the builder returns to harvesting between jobs; placement is automatic near
+    the base. A stuck head waits visibly — the panel says why — and nothing below it starts in its lane.
+28. **Supply is a status line, not a list item.** The food building is picked from the player's own build list by
+    its food stat, built ahead of the army's next train, at most one at a time, never past the map's food ceiling,
+    shown above the list with a pause toggle, and never inserted into the list. Dead farms are rebuilt by the same
+    rule. Supply is the only thing allowed to jump the queue.
+29. **Defaults are derived from the live base, not hardcoded.** The same rules serve custom game and campaign: a
+    mission that starts with buildings is respected by rules that read them, a mission with no workers gets an
+    inert plan, and an unreadable techtree degrades to doing nothing. A per-campaign default profile is a follow-up
+    only if a specific mission proves it necessary.
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
@@ -321,13 +347,15 @@ edge. Anything hero mode puts in a corner is offset by `(minWorldWidth - worldWi
 1. **The engagement rules** (issue D): what a unit will engage, when it retreats by judgment rather than by the
    hero's distance, how it regroups to the hero — or to the altar, when the hero is unspawned — while the hero
    stands still.
-2. **Where the macro panel lives** (issue E) and whether building placement is chosen by hand at all.
+2. **The unit plan** (issue E2): its shape — an ordered loop or a standing food target — and its default. The
+   building plan is settled (E1); the panel's on-screen home is decided with E2.
 3. **Campaign exceptions**: missions that switch heroes, missions with no hero, missions built around controlling
    several units at once.
 
 ## The five issues
 
-Each is one branch and one PR. A and B are the interface, C and D are the simulation, E is the economy.
+Each is one branch and one PR. A and B are the interface, C and D are the simulation, E is the economy — in two
+issues, one per plan.
 
 | | issue | covers |
 |---|---|---|
@@ -335,7 +363,8 @@ Each is one branch and one PR. A and B are the interface, C and D are the simula
 | B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
 | C | the army follows | hero moves → the army moves in formation (`CGroupMove` slots, army speed-linked, hero never slowed); a fighting unit ignores hero movement until the hero is **1000** away, then it is a retreat |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
-| E | macro panel | train and build from the lists the command card already reads |
+| E1 | building plan | one ordered list of buildings and researches the base executes by itself; supply as a status line; defaults derived from the live base |
+| E2 | unit plan | what gets trained and up to how much food; shape to be settled |
 
 ## The stick's art
 
