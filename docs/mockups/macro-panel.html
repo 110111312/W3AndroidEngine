@@ -134,7 +134,7 @@
       <li>icon size (46px) and grid density — we have much to show</li>
       <li>ticket anatomy: <b>number top-left, − top-right</b>, status under the name</li>
       <li>available icons carry your owned count (<b>×N</b> badge)</li>
-      <li>the army sheet groups its icons by the building that trains</li>
+      <li>the army sheet is one flat grid — grouping was tried and dropped</li>
       <li>sheet width: it eats about half the screen</li>
       <li>the supply line with its pause, only on the build sheet</li>
     </ul>
@@ -155,12 +155,12 @@ const build = { name:'BUILD PLAN', avail:[
   {n:'Tauren Totem',  c:'#3f6b3f', e:'🗿', own:0},
   {n:'Voodoo Lounge', c:'#4a3b5a', e:'🍵', own:0},
 ], tickets:[] };
-const army = { name:'ARMY PLAN', groups:[
-  {g:'GREAT HALL',   items:[{n:'Peon',         c:'#8a6d3b', e:'⛏', own:5}]},
-  {g:'BARRACKS',     items:[{n:'Grunt',        c:'#7a3b2e', e:'🪓', own:3},
-                            {n:'Headhunter',   c:'#3f6b3f', e:'🏹', own:2}]},
-  {g:'TAUREN TOTEM', items:[{n:'Shaman',       c:'#3b517a', e:'🔮', own:0, locked:true, why:'needs Stronghold'},
-                            {n:'Witch Doctor', c:'#4a3b5a', e:'🧪', own:0}]},
+const army = { name:'ARMY PLAN', avail:[
+  {n:'Peon',         c:'#8a6d3b', e:'⛏', own:5},
+  {n:'Grunt',        c:'#7a3b2e', e:'🪓', own:3},
+  {n:'Headhunter',   c:'#3f6b3f', e:'🏹', own:2},
+  {n:'Shaman',       c:'#3b517a', e:'🔮', own:0, locked:true, why:'needs Stronghold'},
+  {n:'Witch Doctor', c:'#4a3b5a', e:'🧪', own:0},
 ], tickets:[] };
 
 build.tickets = [
@@ -174,7 +174,7 @@ army.tickets = [
   {id:nextId++, n:'Shaman', c:'#3b517a', e:'🔮', p:1, locked:true, sub:'needs Stronghold'},
 ];
 
-function availItems(data){ return data===build ? data.avail : data.groups.flatMap(g=>g.items); }
+function availItems(data){ return data.avail; }
 function findTicket(id){ return [...build.tickets, ...army.tickets].find(t=>t.id===id); }
 
 function openSheet(kind){
@@ -233,12 +233,7 @@ function render(){
              <button class="pausebtn" onclick="togglePause()">${paused?'paused':'pause'}</button></div>`;
   }
   html += `<div class="sect">AVAILABLE — WHAT YOU HAVE</div>`;
-  if(isBuild){
-    html += `<div class="grid">` + cur.avail.map(availCell).join('') + `</div>`;
-  } else {
-    html += cur.groups.map(g=>`<div class="grouphead">${g.g}</div>
-        <div class="grid">` + g.items.map(availCell).join('') + `</div>`).join('');
-  }
+  html += `<div class="grid">` + cur.avail.map(availCell).join('') + `</div>`;
   html += `<div class="sect">ORDER — WHAT YOU'RE ABOUT TO HAVE</div>`;
   const ts=[...cur.tickets].sort((a,b)=>a.p-b.p);
   html += `<div class="grid">` + (ts.length ? ts.map(ticketCell).join('')
