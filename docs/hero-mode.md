@@ -124,22 +124,22 @@ The player still builds and trains, because an army that also builds itself is a
 form: the base runs on **plans** that engine code executes, and the panel edits the plans — a few decisions, taken
 at a good moment, with an obvious consequence.
 
-- **the building plan** (with research and upgrades): one ordered list of what the base does next. Items start
-  head-first when affordable and their requirements are met; construction and research run in parallel, each lane
-  keeping list order; the builder returns to harvesting between jobs; placement is automatic near the base. A supply
-  status line above the list keeps the food cap ahead of the army — never a list item, pausable. A stuck head waits
-  visibly, and nothing below it starts in its lane. An empty list keeps the base sane.
-- **the unit plan**: **per-type counts** — how many of each type the army keeps. The executor counts alive
-  units (plus in production) per type and trains the shortfall in row order; a row that cannot train yet is skipped,
-  never blocking; the plan trains and never culls, so a tier shift is a lowered row and battles. The default plan is
-  the army the mission started with, workers included.
-- **see the army**: how many units, what they are, whether they are alive — without selecting anything.
+- **the building plan** (with research and upgrades): a numbered list of what the base does next. A number runs
+  when affordable — same-number tickets compete, whatever has the gold first — and is done before the next starts,
+  except requirement-stuck tickets, which never block anyone. One construction job at a time, the builder returns to
+  harvesting between jobs, placement is automatic near the base. A supply line above the list keeps the food cap
+  ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
+- **the unit plan**: the same animal as the building plan — numbered tickets, one numbering shared across both
+  lists. A finished ticket disappears and the unit joins the owned counts; there are no standing rows and no
+  self-refill, so after a fight the player re-adds by hand (two taps, because the available grid shows owned
+  counts). Workers are tickets too.
+- **see the army**: how many units, what they are, whether they are alive — the available grid's owned counts are it.
 
 Defaults are derived from the live base, so they differ per mission by themselves: a campaign mission that starts
 with a barracks does not get a second one, a mission with no workers gets an inert plan, and a techtree the rules
 cannot read degrades to doing nothing. No per-campaign tables unless a real mission proves one necessary.
 
-Whether the panel is a panel, a radial menu or a row of icons is open.
+The panel is settled: `docs/mockups/macro-panel.html`.
 
 ## Where it lands in the code
 
@@ -305,25 +305,28 @@ Settled, and no longer up for renegotiation without a good reason:
 26. **The macro layer is plans, not buttons.** The base runs on a building plan and a unit plan that engine code
     executes; the panel edits the plans. Each plan is its own issue, and each starts with a default the player can
     change in game.
-27. **The building plan is one ordered list of buildings and researches.** Items start head-first when affordable
-    and their requirements are met; construction and research run in parallel, each lane keeping list order; one
-    construction job at a time, and the builder returns to harvesting between jobs; placement is automatic near
-    the base. A stuck head waits visibly — the panel says why — and nothing below it starts in its lane.
-28. **Supply is a status line, not a list item.** The food building is picked from the player's own build list by
+27. **Both plans are numbered tickets, one numbering shared across the two lists.** A number runs when
+    affordable; same-number tickets compete, whatever has the gold first, one purchase per pass; a number is done
+    before the next starts — except requirement-stuck tickets, which are greyed, say why, and block nothing. One
+    construction job at a time, the builder returns to harvesting between jobs, placement is automatic near the
+    base. Done tickets disappear and the numbers behind slide down; new tickets enter at the end, tap = sooner,
+    long-press = later, − removes.
+28. **Supply is a status line, not a ticket.** The food building is picked from the player's own build list by
     its food stat, built ahead of the army's next train, at most one at a time, never past the map's food ceiling,
-    shown above the list with a pause toggle, and never inserted into the list. Dead farms are rebuilt by the same
-    rule. Supply is the only thing allowed to jump the queue.
+    shown above the list with a pause toggle, and never inserted into the order. Dead farms are rebuilt by the
+    same rule. Supply outranks every number.
 29. **Defaults are derived from the live base, not hardcoded.** The same rules serve custom game and campaign: a
     mission that starts with buildings is respected by rules that read them, a mission with no workers gets an
     inert plan, and an unreadable techtree degrades to doing nothing. A per-campaign default profile is a follow-up
     only if a specific mission proves it necessary.
-30. **The unit plan is per-type counts, standing.** A row says how many of a type the army keeps; the executor
-    counts alive units (plus ones in production) and trains the shortfall in row order, skipping rows whose tech is
-    not met — standing goals, so no row may starve another (E1's queues block; E2's rows do not). The plan trains and
-    never culls: lowering or clearing a row lets battles do the replacing, which is how a tier shift is done.
-31. **The default unit plan is the army the mission started with** — per-type counts of the starting units, workers
-    kept at their starting count. A start with no army gets an empty plan that trains nothing until the player adds
-    rows. The hero is not a row.
+30. **The unit plan is the same animal as the building plan.** Numbered tickets, done = gone — the unit joins the
+    owned counts, workers included — and no standing rows, no self-refill: after a fight the player re-adds by hand,
+    which the owned counts in the available grid make two taps. The hero is not a ticket.
+31. **The spending order, one sentence:** supply first, then the lowest number across both lists, whatever has the
+    gold first — unaffordable tickets wait visibly, requirement-stuck ones never block.
+32. **The macro panel is two buttons above the skill arc**, each opening a sheet into the right-middle band that
+    never covers the stick, the skills, or the hero: available icons above (owned counts, no grouping on the army
+    sheet), the numbered order below. `docs/mockups/macro-panel.html` is the settled design.
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
@@ -357,14 +360,15 @@ edge. Anything hero mode puts in a corner is offset by `(minWorldWidth - worldWi
 1. **The engagement rules** (issue D): what a unit will engage, when it retreats by judgment rather than by the
    hero's distance, how it regroups to the hero — or to the altar, when the hero is unspawned — while the hero
    stands still.
-2. **Where the macro panel lives on screen** — one home for both plans, decided when the panel is built.
-3. **Campaign exceptions**: missions that switch heroes, missions with no hero, missions built around controlling
+2. **Campaign exceptions**: missions that switch heroes, missions with no hero, missions built around controlling
    several units at once.
+3. **The tuning pass** (the player's, once the core loop is closed): the 1000 retreat distance, cast-hold times,
+   plan pacing.
 
 ## The five issues
 
-Each is one branch and one PR. A and B are the interface, C and D are the simulation, E is the economy — in two
-issues, one per plan.
+Each is one branch and one PR. A and B are the interface, C and D are the simulation, E is the economy — in three
+issues: two plans and the panel that edits them.
 
 | | issue | covers |
 |---|---|---|
@@ -372,8 +376,9 @@ issues, one per plan.
 | B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
 | C | the army follows | hero moves → the army moves in formation (`CGroupMove` slots, army speed-linked, hero never slowed); a fighting unit ignores hero movement until the hero is **1000** away, then it is a retreat |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
-| E1 | building plan | one ordered list of buildings and researches the base executes by itself; supply as a status line; defaults derived from the live base |
-| E2 | unit plan | per-type counts that self-heal after a fight; the default is the mission's starting army; the plan never culls |
+| E1 | building plan | numbered tickets for buildings and researches, executed by engine code; supply outranks every number; defaults derived from the live base |
+| E2 | unit plan | the same tickets as buildings — one shared numbering; done = gone, re-added by hand after a fight |
+| E3 | macro panel | two buttons above the skill arc; available icons above, the numbered order below; the sketch in `docs/mockups/` |
 
 ## The stick's art
 
