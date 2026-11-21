@@ -14,6 +14,8 @@ final class HeroItemSlots {
 	static final int MAX_BUTTONS = 4;
 	/** The first two buttons sit in the inner arc, beside the attack button. */
 	static final int INNER_ARC_BUTTONS = 2;
+	/** Positions along the bottom edge, where the rest of the items and then the hero's extra skills go. */
+	static final int ROW_SLOTS = 3;
 
 	private HeroItemSlots() {
 	}
@@ -31,5 +33,19 @@ final class HeroItemSlots {
 			}
 		}
 		return (button == slots.length) ? slots : Arrays.copyOf(slots, button);
+	}
+
+	/** How many of the item buttons sit in the row rather than beside the attack button. */
+	static int rowItemCount(final int itemButtonCount) {
+		return Math.max(0, Math.min(MAX_BUTTONS, itemButtonCount) - INNER_ARC_BUTTONS);
+	}
+
+	/**
+	 * How many positions the row has left for the hero's extra skills once the items have theirs. The extra skills are
+	 * appended after the items, so a hero carrying four usable items has one position left and a hero carrying none
+	 * has the whole row. The four arc slots never move: the extra skills are what the arc has no room for.
+	 */
+	static int freeRowSlots(final int itemButtonCount) {
+		return Math.max(0, ROW_SLOTS - rowItemCount(itemButtonCount));
 	}
 }

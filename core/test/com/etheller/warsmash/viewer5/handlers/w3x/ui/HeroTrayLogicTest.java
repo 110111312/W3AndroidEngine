@@ -117,6 +117,61 @@ class HeroTrayLogicTest {
 		assertFalse(HeroSkillSlots.showsLearnBadge(0, 3, 1, 2, 3));
 	}
 
+	/**
+	 * A skill at level zero has not been bought: it cannot be cast, whatever its cooldown and mana say, so the tray
+	 * greys it. The first learned level is not greyed.
+	 */
+	@Test
+	void aSkillIsGreyedUntilItIsLearned() {
+		assertTrue(HeroSkillSlots.isUnlearned(0));
+		assertFalse(HeroSkillSlots.isUnlearned(1));
+		assertFalse(HeroSkillSlots.isUnlearned(3));
+	}
+
+	/**
+	 * The engine reports the mana only after the cooldown, so a cast that empties the pool and starts a cooldown would
+	 * show nothing until the sweep ends. The tray makes this comparison itself, on every frame.
+	 */
+	@Test
+	void theManaCheckIsATrueComparisonOfWhatIsInThePool() {
+		assertTrue(HeroSkillSlots.cannotAfford(30f, 60));
+		assertFalse(HeroSkillSlots.cannotAfford(60f, 60));
+		assertFalse(HeroSkillSlots.cannotAfford(120f, 60));
+		assertTrue(HeroSkillSlots.cannotAfford(0f, 100));
+		// A cast that costs nothing never asks the pool for anything, empty or not.
+		assertFalse(HeroSkillSlots.cannotAfford(0f, 0));
+	}
+
+	// ------------------------------------------------------------------ the extra skills
+
+	/**
+	 * The extra skills are appended after the items of the row: an item is a tap the player makes all the time, an
+	 * extra skill is the one the arc had no room for. So the row fills with items first and the rest is left over.
+	 */
+	@Test
+	void theRowFillsWithItemsBeforeItTakesTheExtraSkills() {
+		// No items: both inner-arc buttons are empty and the whole row is free.
+		assertEquals(0, HeroItemSlots.rowItemCount(0));
+		assertEquals(HeroItemSlots.ROW_SLOTS, HeroItemSlots.freeRowSlots(0));
+		// The first two usable items go beside the attack button, so they take no row position.
+		assertEquals(0, HeroItemSlots.rowItemCount(2));
+		assertEquals(HeroItemSlots.ROW_SLOTS, HeroItemSlots.freeRowSlots(2));
+		// The third and fourth items do, and each of them costs the row a position.
+		assertEquals(1, HeroItemSlots.rowItemCount(3));
+		assertEquals(2, HeroItemSlots.freeRowSlots(3));
+		assertEquals(2, HeroItemSlots.rowItemCount(4));
+		assertEquals(1, HeroItemSlots.freeRowSlots(4));
+	}
+
+	@Test
+	void theRowNeverClaimsMorePositionsThanItHas() {
+		assertEquals(HeroItemSlots.ROW_SLOTS, HeroItemSlots.freeRowSlots(-1));
+		// Nine usable items are still four buttons, so the row is left with the one position the fourth item spares.
+		assertEquals(1, HeroItemSlots.freeRowSlots(9));
+		assertEquals(0, HeroItemSlots.rowItemCount(0));
+		assertEquals(2, HeroItemSlots.rowItemCount(4));
+	}
+
 	@Test
 	void aCooldownFillsTheButtonAndGivesItBack() {
 		assertEquals(1f, HeroSkillSlots.cooldownFraction(6f, 6f));

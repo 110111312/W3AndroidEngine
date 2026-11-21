@@ -138,6 +138,7 @@ final class HeroMode implements HeroTouchHost {
 	/** A press that landed on the attack button or an item, remembered so the lift can act on it. */
 	private boolean pressedAttack;
 	private int pressedItem = -1;
+	private int pressedExtra = -1;
 
 	HeroMode(final MeleeUI ui, final TouchSettings settings) {
 		this.ui = ui;
@@ -655,10 +656,12 @@ final class HeroMode implements HeroTouchHost {
 			this.pressY = screenY;
 			this.pressedAttack = this.tray.attackAt(point.x, point.y);
 			this.pressedItem = this.tray.itemAt(point.x, point.y);
-			return this.pressedAttack || (this.pressedItem >= 0);
+			this.pressedExtra = this.tray.extraAt(point.x, point.y);
+			return this.pressedAttack || (this.pressedItem >= 0) || (this.pressedExtra >= 0);
 		}
 		this.pressedAttack = false;
 		this.pressedItem = -1;
+		this.pressedExtra = -1;
 		this.aimingSlot = slot;
 		this.armedSlot = -1;
 		this.pressX = screenX;
@@ -705,18 +708,21 @@ final class HeroMode implements HeroTouchHost {
 		this.armedSlot = -1;
 		this.pressedAttack = false;
 		this.pressedItem = -1;
+		this.pressedExtra = -1;
 	}
 
 	/**
-	 * The lift of a press that landed on the attack button or an item. They act on the lift rather than on the press,
-	 * the same as a skill, so that a drag beginning on one of them is still a drag and not a command.
+	 * The lift of a press that landed on the attack button, an item or an extra skill. They act on the lift rather than
+	 * on the press, the same as a skill, so that a drag beginning on one of them is still a drag and not a command.
 	 */
 	private void releasePressedButton(final float screenX, final float screenY) {
 		final boolean attack = this.pressedAttack;
 		final int item = this.pressedItem;
+		final int extra = this.pressedExtra;
 		this.pressedAttack = false;
 		this.pressedItem = -1;
-		if (!attack && (item < 0)) {
+		this.pressedExtra = -1;
+		if (!attack && (item < 0) && (extra < 0)) {
 			return;
 		}
 		if (Math.hypot(screenX - this.pressX, screenY - this.pressY) > this.settings.tapSlopPx) {
@@ -725,8 +731,12 @@ final class HeroMode implements HeroTouchHost {
 		}
 		if (attack) {
 			attackNearestTarget();
-		} else {
+		}
+		else if (item >= 0) {
 			useItem(item);
+		}
+		else {
+			castExtra(extra);
 		}
 	}
 
@@ -752,16 +762,22 @@ final class HeroMode implements HeroTouchHost {
 			useItem(item);
 			return true;
 		}
+		final int extra = this.tray.extraAt(point.x, point.y);
+		if (extra >= 0) {
+			castExtra(extra);
+			return true;
+		}
 		if (this.tray.attackAt(point.x, point.y)) {
 			attackNearestTarget();
 			return true;
 		}
 		if (this.armedSlot >= 0) {
 			final int armed = this.armedSlot;
-			final CWidget target = pickTargetFor(armed, screenX, screenY);
+			final CAbility armedAbility = abilityOfSelection(armed);
+			final CWidget target = pickTargetFor(armedAbility, screenX, screenY);
 			if (target != null) {
 				this.armedSlot = -1;
-				castAtWidget(armed, target);
+				castAtWidget(armedAbility, target);
 			}
 			// A tap on nobody keeps the skill chosen: the player is probably still finding their target.
 			return true;
@@ -782,12 +798,12 @@ final class HeroMode implements HeroTouchHost {
 			learnSkill(slot);
 			return;
 		}
-		final HeroCastType type = castTypeOf(slot);
+		final HeroCastType type = castTypeOf(state.ability);
 		Log.info("Hero mode: skill " + slot + " tapped, level " + state.level + ", type " + type);
 		switch (type) {
 		case NO_TARGET:
 			this.armedSlot = -1;
-			castNoTarget(slot);
+			castNoTarget(state.ability);
 			break;
 		case SINGLE_TARGET:
 			this.armedSlot = (this.armedSlot == slot) ? -1 : slot;
@@ -796,6 +812,54 @@ final class HeroMode implements HeroTouchHost {
 			// A direction or a ground skill is aimed by dragging; a tap has no direction to give it.
 			break;
 		}
+	}
+
+	/**
+	 * A tap on an extra skill of the row — the abilities the four arc slots have no room for. It casts or arms exactly
+	 * like an arc slot; only the drag-aimed kinds have no channel here, because the row has no aim of its own, and a
+	 * tap on one of those says so in the log rather than pretending to have done something.
+	 */
+	private void castExtra(final int extra) {
+		if ((extra < 0) || (extra >= this.tray.extraButtonCount)) {
+			return;
+		}
+		final CAbility ability = this.tray.extras[extra].ability;
+		if (ability == null) {
+			return;
+		}
+		final int orderId = HeroTray.orderIdOf(ability);
+		if (!canUseNow(ability, orderId)) {
+			return;
+		}
+		switch (castTypeOf(ability)) {
+		case NO_TARGET:
+			this.armedSlot = -1;
+			castNoTarget(ability);
+			break;
+		case SINGLE_TARGET: {
+			final int selection = HeroTray.SKILL_SLOTS + extra;
+			this.armedSlot = (this.armedSlot == selection) ? -1 : selection;
+			break;
+		}
+		default:
+			Log.info("Hero mode: extra skill " + ability.getAlias() + " would need an aim the row cannot give");
+			break;
+		}
+	}
+
+	/**
+	 * The ability behind something the tray has chosen: an arc slot by its index, or an extra skill of the row by
+	 * {@link HeroTray#SKILL_SLOTS} plus its index. One number, so that arming a target reads the same for both.
+	 */
+	private CAbility abilityOfSelection(final int selection) {
+		if (selection < 0) {
+			return null;
+		}
+		if (selection < HeroTray.SKILL_SLOTS) {
+			return this.tray.skills[selection].ability;
+		}
+		final int extra = selection - HeroTray.SKILL_SLOTS;
+		return (extra < this.tray.extraButtonCount) ? this.tray.extras[extra].ability : null;
 	}
 
 	/** The finger let go of a skill it was aiming: cast it the way its type is cast, or leave it chosen. */
@@ -808,14 +872,14 @@ final class HeroMode implements HeroTouchHost {
 			learnSkill(slot);
 			return;
 		}
-		switch (castTypeOf(slot)) {
+		switch (castTypeOf(state.ability)) {
 		case NO_TARGET:
-			castNoTarget(slot);
+			castNoTarget(state.ability);
 			break;
 		case SINGLE_TARGET: {
-			final CWidget target = pickTargetFor(slot, screenX, screenY);
+			final CWidget target = pickTargetFor(state.ability, screenX, screenY);
 			if (target != null) {
-				castAtWidget(slot, target);
+				castAtWidget(state.ability, target);
 			}
 			else {
 				// Released on nobody: the skill stays chosen, so that a second tap on a target casts it.
@@ -825,7 +889,7 @@ final class HeroMode implements HeroTouchHost {
 		}
 		case DIRECTION:
 		case GROUND:
-			castAtPoint(slot, this.aimLocation.x, this.aimLocation.y);
+			castAtPoint(state.ability, this.aimLocation.x, this.aimLocation.y);
 			break;
 		}
 	}
@@ -854,8 +918,7 @@ final class HeroMode implements HeroTouchHost {
 	}
 
 	/** How a slot is cast: the table's answer, or what the spell accepts when the table does not know it. */
-	private HeroCastType castTypeOf(final int slot) {
-		final CAbility ability = this.tray.skills[slot].ability;
+	private HeroCastType castTypeOf(final CAbility ability) {
 		if (ability == null) {
 			return HeroCastType.NO_TARGET;
 		}
@@ -903,8 +966,7 @@ final class HeroMode implements HeroTouchHost {
 				skill.getValue(), false);
 	}
 
-	private void castNoTarget(final int slot) {
-		final CAbility ability = this.tray.skills[slot].ability;
+	private void castNoTarget(final CAbility ability) {
 		if (ability == null) {
 			return;
 		}
@@ -917,6 +979,13 @@ final class HeroMode implements HeroTouchHost {
 		ability.checkCanTargetNoTarget(this.ui.war3MapViewer.simulation, this.hero,
 				this.ui.war3MapViewer.getLocalPlayerIndex(), orderId, false, target);
 		if (!target.isTargetable()) {
+			// Say why, the way #7 decided: the ability's own refusal, when it has a string for one. Shadow Meld by
+			// day refuses with an empty reason, and its button is drawn disabled for exactly that case.
+			final ExternStringMsgTargetCheckReceiver<Void> reason = ExternStringMsgTargetCheckReceiver
+					.<Void>getInstance().reset();
+			ability.checkCanTargetNoTarget(this.ui.war3MapViewer.simulation, this.hero,
+					this.ui.war3MapViewer.getLocalPlayerIndex(), orderId, false, reason);
+			reportError(reason.getExternStringKey());
 			return;
 		}
 		Log.info("Hero mode: casting " + ability.getAlias() + " on the spot");
@@ -924,8 +993,7 @@ final class HeroMode implements HeroTouchHost {
 		this.ui.unitOrderListener.issueImmediateOrder(this.hero.getHandleId(), ability.getHandleId(), orderId, false);
 	}
 
-	private void castAtPoint(final int slot, final float x, final float y) {
-		final CAbility ability = this.tray.skills[slot].ability;
+	private void castAtPoint(final CAbility ability, final float x, final float y) {
 		if (ability == null) {
 			return;
 		}
@@ -949,8 +1017,7 @@ final class HeroMode implements HeroTouchHost {
 				target.y, false);
 	}
 
-	private void castAtWidget(final int slot, final CWidget target) {
-		final CAbility ability = this.tray.skills[slot].ability;
+	private void castAtWidget(final CAbility ability, final CWidget target) {
 		if (ability == null) {
 			return;
 		}
@@ -987,8 +1054,7 @@ final class HeroMode implements HeroTouchHost {
 	 * The unit under the finger that a slot may be cast on. The filter asks the spell itself, so a heal takes an ally
 	 * and a strike takes an enemy without the tray knowing which is which.
 	 */
-	private CWidget pickTargetFor(final int slot, final float screenX, final float screenY) {
-		final CAbility ability = this.tray.skills[slot].ability;
+	private CWidget pickTargetFor(final CAbility ability, final float screenX, final float screenY) {
 		if (ability == null) {
 			return null;
 		}
@@ -1227,7 +1293,7 @@ final class HeroMode implements HeroTouchHost {
 		if (ability == null) {
 			return;
 		}
-		final HeroCastType type = castTypeOf(slot);
+		final HeroCastType type = castTypeOf(ability);
 		if (type == HeroCastType.NO_TARGET) {
 			return;
 		}
