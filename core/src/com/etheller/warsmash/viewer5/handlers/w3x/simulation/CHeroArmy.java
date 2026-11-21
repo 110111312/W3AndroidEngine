@@ -2,9 +2,7 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
-import com.badlogic.gdx.Gdx;
 
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
@@ -115,17 +113,6 @@ public final class CHeroArmy {
 	private CHeroArmy() {
 	}
 
-	/** Temporary: the phone run reads back what the order saw; removed once the formation settles. */
-	private static void log(final String message) {
-		if (Gdx.app != null) {
-			Gdx.app.log("HeroArmy", message);
-		}
-	}
-
-	private static String at(final CUnit unit) {
-		return String.format(Locale.US, "(%6.0f,%6.0f)", unit.getX(), unit.getY());
-	}
-
 	/**
 	 * The stick's order: every movable unit of the player's that is not in a fight — or is in one the hero has left
 	 * more than {@link #RETREAT_DISTANCE} behind — walks to a formation slot around the hero, with her at the front of
@@ -146,8 +133,6 @@ public final class CHeroArmy {
 		}
 		final float wayX = dirX / length;
 		final float wayY = dirY / length;
-		log(String.format(Locale.US, "follow tick=%d hero=%s way=(%5.2f,%5.2f) reach=%.0f", 
-				simulation.getGameTurnTick(), at(hero), wayX, wayY, reach(hero)));
 		final List<CUnit> roster = following(simulation, playerIndex, hero);
 		// Whoever stands on the step she is about to take moves aside and sits out this beat, so the formation order
 		// below does not call it straight back into the way it just left her.
@@ -160,7 +145,6 @@ public final class CHeroArmy {
 			// her from the block, and taking one means walking back across her — but whoever is standing in the ground
 			// she needs is told to get out of it. That is the make-way: it is the only thing ordered while she crosses,
 			// and it ends by itself when nothing is ahead of her, at which point the trailing formation runs again.
-			log("  crossing: make way, no slot orders");
 			clearLane(simulation, playerIndex, hero, roster, wayX, wayY, listener);
 			return;
 		}
@@ -174,8 +158,6 @@ public final class CHeroArmy {
 	 */
 	public static void formUp(final CSimulation simulation, final int playerIndex, final CUnit hero,
 			final CPlayerUnitOrderListener listener) {
-		log(String.format(Locale.US, "formUp tick=%d hero=%s facing=(%.2f,%.2f)", simulation.getGameTurnTick(),
-				at(hero), facingX(hero), facingY(hero)));
 		trail(simulation, playerIndex, hero, following(simulation, playerIndex, hero), facingX(hero), facingY(hero),
 				true, listener);
 	}
@@ -223,22 +205,13 @@ public final class CHeroArmy {
 		final List<Integer> kept = new ArrayList<>();
 		for (int i = 0; i < walkers.units.size(); i++) {
 			final CUnit unit = walkers.units.get(i);
-			final float along = ((unit.getX() - hero.getX()) * dirX) + ((unit.getY() - hero.getY()) * dirY);
-			final float side = ((unit.getX() - hero.getX()) * -dirY) + ((unit.getY() - hero.getY()) * dirX);
-			final float slotX = slots[i * 2];
-			final float slotY = slots[(i * 2) + 1];
-			final boolean hold = holdAhead && wouldCrossHer(hero, unit, slotX, slotY, dirX, dirY)
+			final boolean hold = holdAhead && wouldCrossHer(hero, unit, slots[i * 2], slots[(i * 2) + 1], dirX, dirY)
 					&& !isBeyondReach(unit, hero);
 			if (!hold) {
 				kept.add(i);
 			}
-			log(String.format(Locale.US, "  u%-4d %s along=%6.0f side=%6.0f slot=%s %s", unit.getHandleId(), at(unit),
-					along, side, String.format(Locale.US, "(%6.0f,%6.0f)", slotX, slotY),
-					hold ? "HOLD" : String.format(Locale.US, "order d=%.0f",
-							StrictMath.hypot(slotX - unit.getX(), slotY - unit.getY()))));
 		}
 		stepAsideForTheWalkers(simulation, playerIndex, walkers.units, kept, slots, listener);
-		log("  kept=" + kept.size() + " of " + walkers.units.size());
 		if (kept.isEmpty()) {
 			return;
 		}
@@ -298,8 +271,6 @@ public final class CHeroArmy {
 			}
 			if (spot == null) {
 				// Neither side, at any distance, has a cell that is really out of her way: trees, or a wall.
-				log(String.format(Locale.US, "  make-way FAILED u%-4d %s ahead=%5.0f side=%5.0f no cell clear of her",
-						unit.getHandleId(), at(unit), ahead, lateral));
 				continue;
 			}
 			final CAbility move = moveAbility(simulation, unit, playerIndex,
@@ -308,8 +279,6 @@ public final class CHeroArmy {
 				continue;
 			}
 			listener.issuePointOrder(unit.getHandleId(), move.getHandleId(), OrderIds.move, spot[0], spot[1], false);
-			log(String.format(Locale.US, "  make-way u%-4d %s ahead=%5.0f side=%5.0f -> (%6.0f,%6.0f)", 
-					unit.getHandleId(), at(unit), ahead, lateral, spot[0], spot[1]));
 			moved++;
 		}
 	}
@@ -448,7 +417,6 @@ public final class CHeroArmy {
 		if (!CUnitPlacement.blockedByUnit(mover, stepX, stepY, collision, pathingGrid, collisionSize, movementType)) {
 			return null;
 		}
-		log(String.format(Locale.US, "  blocked walker=u%d step=(%.0f,%.0f)", mover.getHandleId(), stepX, stepY));
 		CUnit blocker = null;
 		float nearest = Float.MAX_VALUE;
 		for (final CUnit unit : candidates) {
@@ -465,31 +433,12 @@ public final class CHeroArmy {
 		}
 		if (blocker == null) {
 			// Blocked by a unit in a fight, by one that is not hers, or by the hero herself: not this rule's to move.
-			float closest = Float.MAX_VALUE;
-			int who = -1;
-			for (final CUnit unit : candidates) {
-				if (unit == mover) {
-					continue;
-				}
-				final float apart = (float) StrictMath.hypot(unit.getX() - stepX, unit.getY() - stepY);
-				if (apart < closest) {
-					closest = apart;
-					who = unit.getHandleId();
-				}
-			}
-			if (who < 0) {
-				return null;
-			}
-			log(String.format(Locale.US, "  blocked-nobody walker=u%d nearest u%d at %.0f", mover.getHandleId(), who,
-					closest));
 			return null;
 		}
 		final float[] free = freeSpot(blocker,
 				asideFrom(blocker.getX(), blocker.getY(), mover.getX(), mover.getY(), wayX, wayY, STEP_ASIDE),
 				simulation);
 		if (free == null) {
-			log(String.format(Locale.US, "  aside FAILED blocker=u%d %s no free cell", blocker.getHandleId(),
-					at(blocker)));
 			return null;
 		}
 		final CAbility move = moveAbility(simulation, blocker, playerIndex, new AbilityPointTarget(free[0], free[1]));
@@ -497,8 +446,6 @@ public final class CHeroArmy {
 			return null;
 		}
 		listener.issuePointOrder(blocker.getHandleId(), move.getHandleId(), OrderIds.move, free[0], free[1], false);
-		log(String.format(Locale.US, "  aside u%-4d %s -> (%6.0f,%6.0f) for u%d", blocker.getHandleId(), at(blocker),
-				free[0], free[1], mover.getHandleId()));
 		return blocker;
 	}
 
@@ -558,10 +505,6 @@ public final class CHeroArmy {
 			if (takesTheOrder(unit, hero, simulation)) {
 				army.add(unit);
 			}
-			else {
-				log(String.format(Locale.US, "  out u%-4d %s fight=%s far=%s%s", unit.getHandleId(), at(unit),
-						fights(unit, simulation), isBeyondReach(unit, hero), fightWhy(unit, simulation)));
-			}
 		}
 		return army;
 	}
@@ -587,54 +530,6 @@ public final class CHeroArmy {
 	 * unit standing on its slot beside an enemy, engages nothing — holding it out of the army for that froze it beside
 	 * a visible enemy for six seconds on the phone, the stale combat state.
 	 */
-	/**
-	 * Diagnostic only, and never runs under the unit tests (no Gdx there): which of the four cases of
-	 * {@link #fights} holds this unit out of the army, and — for the near-enemy case — how far that enemy stands and
-	 * whether the player can see it, since the engine's own acquisition will not pick an invisible one up.
-	 */
-	private static String fightWhy(final CUnit unit, final CSimulation simulation) {
-		if (Gdx.app == null) {
-			return "";
-		}
-		try {
-			final CBehavior behavior = unit.getCurrentBehavior();
-			if (behavior instanceof CBehaviorAttack) {
-				return " why=attack";
-			}
-			if (behavior instanceof CBehaviorAttackMove) {
-				return " why=attackmove";
-			}
-			if ((behavior instanceof CBehaviorMove)
-					&& (((CBehaviorMove) behavior).getRangedBehavior() instanceof CBehaviorAttack)) {
-				return " why=chase";
-			}
-			final float[] near = new float[] { Float.MAX_VALUE };
-			final int[] who = new int[1];
-			final boolean[] visible = new boolean[1];
-			final CPlayer player = simulation.getPlayer(unit.getPlayerIndex());
-			simulation.getWorldCollision().enumUnitsInRange(unit.getX(), unit.getY(), unit.getAcquisitionRange(),
-					(other) -> {
-						if ((other != unit) && !other.isDead() && !other.isHidden()
-								&& !player.hasAlliance(other.getPlayerIndex(), CAllianceType.PASSIVE)) {
-							final float apart = (float) StrictMath.hypot(other.getX() - unit.getX(),
-									other.getY() - unit.getY());
-							if (apart < near[0]) {
-								near[0] = apart;
-								who[0] = other.getHandleId();
-								visible[0] = other.isVisible(simulation, unit.getPlayerIndex());
-							}
-						}
-						return false;
-					});
-			return (who[0] == 0) ? " why=none"
-					: String.format(Locale.US, " why=enemy u%d@%.0f vis=%b idle=%b", who[0], near[0], visible[0],
-							behavior == null);
-		}
-		catch (final Throwable t) {
-			return " why=err";
-		}
-	}
-
 	private static boolean fights(final CUnit unit, final CSimulation simulation) {
 		final CBehavior behavior = unit.getCurrentBehavior();
 		if (behavior == null) {
