@@ -15,6 +15,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability.AbilityUI;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability.IconUI;
 import com.etheller.warsmash.viewer5.handlers.w3x.rendersim.ability.ItemUI;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CItem;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CReleaseCheats;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
@@ -29,8 +30,10 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilitybuilder.abil
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CAbilityData;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.AbilityActivationReceiver;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.CommandStringErrorKeys;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -45,6 +48,8 @@ import java.util.List;
 final class HeroTray {
 	static final int SKILL_SLOTS = HeroSkillSlots.SLOT_COUNT;
 	static final int ITEM_BUTTONS = HeroItemSlots.MAX_BUTTONS;
+	/** Extra skills the row can hold: whatever positions the item buttons of the row leave free. */
+	static final int EXTRA_BUTTONS = HeroItemSlots.ROW_SLOTS;
 
 	// Everything below is dp measured from the interface's bottom-right corner, and matches the drawn layout. They
 	// came down a sixth from the picture's numbers after the first look on a 480 dpi phone, where 52 dp circles read
@@ -60,9 +65,9 @@ final class HeroTray {
 	/** The two item buttons of the inner arc, on either side of the attack button. */
 	private static final float ITEM_INNER_RING = 100f;
 	private static final float[] ITEM_INNER_ANGLE = { 104f, 165.7f };
-	/** Further usable items, in a row along the bottom edge, left of the inner arc. */
+	/** Further usable items, and then the hero's extra skills, in a row along the bottom edge, left of the inner arc. */
 	private static final float ITEM_ROW_Y = 20f;
-	private static final float[] ITEM_ROW_X = { 214f, 264f };
+	private static final float[] ITEM_ROW_X = { 214f, 264f, 314f };
 	/** The "+" sits on its slot's ring, up and to the right, so that the icon it belongs to still casts. */
 	private static final float BADGE_OFFSET = 15f;
 	private static final float BADGE_RADIUS = 11f;
@@ -77,6 +82,8 @@ final class HeroTray {
 	private static final Color COOLDOWN_COLOR = new Color(0f, 0f, 0f, 0.55f);
 	private static final Color NO_MANA_TINT = new Color(0.35f, 0.45f, 1f, 0.62f);
 	private static final Color DISABLED_TINT = new Color(0.4f, 0.4f, 0.4f, 0.7f);
+	/** A skill the hero has not bought: flat grey, so it reads as "not mine yet" beside the bought ones. */
+	private static final Color UNLEARNED_TINT = new Color(0.32f, 0.32f, 0.32f, 0.62f);
 	private static final Color BADGE_COLOR = new Color(0.29f, 0.8f, 0.42f, 1f);
 	private static final Color BADGE_PLUS_COLOR = new Color(0.03f, 0.14f, 0.06f, 1f);
 
@@ -87,6 +94,7 @@ final class HeroTray {
 		int level;
 		int maxLevel;
 		boolean learnable;
+		boolean unlearned;
 		boolean disabled;
 		boolean notEnoughMana;
 		float cooldown;
@@ -108,6 +116,23 @@ final class HeroTray {
 		float y;
 	}
 
+	/**
+	 * A skill the four arc slots have no room for — a hero's Shadow Meld is the case in hand — drawn in the row after
+	 * the items and cast by a tap, exactly as the original command card kept a place for it.
+	 */
+	static final class ExtraButton {
+		CAbility ability;
+		Texture icon;
+		boolean disabled;
+		boolean notEnoughMana;
+		/** On now, like a meld or a toggle left running: the button says so instead of looking idle. */
+		boolean running;
+		float cooldown;
+		float cooldownMax;
+		float x;
+		float y;
+	}
+
 	private final MeleeUI ui;
 	private final HeroTrayIcons icons;
 	private final ActivationState activation = new ActivationState();
@@ -115,7 +140,9 @@ final class HeroTray {
 
 	final SkillSlot[] skills = new SkillSlot[SKILL_SLOTS];
 	final ItemButton[] items = new ItemButton[ITEM_BUTTONS];
+	final ExtraButton[] extras = new ExtraButton[EXTRA_BUTTONS];
 	private int itemButtonCount;
+	int extraButtonCount;
 	private Texture attackIcon;
 
 	/** UI world units per dp: the screen density times the projection's world units per screen pixel. */
@@ -138,6 +165,9 @@ final class HeroTray {
 		}
 		for (int i = 0; i < ITEM_BUTTONS; i++) {
 			this.items[i] = new ItemButton();
+		}
+		for (int i = 0; i < EXTRA_BUTTONS; i++) {
+			this.extras[i] = new ExtraButton();
 		}
 	}
 
@@ -181,6 +211,13 @@ final class HeroTray {
 				this.items[i].y = insideBottom + (ITEM_ROW_Y * unit);
 			}
 		}
+		// The extra skills come after the items in the row, so they start where the item buttons of the row end.
+		final int firstExtraColumn = HeroItemSlots.rowItemCount(this.itemButtonCount);
+		for (int i = 0; i < EXTRA_BUTTONS; i++) {
+			final int column = Math.min(firstExtraColumn + i, ITEM_ROW_X.length - 1);
+			this.extras[i].x = insideRight - (ITEM_ROW_X[column] * unit);
+			this.extras[i].y = insideBottom + (ITEM_ROW_Y * unit);
+		}
 	}
 
 	/**
@@ -203,8 +240,8 @@ final class HeroTray {
 			overRight = Math.max(overRight, point[0] + (ITEM_RADIUS * unit) - right);
 			overBottom = Math.max(overBottom, bottom - point[1] + (ITEM_RADIUS * unit));
 		}
-		for (int i = HeroItemSlots.INNER_ARC_BUTTONS; i < ITEM_BUTTONS; i++) {
-			final float x = right - (ITEM_ROW_X[i - HeroItemSlots.INNER_ARC_BUTTONS] * unit);
+		for (int i = 0; i < ITEM_ROW_X.length; i++) {
+			final float x = right - (ITEM_ROW_X[i] * unit);
 			final float y = bottom + (ITEM_ROW_Y * unit);
 			overRight = Math.max(overRight, x + (ITEM_RADIUS * unit) - right);
 			overBottom = Math.max(overBottom, bottom - y + (ITEM_RADIUS * unit));
@@ -247,9 +284,19 @@ final class HeroTray {
 		return -1;
 	}
 
+	/** @return the extra skill button under the point, or -1 */
+	int extraAt(final float x, final float y) {
+		for (int i = 0; i < this.extraButtonCount; i++) {
+			if (inside(this.extras[i].x, this.extras[i].y, this.itemRadius, x, y)) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
 	/** Whether the point is anywhere on the cluster, which is what keeps the stick and the camera off it. */
 	boolean contains(final float x, final float y) {
-		if ((skillAt(x, y) >= 0) || (itemAt(x, y) >= 0) || attackAt(x, y)) {
+		if ((skillAt(x, y) >= 0) || (itemAt(x, y) >= 0) || (extraAt(x, y) >= 0) || attackAt(x, y)) {
 			return true;
 		}
 		for (int i = 0; i < SKILL_SLOTS; i++) {
@@ -312,6 +359,7 @@ final class HeroTray {
 				continue;
 			}
 			slot.level = hero.getAbilityLevel(skill);
+			slot.unlearned = HeroSkillSlots.isUnlearned(slot.level);
 			final CAbilityType<?> levelData = abilityData.getAbilityType(skill);
 			slot.maxLevel = (levelData != null) ? levelData.getLevelCount() : Math.max(1, slot.level);
 			final AbilityUI abilityUI = this.ui.war3MapViewer.getAbilityDataUI().getUI(skill);
@@ -332,12 +380,16 @@ final class HeroTray {
 				slot.ability.checkCanUse(simulation, hero, playerIndex, orderIdOf(slot.ability), false,
 						this.activation);
 				slot.disabled = this.activation.disabled;
-				slot.notEnoughMana = this.activation.notEnoughMana;
+				// The engine answers one question and stops: `CAbilitySpellBase.innerCheckCanUse` reports the cooldown
+				// and only then, with the cooldown gone, the mana. A cast that empties the hero's pool has both true in
+				// the same frame, so the tray asks the mana itself rather than wait for the sweep to end.
+				slot.notEnoughMana = this.activation.notEnoughMana || !affordable(hero, slot.ability);
 				slot.cooldown = this.activation.cooldownRemaining;
 				slot.cooldownMax = this.activation.cooldownMax;
 			}
 		}
 		refreshItems(hero, inventory, simulation, playerIndex);
+		refreshExtras(hero, simulation, playerIndex, available);
 	}
 
 	private static void resetSlot(final SkillSlot slot, final War3ID skill) {
@@ -345,6 +397,7 @@ final class HeroTray {
 		slot.level = 0;
 		slot.maxLevel = 0;
 		slot.learnable = false;
+		slot.unlearned = false;
 		slot.disabled = false;
 		slot.notEnoughMana = false;
 		slot.cooldown = 0f;
@@ -414,6 +467,103 @@ final class HeroTray {
 		this.itemButtonCount = 0;
 	}
 
+	/**
+	 * The skills the four arc slots have no room for, in the row after the items. What gets a button is decided the way
+	 * the console card decided it: a single-icon ability the hero actually casts, that no item is already carrying
+	 * behind an item button, and that the arc is not already showing. The four arc slots keep their order and their
+	 * passives; this is everything else the hero's data put on her.
+	 */
+	private void refreshExtras(final CUnit hero, final CSimulation simulation, final int playerIndex,
+			final List<War3ID> shownInArc) {
+		final int capacity = Math.min(EXTRA_BUTTONS, HeroItemSlots.freeRowSlots(this.itemButtonCount));
+		final List<War3ID> taken = new ArrayList<>();
+		int count = 0;
+		for (final CAbility ability : hero.getAbilities()) {
+			if (count >= capacity) {
+				break;
+			}
+			if (!(ability instanceof GenericSingleIconActiveAbility) || (ability.getItem() != null)
+					|| !ability.isIconShowing()) {
+				// Not something a thumb casts: a passive, one of the engine's own abilities, or an item's ability,
+				// which the item buttons already carry.
+				continue;
+			}
+			final War3ID skill = ability.getAlias();
+			if (shownInArc.contains(skill) || taken.contains(skill)) {
+				continue;
+			}
+			taken.add(skill);
+			final ExtraButton button = this.extras[count++];
+			button.ability = ability;
+			button.icon = iconOf(this.ui.war3MapViewer.getAbilityDataUI().getUI(skill), hero.getAbilityLevel(skill));
+			this.activation.reset();
+			ability.checkCanUse(simulation, hero, playerIndex, orderIdOf(ability), false, this.activation);
+			button.disabled = this.activation.disabled || !canBeTargetedNow(hero, simulation, playerIndex, ability);
+			button.notEnoughMana = this.activation.notEnoughMana || !affordable(hero, ability);
+			button.cooldown = this.activation.cooldownRemaining;
+			button.cooldownMax = this.activation.cooldownMax;
+			button.running = isRunning(hero, ability);
+		}
+		for (int i = count; i < EXTRA_BUTTONS; i++) {
+			clearExtra(this.extras[i]);
+		}
+		this.extraButtonCount = count;
+	}
+
+	/**
+	 * Whether the ability would fire on the spot right now. Only asked of the abilities the tray can recognise as
+	 * no-target by their class: for the others the answer is "no" whatever the state, and the button has to stay a
+	 * button so that a tap can arm it. This is what greys Shadow Meld by day, when the engine refuses the order and has
+	 * no string to show.
+	 */
+	private boolean canBeTargetedNow(final CUnit hero, final CSimulation simulation, final int playerIndex,
+			final CAbility ability) {
+		if (HeroCastTypes.ofClass(ability.getClass(), ability.getAlias()) != HeroCastType.NO_TARGET) {
+			return true;
+		}
+		final BooleanAbilityTargetCheckReceiver<Void> receiver = BooleanAbilityTargetCheckReceiver.<Void>getInstance()
+				.reset();
+		ability.checkCanTargetNoTarget(simulation, hero, playerIndex, orderIdOf(ability), false, receiver);
+		return receiver.isTargetable();
+	}
+
+	/** Whether the ability is doing something right now — melded, a toggle left on — rather than waiting for a tap. */
+	private static boolean isRunning(final CUnit hero, final CAbility ability) {
+		if ((ability instanceof GenericSingleIconActiveAbility)
+				&& ((GenericSingleIconActiveAbility) ability).isRunning()) {
+			return true;
+		}
+		return (hero.getCurrentBehavior() != null)
+				&& (orderIdOf(ability) == hero.getCurrentBehavior().getHighlightOrderId());
+	}
+
+	private static void clearExtra(final ExtraButton button) {
+		button.ability = null;
+		button.icon = null;
+		button.disabled = false;
+		button.notEnoughMana = false;
+		button.running = false;
+		button.cooldown = 0f;
+		button.cooldownMax = 0f;
+	}
+
+	/**
+	 * Whether the hero can pay for a cast right now, cooldown or no cooldown. The comparison is the engine's own, made
+	 * against the same cheat-adjusted cost the engine would charge.
+	 */
+	private boolean affordable(final CUnit hero, final CAbility ability) {
+		final int cost = CReleaseCheats.manaCost(this.ui.war3MapViewer.simulation, hero, manaCostOf(ability));
+		return !HeroSkillSlots.cannotAfford(hero.getMana(), cost);
+	}
+
+	/** What the data says a cast costs, before the cheats that make casts free. */
+	static int manaCostOf(final CAbility ability) {
+		if (ability instanceof GenericSingleIconActiveAbility) {
+			return ((GenericSingleIconActiveAbility) ability).getUIManaCost();
+		}
+		return 0;
+	}
+
 	private Texture attackIcon() {
 		if (this.attackIcon == null) {
 			final IconUI iconUI = this.ui.war3MapViewer.getAbilityDataUI().getAttackUI();
@@ -468,7 +618,8 @@ final class HeroTray {
 			if (this.skills[i].skill == null) {
 				continue;
 			}
-			shapes.setColor((i == armedSlot) ? RING_ARMED_COLOR : RING_COLOR);
+			shapes.setColor((i == armedSlot) ? RING_ARMED_COLOR
+					: this.skills[i].unlearned ? BORDER_DISABLED_COLOR : RING_COLOR);
 			drawBorder(shapes, this.skills[i].x, this.skills[i].y, this.skillRadius);
 		}
 		shapes.setColor(RING_COLOR);
@@ -477,9 +628,20 @@ final class HeroTray {
 			shapes.setColor(this.items[i].disabled ? BORDER_DISABLED_COLOR : RING_COLOR);
 			drawBorder(shapes, this.items[i].x, this.items[i].y, this.itemRadius);
 		}
+		for (int i = 0; i < this.extraButtonCount; i++) {
+			final ExtraButton button = this.extras[i];
+			// The blue ring is the "this is on" of the tray: an extra skill that is melding or armed for a target.
+			shapes.setColor(button.disabled ? BORDER_DISABLED_COLOR
+					: (button.running || ((SKILL_SLOTS + i) == armedSlot)) ? RING_ARMED_COLOR : RING_COLOR);
+			drawBorder(shapes, button.x, button.y, this.itemRadius);
+		}
 		for (int i = 0; i < this.itemButtonCount; i++) {
 			drawCooldown(shapes, this.items[i].x, this.items[i].y, this.itemRadius, this.items[i].cooldown,
 					this.items[i].cooldownMax);
+		}
+		for (int i = 0; i < this.extraButtonCount; i++) {
+			drawCooldown(shapes, this.extras[i].x, this.extras[i].y, this.itemRadius, this.extras[i].cooldown,
+					this.extras[i].cooldownMax);
 		}
 		for (int i = 0; i < SKILL_SLOTS; i++) {
 			drawCooldown(shapes, this.skills[i].x, this.skills[i].y, this.skillRadius, this.skills[i].cooldown,
@@ -519,8 +681,10 @@ final class HeroTray {
 			if (slot.icon == null) {
 				continue;
 			}
-			// The mana tint is a blue wash over the art, the way the console's own buttons say it.
-			batch.setColor(slot.disabled ? DISABLED_TINT : slot.notEnoughMana ? NO_MANA_TINT : Color.WHITE);
+			// The mana tint is a blue wash over the art, the way the console's own buttons say it, and an unlearned
+			// skill is greyed whatever else is true of it: it cannot be cast at all until the point is spent.
+			batch.setColor(slot.unlearned ? UNLEARNED_TINT
+					: slot.disabled ? DISABLED_TINT : slot.notEnoughMana ? NO_MANA_TINT : Color.WHITE);
 			batch.draw(slot.icon, slot.x - this.skillRadius, slot.y - this.skillRadius, this.skillRadius * 2f,
 					this.skillRadius * 2f);
 		}
@@ -536,6 +700,16 @@ final class HeroTray {
 				continue;
 			}
 			batch.setColor(button.disabled ? DISABLED_TINT : Color.WHITE);
+			batch.draw(button.icon, button.x - this.itemRadius, button.y - this.itemRadius, this.itemRadius * 2f,
+					this.itemRadius * 2f);
+		}
+		for (int i = 0; i < this.extraButtonCount; i++) {
+			final ExtraButton button = this.extras[i];
+			if (button.icon == null) {
+				continue;
+			}
+			batch.setColor(button.disabled ? DISABLED_TINT
+					: button.notEnoughMana ? NO_MANA_TINT : Color.WHITE);
 			batch.draw(button.icon, button.x - this.itemRadius, button.y - this.itemRadius, this.itemRadius * 2f,
 					this.itemRadius * 2f);
 		}

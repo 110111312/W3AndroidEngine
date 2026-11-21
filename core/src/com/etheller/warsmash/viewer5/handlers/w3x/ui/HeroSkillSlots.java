@@ -49,6 +49,23 @@ final class HeroSkillSlots {
 		return heroLevel >= requiredLevel;
 	}
 
+	/**
+	 * A skill the hero has not bought yet. The tray greys it, because it cannot be cast at all: the level-1 art it
+	 * shows is only there so that the slot can be recognised before it is paid for.
+	 */
+	static boolean isUnlearned(final int level) {
+		return level <= 0;
+	}
+
+	/**
+	 * Whether the hero is short of mana for a cast of the given cost — the same comparison the engine's own activation
+	 * check makes. A cost of 0 is never short: an ability cast for nothing says nothing about mana, and neither does
+	 * the mana of a unit that never casts.
+	 */
+	static boolean cannotAfford(final float mana, final int cost) {
+		return (cost > 0) && (mana < cost);
+	}
+
 	/** How much of the icon a cooldown covers, from 1 at the moment of the cast to 0 when it is ready. */
 	static float cooldownFraction(final float remaining, final float max) {
 		if ((max <= 0f) || (remaining <= 0f)) {

@@ -53,22 +53,30 @@ above is what the doc is asking to be true, not the final layout. The skill clus
 Two arcs centred on the bottom-right corner, so the whole cluster is under the right thumb and the middle of the
 screen stays empty. The outer arc is the hero's four skills in data order, the ultimate last and therefore top-right.
 The inner arc is the big attack button with the two small item buttons beside it; any further usable items go in a
-row on the bottom edge, and four is the cap. Sizes in dp, all tuned on a phone:
+row on the bottom edge, and four is the cap. The row then takes the hero's extras — the skills the four arc slots have
+no room for, such as the Night Elf heroes' Shadow Meld — after the item buttons, in three positions' worth in all, one
+of which the fourth item button may already have taken. Sizes in dp, all tuned on a phone:
 
 | | radius from the corner | size |
 |---|---|---|
 | skills 1-4 | 149 | 44 |
 | attack | 82 | 58 |
 | items a, b | 100 | 30 |
-| item row c, d | — | 30 |
+| row: items c, d, then the extra skills | — | 30 |
 
 The first draft of these numbers was 6/5 of this and read as heavy on a 480 dpi phone; the picture is drawn from the
 table above.
 
 A slot shows the icon inside a border about 3 dp thick, a cooldown wedge, a blue tint when the mana is not there, a
-grey one when the spell cannot be used, and a "+" badge when there is a skill point this slot can take. The badge is
-its own hit area, because a tap on the circle itself means cast. An item button also carries how many uses it has
-left; a skill carries no number, because "1" on a freshly learned skill says nothing.
+grey one when the spell cannot be used, and a "+" badge when there is a skill point this slot can take. A skill that
+has not been bought yet is greyed whatever else is true of it, because it cannot be cast at all until the point is
+spent; the level-1 art it shows is only there so that the slot can be recognised before it is paid for. The mana tint
+is the tray's own reading of the hero's pool against the spell's cost, made every frame, so a cast that empties the
+pool shows the tint in the same frame that starts the cooldown — the engine reports one reason at a time, and waiting
+its turn put the tint behind the whole sweep. The badge is its own hit area, because a tap on the circle itself means
+cast. An item button also carries how many uses it has left; a skill carries no number, because "1" on a freshly
+learned skill says nothing. A skill in the row is an ordinary button of the tray: it casts or arms like an arc slot,
+and its ring goes blue while it is on — melded, or held.
 
 Which gesture a slot takes comes from a table of ability classes:
 

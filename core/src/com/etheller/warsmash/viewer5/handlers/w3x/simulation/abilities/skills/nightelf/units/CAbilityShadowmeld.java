@@ -163,4 +163,10 @@ public class CAbilityShadowmeld extends CAbilityNoTargetSpellBase {
 	public boolean isMelded() {
 		return this.melded;
 	}
+
+	/** The meld is what this ability does, so an "is it on" button reads the meld and not the order that started it. */
+	@Override
+	public boolean isRunning() {
+		return this.melded;
+	}
 }
