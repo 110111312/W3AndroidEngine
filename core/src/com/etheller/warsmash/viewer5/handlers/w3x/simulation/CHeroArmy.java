@@ -559,8 +559,8 @@ public final class CHeroArmy {
 				army.add(unit);
 			}
 			else {
-				log(String.format(Locale.US, "  out u%-4d %s fight=%s far=%s", unit.getHandleId(), at(unit),
-						fights(unit, simulation), isBeyondReach(unit, hero)));
+				log(String.format(Locale.US, "  out u%-4d %s fight=%s far=%s%s", unit.getHandleId(), at(unit),
+						fights(unit, simulation), isBeyondReach(unit, hero), fightWhy(unit, simulation)));
 			}
 		}
 		return army;
@@ -585,6 +585,54 @@ public final class CHeroArmy {
 	 * scan would take that enemy up half a second later, so the stick does not pull the unit out of the fight it is
 	 * about to join. Without the last case the army walks through a battle to reach its slots.
 	 */
+	/**
+	 * Diagnostic only, and never runs under the unit tests (no Gdx there): which of the four cases of
+	 * {@link #fights} holds this unit out of the army, and — for the near-enemy case — how far that enemy stands and
+	 * whether the player can see it, since the engine's own acquisition will not pick an invisible one up.
+	 */
+	private static String fightWhy(final CUnit unit, final CSimulation simulation) {
+		if (Gdx.app == null) {
+			return "";
+		}
+		try {
+			final CBehavior behavior = unit.getCurrentBehavior();
+			if (behavior instanceof CBehaviorAttack) {
+				return " why=attack";
+			}
+			if (behavior instanceof CBehaviorAttackMove) {
+				return " why=attackmove";
+			}
+			if ((behavior instanceof CBehaviorMove)
+					&& (((CBehaviorMove) behavior).getRangedBehavior() instanceof CBehaviorAttack)) {
+				return " why=chase";
+			}
+			final float[] near = new float[] { Float.MAX_VALUE };
+			final int[] who = new int[1];
+			final boolean[] visible = new boolean[1];
+			final CPlayer player = simulation.getPlayer(unit.getPlayerIndex());
+			simulation.getWorldCollision().enumUnitsInRange(unit.getX(), unit.getY(), unit.getAcquisitionRange(),
+					(other) -> {
+						if ((other != unit) && !other.isDead() && !other.isHidden()
+								&& !player.hasAlliance(other.getPlayerIndex(), CAllianceType.PASSIVE)) {
+							final float apart = (float) StrictMath.hypot(other.getX() - unit.getX(),
+									other.getY() - unit.getY());
+							if (apart < near[0]) {
+								near[0] = apart;
+								who[0] = other.getHandleId();
+								visible[0] = other.isVisible(simulation, unit.getPlayerIndex());
+							}
+						}
+						return false;
+					});
+			return (who[0] == 0) ? " why=none"
+					: String.format(Locale.US, " why=enemy u%d@%.0f vis=%b idle=%b", who[0], near[0], visible[0],
+							behavior == null);
+		}
+		catch (final Throwable t) {
+			return " why=err";
+		}
+	}
+
 	private static boolean fights(final CUnit unit, final CSimulation simulation) {
 		final CBehavior behavior = unit.getCurrentBehavior();
 		if ((behavior instanceof CBehaviorAttack) || (behavior instanceof CBehaviorAttackMove)) {
