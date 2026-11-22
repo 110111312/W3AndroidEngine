@@ -22,6 +22,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitClassification;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUpgradeType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityEntangledMine;
@@ -229,17 +230,32 @@ public final class BuildingPlanExecutor {
 			execute(next, gameTurnTick);
 		}
 		else {
-			final TicketState waiting = firstWaiting(states);
-			final String idle = (waiting == null) ? "the plan is empty"
-					: ("t" + waiting.getNumber() + " " + waiting.getTicket() + " is waiting: " + describe(waiting));
-			this.log.transition("blocked", idle, "pass " + gameTurnTick + ": nothing to buy -- " + idle);
+			this.log.transition("blocked", idleReason(states),
+					"pass " + gameTurnTick + ": nothing to buy -- " + idleReason(states));
 		}
 	}
 
 	/**
-	 * Why nothing was bought: the first ticket that is neither stuck nor ready, which is as close to a reason as one
-	 * ticket gets when the answer is "every plan is waiting for gold, or for an order of its own". Null when every
-	 * ticket is stuck, which reads as an empty plan.
+	 * Why nothing was bought, in words: an empty plan, or the first ticket that is neither stuck nor ready, or -- when
+	 * every ticket left is stuck, which is where a finished plan ends up with its researches parked at their maximum --
+	 * how many are parked and which.
+	 */
+	private static String idleReason(final List<TicketState> states) {
+		final TicketState waiting = firstWaiting(states);
+		if (waiting != null) {
+			return "t" + waiting.getNumber() + " " + waiting.getTicket() + " is waiting: " + describe(waiting);
+		}
+		if (states.isEmpty()) {
+			return "the plan is empty";
+		}
+		final TicketState parked = states.get(0);
+		return "the plan is done -- " + states.size() + " left, all stuck: t" + parked.getNumber() + " "
+				+ parked.getTicket() + " " + describe(parked);
+	}
+
+	/**
+	 * The first ticket that is neither stuck nor ready: as close to a reason as one ticket gets when the answer is
+	 * "everything is waiting for gold, or for an order of its own". Null when every ticket is stuck.
 	 */
 	private static TicketState firstWaiting(final List<TicketState> states) {
 		for (final TicketState state : states) {
@@ -468,8 +484,14 @@ public final class BuildingPlanExecutor {
 			}
 			else if (ticket.getKind() == MacroTicketKind.RESEARCH) {
 				if (player.getTechtreeUnlocked(ticket.getRawcode()) >= issue.targetLevel) {
-					this.plan.remove(ticket);
-					finished.add(ticket);
+					if (moreLevelsToResearch(player, ticket.getRawcode())) {
+						// The level landed and another one may be bought: the ticket stays, and is ready again next pass.
+						finished.add(ticket);
+					}
+					else {
+						this.plan.remove(ticket);
+						finished.add(ticket);
+					}
 				}
 			}
 			else if (ticket.getKind() == MacroTicketKind.UPGRADE) {
@@ -501,6 +523,29 @@ public final class BuildingPlanExecutor {
 	private static boolean isOrdered(final BuildJob job) {
 		final COrder order = job.worker.getCurrentOrder();
 		return (order != null) && (order.getOrderId() == job.typeId.getValue());
+	}
+
+	/**
+	 * Whether the player may buy one more level of this research: the upgrade's own level count, cut down to the
+	 * mission's cap when the mission sets one ({@code -1} there means unlimited). A research ticket that has run out
+	 * of levels is retired; one that has not stays in the plan and asks for the next level with the gold already
+	 * banked, which is what a five-minute hall upgrade is good for.
+	 */
+	private boolean moreLevelsToResearch(final CPlayer player, final War3ID rawcode) {
+		final CUpgradeType type = this.simulation.getUpgradeData().getType(rawcode);
+		return anotherLevel((type == null) ? 0 : type.getLevelCount(), player.getTechtreeMaxAllowed(rawcode),
+				player.getTechtreeUnlocked(rawcode));
+	}
+
+	/**
+	 * The same question as a sum, so it can be proved without a simulation: how many levels of this research may
+	 * exist, against how many the player has. {@code cap} is the mission's {@code SetPlayerTechMaxAllowed}, where
+	 * {@code -1} means the data is the only limit; {@code levelCount} is 0 for a rawcode the data does not know,
+	 * which reads as nothing left to buy.
+	 */
+	static boolean anotherLevel(final int levelCount, final int cap, final int unlocked) {
+		final int ceiling = (cap < 0) ? levelCount : Math.min(cap, levelCount);
+		return unlocked < ceiling;
 	}
 
 	/** Remembers that this ticket's order did not take, so it waits before it is offered again. */

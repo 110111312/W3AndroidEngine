@@ -118,7 +118,10 @@ public final class RaceBuildOrder {
 				MacroTicket.upgrade(id("etoa")), // Tree of Ages
 				MacroTicket.research(id("Resm")), // Strength of the Moon
 				MacroTicket.research(id("Rema")), // Moon Armor
+				MacroTicket.research(id("Resw")), // Strength of the Wild
+				MacroTicket.research(id("Rerh")), // Reinforced Hides
 				MacroTicket.build(id("eaoe")), // Ancient of Lore
+				MacroTicket.research(id("Redc")), // Druid of the Claw training
 				MacroTicket.upgrade(id("etoe")), // Tree of Eternity
 				MacroTicket.build(id("eaow")), // Ancient of Wind
 				MacroTicket.build(id("edos"))); // Chimaera Roost

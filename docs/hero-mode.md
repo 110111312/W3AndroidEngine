@@ -124,9 +124,13 @@ The player still builds and trains, because an army that also builds itself is a
 form: the base runs on **plans** that engine code executes, and the panel edits the plans — a few decisions, taken
 at a good moment, with an obvious consequence.
 
-- **the building plan** (with research and upgrades): a numbered list of what the base does next. A number runs
-  when affordable — same-number tickets compete, whatever has the gold first — and is done before the next starts,
-  except requirement-stuck tickets, which never block anyone. One construction job at a time, the nearest worker
+- **the building plan** (with research and upgrades): a numbered list of what the base does next. The lowest number
+  that is affordable runs, same-number tickets compete for the gold first, and one purchase per pass — but order is
+  only a preference: a ticket that is merely unaffordable or already ordered holds nobody, so a hall upgrade that
+  takes minutes does not freeze the rest of the base. The dependencies that do hold are the game's own, arriving as
+  stuck tickets (`MISSING_REQUIREMENT`, `NO_PRODUCER`, `NO_HALL`), and those never block anyone either. A research
+  ticket buys level after level until the data's level count or the mission's `SetPlayerTechMaxAllowed` runs out, then
+  parks itself at `AT_MAXIMUM`. One construction job at a time, the nearest worker
   that is not on gold is taken for it (a gold trip is the base's income; lumber or an idle walk costs seconds), the
   builder returns to harvesting between jobs, placement is automatic near the base. A supply line above the list keeps
   the food cap a headroom of seven ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
@@ -141,8 +145,8 @@ unlock — read off the sequence the melee AI builds in when nothing goes wrong.
 filter: the live base drops the lines for anything the player owns, is building, has queued or would get from a hall
 upgrade, and a hall already past a tier is not asked for it. So a campaign mission that starts with a barracks keeps
 the rest of the order, a mission with no workers gets an inert plan, a techtree the rules cannot read degrades to
-doing nothing, and a base that has out-built the list has nothing to do. No per-campaign tables: the base is the
-table.
+doing nothing, and a base that has out-built the list has nothing to do (its researches end parked at `AT_MAXIMUM`,
+which the log says out loud). No per-campaign tables: the base is the table.
 
 The panel is settled: `docs/mockups/macro-panel.html`.
 
