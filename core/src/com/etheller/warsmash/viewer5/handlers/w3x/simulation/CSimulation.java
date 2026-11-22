@@ -1188,6 +1188,24 @@ public class CSimulation implements CPlayerAPI, CSightWorld, HandleIdSource {
 				unit.getUnitType().getCollisionSize(), unit.getX(), unit.getY(), toX, toY, reach);
 	}
 
+	/**
+	 * The point nearest to (x, y) whose ground this unit can stand on, or null when the point itself is fine ground,
+	 * when the unit has no movement type, or when there is no map yet. The search walks the original's free-cell
+	 * spiral over the pathing grid alone: it is for points the game invents rather than places a unit at, so another
+	 * unit standing on the cell does not make it unusable.
+	 */
+	public float[] nearestStandablePoint(final CUnit unit, final float x, final float y) {
+		if ((this.pathingGrid == null) || (unit == null) || (unit.getUnitType() == null)) {
+			return null;
+		}
+		final PathingGrid.MovementType movementType = unit.getMovementType();
+		if (movementType == null) {
+			return null;
+		}
+		return CUnitPlacement.findNearestPathableCell(x, y, this.pathingGrid,
+				unit.getUnitType().getCollisionSize(), movementType);
+	}
+
 	/** Path search nodes that only earlier searches used are made again when needed; a save leaves them out. */
 	public void dropStalePathfindingNodes() {
 		if (this.pathfindingGraph != null) {

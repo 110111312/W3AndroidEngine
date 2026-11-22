@@ -210,7 +210,9 @@ Settled, and no longer up for renegotiation without a good reason:
     plus her own attack range for a ranged one, who fights from behind the rank in front of her. When she stops, the
     army forms up around her rather than walking on to the point the last stick order named. The hero is excluded
     from the group's speed link: the stick answers at the hero's own speed, and the army links among itself so it
-    marches as one block.
+    marches as one block. A slot is invented here, so the ground has to be consulted: one laid over a moonwell, an
+    Ancient or a tree line is moved to the nearest cell the unit can stand on (`CGroupMove.snapToWalkable`), which is
+    what keeps a follower from running at a wall for as long as the stick holds the order.
 16. **A fighting unit ignores hero movement** and keeps its target while the player moves, casts and attacks freely.
     Only a hero more than **1000** away turns the order into a retreat: break combat, join the formation. The
     distance is a tuning knob, and it is also the chase cap — nothing pursues an enemy that far from the hero. A unit

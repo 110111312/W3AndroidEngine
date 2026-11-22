@@ -185,6 +185,26 @@ final class CUnitPlacement {
 		if (fitsAt(self, x, y, collision, pathingGrid, collisionSize, movementType)) {
 			return new float[] { x, y };
 		}
+		return findNearestCellInSpiral(x, y, pathingGrid, collisionSize, movementType, true, collision, self);
+	}
+
+	/**
+	 * The same spiral over the ground alone, ignoring the other units: for a point the game invents rather than places a
+	 * unit at (a formation slot), a cell a unit happens to stand on is not a cell that cannot be walked to, and treating
+	 * it as one would shuffle the block every time somebody passed. Null when the ground under the point is fine or when
+	 * no cell within the search is walkable at all.
+	 */
+	static float[] findNearestPathableCell(final float x, final float y, final PathingGrid pathingGrid,
+			final float collisionSize, final MovementType movementType) {
+		if (pathingGrid.isPathable(x, y, movementType, collisionSize)) {
+			return null;
+		}
+		return findNearestCellInSpiral(x, y, pathingGrid, collisionSize, movementType, false, null, null);
+	}
+
+	private static float[] findNearestCellInSpiral(final float x, final float y, final PathingGrid pathingGrid,
+			final float collisionSize, final MovementType movementType, final boolean avoidUnits,
+			final CWorldCollision collision, final CUnit self) {
 		final float baseX = (float) Math.floor(x / 32f) * 32f;
 		final float baseY = (float) Math.floor(y / 32f) * 32f;
 		final int[] stepX = { 0, 1, 0, -1 };
@@ -200,7 +220,8 @@ final class CUnitPlacement {
 					visited++;
 					final float cx = baseX + (cellX * 32f);
 					final float cy = baseY + (cellY * 32f);
-					if (!blockedByUnit(self, cx + 16f, cy + 16f, collision, pathingGrid, collisionSize, movementType)
+					if ((!avoidUnits
+							|| !blockedByUnit(self, cx + 16f, cy + 16f, collision, pathingGrid, collisionSize, movementType))
 							&& pathingGrid.isPathable(cx, cy, movementType, collisionSize)) {
 						return new float[] { cx + 16f, cy + 16f };
 					}
@@ -210,7 +231,7 @@ final class CUnitPlacement {
 				direction = (direction + 1) % 4;
 			}
 		}
-		return new float[] { x, y };
+		return avoidUnits ? new float[] { x, y } : null;
 	}
 
 	/**
