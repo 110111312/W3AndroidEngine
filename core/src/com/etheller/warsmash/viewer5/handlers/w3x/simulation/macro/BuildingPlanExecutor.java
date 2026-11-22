@@ -27,6 +27,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.cargohold.CAbilityCargoHold;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CAbstractRangedBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorBoardTransport;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.queue.CAbilityQueue;
@@ -83,6 +84,9 @@ public final class BuildingPlanExecutor {
 	/** How far from the base the plan looks for a tree, and how many of them it offers a worker. */
 	private static final float TREE_SEARCH_DISTANCE = 2500f;
 	private static final int TREE_TRIES = 6;
+	/** How many of the nearest trees one worker considers before picking one, and how close counts as "at" a tree. */
+	private static final int TREE_CANDIDATES = 12;
+	private static final float TREE_CROWD_RADIUS = 128f;
 	private static final int TREE_CACHE_TICKS = CTimer.wholeSteps(1);
 	/**
 	 * How many workers one of the player's own gold mines takes. Five is what an entangled mine holds, which is also
@@ -435,17 +439,22 @@ public final class BuildingPlanExecutor {
 			// move ability and did nothing -- the worker stood idle for the rest of the mission.
 			final CWidget accepted = sendToHarvest(unit, gameTurnTick);
 			this.log.say("restore-" + unit.getHandleId(), gameTurnTick,
-					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted));
+					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted, unit));
 			return;
 		}
 		this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
 	}
 
-	private static String describeTarget(final CWidget target) {
+	private String describeTarget(final CWidget target, final CUnit worker) {
 		if (target == null) {
 			return "nothing (every candidate refused the harvest order)";
 		}
-		return ((target instanceof CDestructable) ? "tree " : "mine ") + target.getHandleId();
+		if (target instanceof CDestructable) {
+			return "tree " + target.getHandleId() + " (distance "
+					+ (int) distance(worker.getX(), worker.getY(), target.getX(), target.getY()) + ", crowd "
+					+ workersAt((CDestructable) target, worker) + ")";
+		}
+		return "mine " + target.getHandleId();
 	}
 
 	/**
@@ -479,7 +488,7 @@ public final class BuildingPlanExecutor {
 			return mine;
 		}
 		int tries = 0;
-		for (final CDestructable tree : trees(anchor(), gameTurnTick)) {
+		for (final CDestructable tree : treesToTry(unit, gameTurnTick)) {
 			if (tree.isDead()) {
 				continue;
 			}
@@ -499,6 +508,57 @@ public final class BuildingPlanExecutor {
 		return null;
 	}
 
+	/**
+	 * The trees to offer one worker: nearest to that worker first, and among the nearest few the ones nobody is chopping.
+	 * <p>
+	 * The list used to be sorted once, by distance from the base, and handed to every worker unchanged. So a whole base
+	 * walked to the same tree and then to that tree's neighbours, and a worker standing on the far side of the woods was
+	 * sent across them, because the base was nearer to the tree than the worker was. Sorting by the worker fixes the
+	 * walk; preferring a tree with nobody at it is what makes a group fan out instead of queueing at one trunk.
+	 */
+	private List<CDestructable> treesToTry(final CUnit worker, final int gameTurnTick) {
+		final List<CDestructable> candidates = new ArrayList<>();
+		for (final CDestructable tree : trees(anchor(), gameTurnTick)) {
+			if (!tree.isDead()) {
+				candidates.add(tree);
+			}
+		}
+		candidates.sort((a, b) -> Float.compare(distance(worker.getX(), worker.getY(), a.getX(), a.getY()),
+				distance(worker.getX(), worker.getY(), b.getX(), b.getY())));
+		final List<CDestructable> nearest = new ArrayList<>(
+				candidates.subList(0, Math.min(TREE_CANDIDATES, candidates.size())));
+		nearest.sort((a, b) -> {
+			final int crowd = Integer.compare(workersAt(a, worker), workersAt(b, worker));
+			return (crowd != 0) ? crowd
+					: Float.compare(distance(worker.getX(), worker.getY(), a.getX(), a.getY()),
+							distance(worker.getX(), worker.getY(), b.getX(), b.getY()));
+		});
+		return nearest;
+	}
+
+	/**
+	 * The workers already chopping this tree, or standing at it. Workers only: a Tree of Life or a Moon Well standing
+	 * beside a tree is not chopping it, and counting the base as a crowd pushed the pick across the woods.
+	 */
+	private int workersAt(final CDestructable tree, final CUnit chopping) {
+		int workers = 0;
+		for (final CUnit unit : ours()) {
+			if ((unit == chopping) || unit.isDead() || unit.isHidden() || unit.isBuilding() || unit.isLoaded()
+					|| (buildAbility(unit) == null)) {
+				continue;
+			}
+			final CBehavior behavior = unit.getCurrentBehavior();
+			if ((behavior instanceof CAbstractRangedBehavior)
+					&& (((CAbstractRangedBehavior) behavior).getTarget() == tree)) {
+				workers++;
+			}
+			else if (distance(unit.getX(), unit.getY(), tree.getX(), tree.getY()) < TREE_CROWD_RADIUS) {
+				workers++;
+			}
+		}
+		return workers;
+	}
+
 	private List<CDestructable> trees(final float[] anchor, final int gameTurnTick) {
 		if ((this.treeCache != null) && ((gameTurnTick - this.treeCacheTick) < TREE_CACHE_TICKS)) {
 			return this.treeCache;
@@ -512,8 +572,7 @@ public final class BuildingPlanExecutor {
 					near.add(destructable);
 				}
 			}
-			near.sort((a, b) -> Float.compare(distance(anchor[0], anchor[1], a.getX(), a.getY()),
-					distance(anchor[0], anchor[1], b.getX(), b.getY())));
+			// Left unsorted: the order that matters is the one worker's own distance gives it, not the base's.
 		}
 		this.treeCache = near;
 		return near;
