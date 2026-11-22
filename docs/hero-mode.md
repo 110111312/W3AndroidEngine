@@ -128,7 +128,8 @@ at a good moment, with an obvious consequence.
   when affordable — same-number tickets compete, whatever has the gold first — and is done before the next starts,
   except requirement-stuck tickets, which never block anyone. One construction job at a time, the builder returns to
   harvesting between jobs, placement is automatic near the base. A supply line above the list keeps the food cap
-  ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
+  ahead of the army — never a ticket, pausable. An empty list keeps the base sane. Gathering is the standing state
+  of every worker — idle ones (mission start, no-rally trainees) go to the nearest mine with room, else wood.
 - **the unit plan**: the same animal as the building plan — numbered tickets, one numbering shared across both
   lists. A finished ticket disappears and the unit joins the owned counts; there are no standing rows and no
   self-refill, so after a fight the player re-adds by hand (two taps, because the available grid shows owned
@@ -327,6 +328,10 @@ Settled, and no longer up for renegotiation without a good reason:
 32. **The macro panel is two buttons above the skill arc**, each opening a sheet into the right-middle band that
     never covers the stick, the skills, or the hero: available icons above (owned counts, no grouping on the army
     sheet), the numbered order below. `docs/mockups/macro-panel.html` is the settled design.
+33. **Gathering is built in, not bot script.** A worker with nothing to do gathers — nearest mine with room, else the
+    nearest tree — as an engine-side standing rule in the executor's sweep, one rule for mission-start workers,
+    no-rally trainees and the return-after-build. The bot-script route was rejected: it would fight the plans for
+    the same gold, and it only speaks standard melee.
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
