@@ -22,9 +22,11 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitClassification
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityEntangledMine;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.cargohold.CAbilityCargoHold;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.queue.CAbilityQueue;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.upgrade.CAbilityUpgrade;
@@ -442,16 +444,28 @@ public final class BuildingPlanExecutor {
 	/**
 	 * Sends a worker to harvest something it will actually harvest, and reports the target it accepted.
 	 * <p>
-	 * The nearest gold mine is the right answer for a peasant, a peon or an acolyte and the wrong one for a wisp: a
-	 * wisp takes a tree, or the player's own entangled mine, and refuses a neutral one -- all it says is `false`. That
-	 * is what left wisps standing in The Broken Isles while every other worker gathered, so the candidates go in the
-	 * order the melee AI uses (`AIHarvest.orderHarvest`: the mine for gold, then up to six nearby trees for lumber)
-	 * and the first one the unit accepts wins.
+	 * One target is not enough, because the workers disagree about what they will take. In The Broken Isles the plan
+	 * offered the nearest gold mine and the wisp said no every three seconds -- that mine is a base mine, and a wisp
+	 * takes a tree or *its own* entangled mine, which is a separate unit the player owns (the campaign's pre-built
+	 * mine) and which {@link #nearestMine} deliberately skips because a peasant must not be sent to it. So the
+	 * candidates run from the most specific to the most general and the first one the unit accepts wins: what it was
+	 * last at, its own gold mine, the nearest base mine, the nearest trees, and finally the return order for a worker
+	 * that is carrying something.
 	 */
 	private CWidget sendToHarvest(final CUnit unit, final int gameTurnTick) {
 		final CWidget last = lastHarvestTarget(unit);
 		if ((last != null) && !last.isDead() && unit.order(this.simulation, OrderIds.harvest, last)) {
 			return last;
+		}
+		final CUnit ownMine = nearestOwnMine(anchor(), unit.getPlayerIndex());
+		if (ownMine != null) {
+			if (unit.order(this.simulation, OrderIds.harvest, ownMine)) {
+				return ownMine;
+			}
+			this.log.say("own-mine-refused", gameTurnTick, "restore: h=" + unit.getHandleId() + " refused its own mine h="
+					+ ownMine.getHandleId() + " type=" + ownMine.getUnitType().getTypeId().asStringValue() + " entangled="
+					+ (ownMine.getFirstAbilityOfType(CAbilityEntangledMine.class) != null) + " mine="
+					+ (ownMine.getGoldMineData() != null) + " cargo=" + (ownMine.getCargoData() != null));
 		}
 		final CUnit mine = nearestMine(anchor());
 		if ((mine != null) && !mine.isDead() && unit.order(this.simulation, OrderIds.harvest, mine)) {
@@ -496,6 +510,34 @@ public final class BuildingPlanExecutor {
 		}
 		this.treeCache = near;
 		return near;
+	}
+
+	/**
+	 * The player's own gold mine: the entangled mine a wisp can enter and the haunted mine an acolyte can, which are
+	 * separate units in front of a base mine rather than the base mine itself. A mine whose cargo is full is skipped so
+	 * a wisp is not ordered into a hold that has no room for it.
+	 */
+	private CUnit nearestOwnMine(final float[] anchor, final int playerIndex) {
+		if (anchor == null) {
+			return null;
+		}
+		CUnit best = null;
+		float bestDistance = MINE_SEARCH_DISTANCE;
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			if (unit.isDead() || (unit.getPlayerIndex() != playerIndex) || (unit.getOverlayedGoldMineData() == null)) {
+				continue;
+			}
+			final CAbilityCargoHold cargo = unit.getCargoData();
+			if ((cargo != null) && (cargo.getCargoCount() >= cargo.getCargoCapacity())) {
+				continue;
+			}
+			final float distance = distance(anchor[0], anchor[1], unit.getX(), unit.getY());
+			if ((best == null) || (distance < bestDistance)) {
+				best = unit;
+				bestDistance = distance;
+			}
+		}
+		return best;
 	}
 
 	private static CWidget lastHarvestTarget(final CUnit unit) {
