@@ -88,6 +88,7 @@ public final class BuildingPlanExecutor {
 	/** Where each otherwise-ready ticket would go, found once so the pass does not search twice. */
 	private final Map<MacroTicket, float[]> sites = new IdentityHashMap<>();
 	private final MacroActivationReceiver receiver = new MacroActivationReceiver();
+	private final MacroLog log = new MacroLog();
 
 	private boolean supplyPaused;
 	private boolean seeded;
@@ -157,20 +158,54 @@ public final class BuildingPlanExecutor {
 		}
 		retireJobs(player, gameTurnTick);
 		if (!this.seeded) {
-			seed();
+			seed(gameTurnTick);
 			return;
 		}
 		if (!this.baseReadable) {
+			this.log.say("unreadable", gameTurnTick,
+					"pass " + gameTurnTick + ": the techtree cannot be read, so the plan does nothing");
 			return;
 		}
-		restoreIdleWorker();
+		restoreIdleWorker(gameTurnTick);
 		if (runSupply(player, gameTurnTick)) {
 			return;
 		}
-		final TicketState next = MacroRule.next(List.of(states(gameTurnTick)));
+		final List<TicketState> states = states(gameTurnTick);
+		logStates(states, gameTurnTick);
+		final TicketState next = MacroRule.next(List.of(states));
+		this.log.say("heartbeat", gameTurnTick,
+				"pass " + gameTurnTick + ": plan=" + this.plan.size() + " next="
+						+ ((next == null) ? "none" : (next.getNumber() + " " + next.getTicket())) + " food="
+						+ player.getFoodUsed() + "/" + player.getFoodCapLimit() + " gold=" + player.getGold() + " lumber="
+						+ player.getLumber() + " jobs=" + this.jobs.size());
 		if (next != null) {
 			execute(next, gameTurnTick);
 		}
+	}
+
+	/**
+	 * Says what each ticket thinks of itself, once per change. This is the line that separates "waiting for gold" from
+	 * "no site for it" from "requirement not met yet" -- the three ways a plan looks like it is doing nothing.
+	 */
+	private void logStates(final List<TicketState> states, final int gameTurnTick) {
+		if ((gameTurnTick % 10) != 0) {
+			return;
+		}
+		for (final TicketState state : states) {
+			final String now = describe(state);
+			this.log.transition("ticket " + state.getNumber(), now,
+					"t" + state.getNumber() + " " + state.getTicket() + ": " + now);
+		}
+	}
+
+	private static String describe(final TicketState state) {
+		if (state.isStuck()) {
+			return "STUCK " + state.getStuck().getReason();
+		}
+		if (state.isPending()) {
+			return "PENDING";
+		}
+		return state.isAffordable() ? "READY" : "UNAFFORDABLE";
 	}
 
 	// ------------------------------------------------------------------ defaults, once
@@ -182,21 +217,30 @@ public final class BuildingPlanExecutor {
 	 * first passes have nothing to read. Once it has read, it never re-seeds -- a seeded ticket the player removes stays
 	 * removed, which is the difference between a default and a policy.
 	 */
-	private void seed() {
+	private void seed(final int gameTurnTick) {
 		final Set<War3ID> owned = ownedOrPendingTypes();
 		if (owned.isEmpty()) {
 			// Nothing of ours exists yet: the map is still being made, so there is no base to read.
+			this.log.say("waiting", gameTurnTick, "seed: waiting for the base -- nothing of ours exists yet");
 			return;
 		}
 		this.seeded = true;
 		this.baseReadable = (this.simulation.getUnitData() != null);
 		if (!this.baseReadable) {
+			this.log.say("noseed", gameTurnTick, "seed: the techtree cannot be read, so the plan stays empty");
 			return;
 		}
+		final CUnitRace race = playerRace();
 		final List<PlanTypeFacts> buildable = buildableFacts();
 		final War3ID military = LiveBaseDefaults.militaryType(buildable, typeFacts());
-		for (final MacroTicket ticket : LiveBaseDefaults.seed(hasWorker(), true, playerRace(), owned, typeLookup(),
-				military)) {
+		final List<MacroTicket> tickets = LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(),
+				military);
+		MacroLog.line("seed: race=" + race + " worker=" + hasWorker() + " owned=" + owned.size() + " plan="
+				+ tickets.size());
+		for (int i = 0; i < tickets.size(); i++) {
+			MacroLog.line("  " + i + " " + tickets.get(i));
+		}
+		for (final MacroTicket ticket : tickets) {
 			this.plan.append(ticket);
 		}
 	}
@@ -354,8 +398,9 @@ public final class BuildingPlanExecutor {
 	 * A worker is idle between jobs, and a plan that leaves it standing at the site has spent the game's only source of
 	 * income to save a walk. The last target is preferred, so a worker taken off lumber goes back to lumber.
 	 */
-	private void restoreIdleWorker() {
+	private void restoreIdleWorker(final int gameTurnTick) {
 		if (!this.jobs.isEmpty()) {
+			this.log.say("restore-busy", gameTurnTick, "restore: a build job is running, workers left alone");
 			return;
 		}
 		for (final CUnit unit : ours()) {
@@ -370,6 +415,8 @@ public final class BuildingPlanExecutor {
 				target = nearestMine(anchor());
 			}
 			if (target == null) {
+				this.log.say("restore-nomine", gameTurnTick,
+						"restore: h=" + unit.getHandleId() + " is idle but no gold mine was found to send it to");
 				return;
 			}
 			// `CUnit.order` is how the engine's own AI sends a worker back to work (AIHarvest.orderHarvestTarget):
@@ -377,9 +424,12 @@ public final class BuildingPlanExecutor {
 			// ability handle here and handing it to issueTargetOrder silently failed instead: the first ability whose
 			// checkCanUse says yes is `CAbilityMove`, which says yes to every order id, so the order was built on the
 			// move ability and did nothing -- the worker stood idle for the rest of the mission.
-			unit.order(this.simulation, OrderIds.harvest, target);
+			final boolean ordered = unit.order(this.simulation, OrderIds.harvest, target);
+			this.log.say("restore-" + unit.getHandleId(), gameTurnTick, "restore: idle h=" + unit.getHandleId()
+					+ " -> harvest h=" + target.getHandleId() + " accepted=" + ordered);
 			return;
 		}
+		this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
 	}
 
 	private static CWidget lastHarvestTarget(final CUnit unit) {
@@ -430,9 +480,14 @@ public final class BuildingPlanExecutor {
 		}
 		final float[] site = findSite(type, builder);
 		if (site == null) {
+			this.log.say("supply-nosite", gameTurnTick,
+					"supply: " + supplyType.asStringValue() + " is wanted but there is no room for it near the base");
 			return false;
 		}
 		issueBuild(builder, null, supplyType, site, gameTurnTick);
+		MacroLog.line("do SUPPLY " + supplyType.asStringValue() + " with h=" + builder.getHandleId() + " at "
+				+ (int) site[0] + "," + (int) site[1] + " (food " + player.getFoodUsed() + "/" + player.getFoodCapLimit()
+				+ ")");
 		return true;
 	}
 
@@ -584,6 +639,8 @@ public final class BuildingPlanExecutor {
 				final CUnit builder = findBuilder(rawcode);
 				if ((site != null) && (builder != null) && this.jobs.isEmpty()) {
 					issueBuild(builder, ticket, rawcode, site, gameTurnTick);
+					MacroLog.line("do " + state.getNumber() + " BUILD " + rawcode.asStringValue() + " with h="
+							+ builder.getHandleId() + " at " + (int) site[0] + "," + (int) site[1]);
 				}
 				break;
 			case RESEARCH:
@@ -593,6 +650,8 @@ public final class BuildingPlanExecutor {
 				}
 				this.listener.issueImmediateOrder(producer.getHandleId(),
 						producer.getFirstAbilityOfType(CAbilityQueue.class).getHandleId(), rawcode.getValue(), false);
+				MacroLog.line("do " + state.getNumber() + " RESEARCH " + rawcode.asStringValue() + " at h="
+						+ producer.getHandleId());
 				// The level it is aiming at is the one after what is unlocked now, so a mission that starts the line at
 				// level one does not make "any level" look finished.
 				this.issues.put(ticket,
@@ -606,6 +665,8 @@ public final class BuildingPlanExecutor {
 				}
 				this.listener.issueImmediateOrder(hall.getHandleId(),
 						hall.getFirstAbilityOfType(CAbilityUpgrade.class).getHandleId(), rawcode.getValue(), false);
+				MacroLog.line("do " + state.getNumber() + " UPGRADE " + rawcode.asStringValue() + " from h="
+						+ hall.getHandleId());
 				this.issues.put(ticket, new Issue(gameTurnTick, 0, hall.getHandleId(), 0));
 				break;
 			default:
