@@ -230,11 +230,10 @@ public final class BuildingPlanExecutor {
 		}
 		else {
 			final TicketState blocker = blocking(states);
-			this.log.say("blocked", gameTurnTick,
-					"pass " + gameTurnTick + ": nothing the plan can do -- "
-							+ ((blocker == null) ? "the plan is empty"
-									: ("t" + blocker.getNumber() + " " + blocker.getTicket() + " is holding it: "
-											+ describe(blocker))));
+			final String holding = (blocker == null) ? "the plan is empty"
+					: ("t" + blocker.getNumber() + " " + blocker.getTicket() + " is holding it: " + describe(blocker));
+			this.log.transition("blocked", holding,
+					"pass " + gameTurnTick + ": nothing the plan can do -- " + holding);
 		}
 	}
 
@@ -272,11 +271,26 @@ public final class BuildingPlanExecutor {
 	private void logStates(final List<TicketState> states, final int gameTurnTick) {
 		// No tick gate here: transitions are already deduplicated against the last value, and a gate on the turn
 		// number silently swallowed every line, because passes land on the same turns every time.
+		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
 		for (final TicketState state : states) {
-			final String now = describe(state);
-			this.log.transition("ticket " + state.getNumber(), now,
+			final String now = describe(state) + counts(state, player);
+			this.log.transition("ticket " + state.getTicket(), now,
 					"t" + state.getNumber() + " " + state.getTicket() + ": " + now);
 		}
+	}
+
+	/**
+	 * What the player's limit on this rawcode is and where the count stands, for a ticket that is at its maximum: "at
+	 * maximum" with none of them built only makes sense next to the two numbers the engine compared.
+	 */
+	private static String counts(final TicketState state, final CPlayer player) {
+		if ((player == null) || !state.isStuck()
+				|| (state.getStuck().getReason() != Stuck.Reason.AT_MAXIMUM)) {
+			return "";
+		}
+		final War3ID rawcode = state.getTicket().getRawcode();
+		return " (have " + player.getTechtreeUnlockedOrInProgress(rawcode) + ", max "
+				+ player.getTechtreeMaxAllowed(rawcode) + ")";
 	}
 
 	private static String describe(final TicketState state) {
