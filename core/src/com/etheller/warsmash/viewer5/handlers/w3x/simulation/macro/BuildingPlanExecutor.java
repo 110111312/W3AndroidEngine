@@ -25,6 +25,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityEntangledMine;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityGoldMinable;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.nightelf.root.CAbilityEntangleGoldMine;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
@@ -205,6 +207,7 @@ public final class BuildingPlanExecutor {
 			return;
 		}
 		restoreIdleWorker(gameTurnTick);
+		ensureEntangledMine(gameTurnTick);
 		if (runSupply(player, gameTurnTick)) {
 			return;
 		}
@@ -502,6 +505,63 @@ public final class BuildingPlanExecutor {
 			// The shape of a sweep in one line: five to the mine, the rest to lumber is what a healthy base looks like.
 			this.log.say("restore-summary", gameTurnTick,
 					"restore: " + ordered + " idle -> mine " + toMine + ", wood " + toWood);
+		}
+	}
+
+	/**
+	 * Night Elf gold comes from an entangled mine, and a campaign base starts with the plain one: no wisp can enter it
+	 * until one of them entangles it, so without this the whole base went to lumber and the gold never moved off the
+	 * mission's starting amount.
+	 * <p>
+	 * The ability is the wisp's own (it walks to the mine and builds the entangled mine over it), and one worker is put
+	 * on it at a time: a second order on a mine another wisp is already walking to would be the same trip twice.
+	 */
+	private void ensureEntangledMine(final int gameTurnTick) {
+		for (final CUnit unit : ours()) {
+			if (unit.getOverlayedGoldMineData() != null) {
+				return;
+			}
+		}
+		final float[] anchor = anchor();
+		CUnit mine = null;
+		float mineDistance = Float.MAX_VALUE;
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			final CAbilityGoldMinable gold = unit.getGoldMineData();
+			if ((gold == null) || !gold.isBaseMine() || unit.isDead() || unit.isHidden()) {
+				continue;
+			}
+			final float distance = (anchor == null) ? 0f : distance(anchor[0], anchor[1], unit.getX(), unit.getY());
+			if ((mine == null) || (distance < mineDistance)) {
+				mine = unit;
+				mineDistance = distance;
+			}
+		}
+		if (mine == null) {
+			return;
+		}
+		CUnit best = null;
+		float bestDistance = Float.MAX_VALUE;
+		for (final CUnit unit : ours()) {
+			if (unit.isDead() || unit.isHidden() || unit.isBuilding()) {
+				continue;
+			}
+			final COrder order = unit.getCurrentOrder();
+			if ((order != null) && (order.getOrderId() == OrderIds.entangle)) {
+				// One worker is already on it; nothing to add until it gets there.
+				return;
+			}
+			if (unit.getFirstAbilityOfType(CAbilityEntangleGoldMine.class) == null) {
+				continue;
+			}
+			final float distance = distance(unit.getX(), unit.getY(), mine.getX(), mine.getY());
+			if ((best == null) || (distance < bestDistance)) {
+				best = unit;
+				bestDistance = distance;
+			}
+		}
+		if ((best != null) && best.order(this.simulation, OrderIds.entangle, mine)) {
+			this.log.say("entangle", gameTurnTick,
+					"entangle: h=" + best.getHandleId() + " -> mine h=" + mine.getHandleId());
 		}
 	}
 
