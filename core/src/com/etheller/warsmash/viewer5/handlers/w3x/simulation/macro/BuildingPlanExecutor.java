@@ -228,6 +228,41 @@ public final class BuildingPlanExecutor {
 		if (next != null) {
 			execute(next, gameTurnTick);
 		}
+		else {
+			final TicketState blocker = blocking(states);
+			this.log.say("blocked", gameTurnTick,
+					"pass " + gameTurnTick + ": nothing the plan can do -- "
+							+ ((blocker == null) ? "the plan is empty"
+									: ("t" + blocker.getNumber() + " " + blocker.getTicket() + " is holding it: "
+											+ describe(blocker))));
+		}
+	}
+
+	/**
+	 * The ticket that keeps the whole plan idle, as {@link MacroRule#next} sees it: the first number still open that is
+	 * not ready. Null when no number is open, which means the plan has nothing left to ask for.
+	 */
+	private static TicketState blocking(final List<TicketState> states) {
+		final Set<Integer> numbers = new java.util.TreeSet<>();
+		for (final TicketState state : states) {
+			numbers.add(state.getNumber());
+		}
+		for (final Integer number : numbers) {
+			boolean anyLive = false;
+			for (final TicketState state : states) {
+				if ((state.getNumber() != number) || state.isStuck()) {
+					continue;
+				}
+				anyLive = true;
+				if (!state.isReady()) {
+					return state;
+				}
+			}
+			if (anyLive) {
+				return null;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -235,9 +270,8 @@ public final class BuildingPlanExecutor {
 	 * "no site for it" from "requirement not met yet" -- the three ways a plan looks like it is doing nothing.
 	 */
 	private void logStates(final List<TicketState> states, final int gameTurnTick) {
-		if ((gameTurnTick % 10) != 0) {
-			return;
-		}
+		// No tick gate here: transitions are already deduplicated against the last value, and a gate on the turn
+		// number silently swallowed every line, because passes land on the same turns every time.
 		for (final TicketState state : states) {
 			final String now = describe(state);
 			this.log.transition("ticket " + state.getNumber(), now,
@@ -356,10 +390,9 @@ public final class BuildingPlanExecutor {
 		final Set<War3ID> types = new LinkedHashSet<>();
 		for (final CUnit unit : ours()) {
 			types.add(unit.getTypeId());
-			final CAbilityUpgrade upgrade = unit.getFirstAbilityOfType(CAbilityUpgrade.class);
-			if (upgrade != null) {
-				types.addAll(upgrade.getUpgradesTo());
-			}
+			// The hall's upgrade targets are deliberately not added: "this could become a Tree of Ages" is not "there
+			// is a Tree of Ages", and adding them dropped the very ticket that would make one. What a hall already is
+			// or is becoming is enough, and LiveBaseDefaults.hallIsPast walks the upgrade chain for the rest.
 			final CAbilityQueue queue = unit.getFirstAbilityOfType(CAbilityQueue.class);
 			if (queue != null) {
 				for (final War3ID queued : unit.getBuildQueue()) {
