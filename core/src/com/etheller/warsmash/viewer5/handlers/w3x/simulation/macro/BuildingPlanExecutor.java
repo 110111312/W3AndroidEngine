@@ -20,7 +20,9 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitClassification;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
@@ -75,6 +77,10 @@ public final class BuildingPlanExecutor {
 	private static final float SITE_RADIUS_CEILING = 1800f;
 	private static final float BUILDING_GAP = 96f;
 	private static final float MINE_SEARCH_DISTANCE = 1600f;
+	/** How far from the base the plan looks for a tree, and how many of them it offers a worker. */
+	private static final float TREE_SEARCH_DISTANCE = 2500f;
+	private static final int TREE_TRIES = 6;
+	private static final int TREE_CACHE_TICKS = CTimer.wholeSteps(1);
 	/** How close a finished structure has to be to the point it was ordered at to count as this job's. */
 	private static final float LAID_DOWN_RADIUS = 64f;
 
@@ -89,6 +95,9 @@ public final class BuildingPlanExecutor {
 	private final Map<MacroTicket, float[]> sites = new IdentityHashMap<>();
 	private final MacroActivationReceiver receiver = new MacroActivationReceiver();
 	private final MacroLog log = new MacroLog();
+	/** The trees near the base, sorted by distance, so an idle worker does not re-scan the map every pass. */
+	private List<CDestructable> treeCache;
+	private int treeCacheTick = Integer.MIN_VALUE;
 
 	private boolean supplyPaused;
 	private boolean seeded;
@@ -410,26 +419,83 @@ public final class BuildingPlanExecutor {
 			if (!isIdle(unit)) {
 				continue;
 			}
-			CWidget target = lastHarvestTarget(unit);
-			if ((target == null) || target.isDead()) {
-				target = nearestMine(anchor());
-			}
-			if (target == null) {
-				this.log.say("restore-nomine", gameTurnTick,
-						"restore: h=" + unit.getHandleId() + " is idle but no gold mine was found to send it to");
-				return;
-			}
 			// `CUnit.order` is how the engine's own AI sends a worker back to work (AIHarvest.orderHarvestTarget):
 			// it picks the ability that both accepts the harvest order and can target this mine or tree. Choosing an
 			// ability handle here and handing it to issueTargetOrder silently failed instead: the first ability whose
 			// checkCanUse says yes is `CAbilityMove`, which says yes to every order id, so the order was built on the
 			// move ability and did nothing -- the worker stood idle for the rest of the mission.
-			final boolean ordered = unit.order(this.simulation, OrderIds.harvest, target);
-			this.log.say("restore-" + unit.getHandleId(), gameTurnTick, "restore: idle h=" + unit.getHandleId()
-					+ " -> harvest h=" + target.getHandleId() + " accepted=" + ordered);
+			final CWidget accepted = sendToHarvest(unit, gameTurnTick);
+			this.log.say("restore-" + unit.getHandleId(), gameTurnTick,
+					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted));
 			return;
 		}
 		this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
+	}
+
+	private static String describeTarget(final CWidget target) {
+		if (target == null) {
+			return "nothing (every candidate refused the harvest order)";
+		}
+		return ((target instanceof CDestructable) ? "tree " : "mine ") + target.getHandleId();
+	}
+
+	/**
+	 * Sends a worker to harvest something it will actually harvest, and reports the target it accepted.
+	 * <p>
+	 * The nearest gold mine is the right answer for a peasant, a peon or an acolyte and the wrong one for a wisp: a
+	 * wisp takes a tree, or the player's own entangled mine, and refuses a neutral one -- all it says is `false`. That
+	 * is what left wisps standing in The Broken Isles while every other worker gathered, so the candidates go in the
+	 * order the melee AI uses (`AIHarvest.orderHarvest`: the mine for gold, then up to six nearby trees for lumber)
+	 * and the first one the unit accepts wins.
+	 */
+	private CWidget sendToHarvest(final CUnit unit, final int gameTurnTick) {
+		final CWidget last = lastHarvestTarget(unit);
+		if ((last != null) && !last.isDead() && unit.order(this.simulation, OrderIds.harvest, last)) {
+			return last;
+		}
+		final CUnit mine = nearestMine(anchor());
+		if ((mine != null) && !mine.isDead() && unit.order(this.simulation, OrderIds.harvest, mine)) {
+			return mine;
+		}
+		int tries = 0;
+		for (final CDestructable tree : trees(anchor(), gameTurnTick)) {
+			if (tree.isDead()) {
+				continue;
+			}
+			if (tries++ >= TREE_TRIES) {
+				break;
+			}
+			if (unit.order(this.simulation, OrderIds.harvest, tree)) {
+				return tree;
+			}
+		}
+		// A worker carrying lumber only takes the return order: it puts the load down first and goes on from there.
+		// AIHarvest.orderHarvestTarget does exactly this on the same failure.
+		final CAbilityHarvest harvest = unit.getFirstAbilityOfType(CAbilityHarvest.class);
+		if ((harvest != null) && (harvest.getCarriedResourceAmount() > 0)) {
+			unit.order(this.simulation, OrderIds.returnresources, null);
+		}
+		return null;
+	}
+
+	private List<CDestructable> trees(final float[] anchor, final int gameTurnTick) {
+		if ((this.treeCache != null) && ((gameTurnTick - this.treeCacheTick) < TREE_CACHE_TICKS)) {
+			return this.treeCache;
+		}
+		this.treeCacheTick = gameTurnTick;
+		final List<CDestructable> near = new ArrayList<>();
+		if (anchor != null) {
+			for (final CDestructable destructable : this.simulation.getDestructables()) {
+				if (!destructable.isDead() && destructable.getDestType().getTargetedAs().contains(CTargetType.TREE)
+						&& (distance(anchor[0], anchor[1], destructable.getX(), destructable.getY()) < TREE_SEARCH_DISTANCE)) {
+					near.add(destructable);
+				}
+			}
+			near.sort((a, b) -> Float.compare(distance(anchor[0], anchor[1], a.getX(), a.getY()),
+					distance(anchor[0], anchor[1], b.getX(), b.getY())));
+		}
+		this.treeCache = near;
+		return near;
 	}
 
 	private static CWidget lastHarvestTarget(final CUnit unit) {
