@@ -90,6 +90,10 @@ class StaticStateTest {
 			"simulation.abilitybuilder.core.ABActionGuard#LOGGED_SITES",
 			// The script log file.
 			"interpreter.ast.util.JassLog#jassLogWriter",
+			// The plan's log file: one for the process, appended to from the game's own thread, so a run can be read
+			// from the storage instead of from a logcat ring that the engine fills in a couple of minutes.
+			"simulation.macro.MacroLog#file", "simulation.macro.MacroLog#fileBroken",
+			"simulation.macro.MacroLog#headerWritten",
 			// Tables of the generated script lexer.
 			"interpreter.JassLexer#channelNames", "interpreter.JassLexer#modeNames",
 			// Shared immutable small script integers.

@@ -289,6 +289,20 @@ public final class BuildingPlanExecutor {
 						+ cargo.getCargoCapacity() + " gold=" + (unit.getOverlayedGoldMineData() != null));
 			}
 		}
+		// Every mine on the map, ours or not, with what it takes to enter it: this is the line that says why no worker
+		// was sent to gold, which is otherwise indistinguishable from a map that has no mine at all.
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			final String type = unit.getUnitType().getTypeId().asStringValue();
+			if (!"ngol".equals(type) && !"egol".equals(type) && !"ugol".equals(type) && !"agol".equals(type)) {
+				continue;
+			}
+			MacroLog.line("gold: h=" + unit.getHandleId() + " type=" + type + " player="
+					+ unit.getPlayerIndex() + " dead=" + unit.isDead() + " entangled="
+					+ (unit.getFirstAbilityOfType(CAbilityEntangledMine.class) != null) + " overlay="
+					+ (unit.getOverlayedGoldMineData() != null) + " cargo="
+					+ ((unit.getCargoData() == null) ? "none"
+							: (unit.getCargoData().getCargoCount() + "/" + unit.getCargoData().getCargoCapacity())));
+		}
 	}
 
 	/**
