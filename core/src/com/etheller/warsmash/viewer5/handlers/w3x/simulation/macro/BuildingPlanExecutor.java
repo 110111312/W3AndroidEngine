@@ -1,6 +1,7 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -93,6 +94,11 @@ public final class BuildingPlanExecutor {
 	 * the limit the game gives a tree of gold: a sixth wisp there is a wisp standing still while the mine is full.
 	 */
 	private static final int GOLD_WORKERS_PER_MINE = 5;
+	/**
+	 * How long a worker that was sent to a mine and ended up idle again is kept off the mines. Standing at a full mine
+	 * for a minute and then being sent back to it is worse than chopping: the second order says nothing new.
+	 */
+	private static final int MINE_GIVE_UP_TICKS = CTimer.wholeSteps(60);
 	/** How close a finished structure has to be to the point it was ordered at to count as this job's. */
 	private static final float LAID_DOWN_RADIUS = 64f;
 
@@ -109,6 +115,8 @@ public final class BuildingPlanExecutor {
 	private final MacroLog log = new MacroLog();
 	/** The trees near the base, sorted by distance, so an idle worker does not re-scan the map every pass. */
 	private List<CDestructable> treeCache;
+	/** When each worker was last sent to a mine, so one that could not get in is not sent straight back. */
+	private final Map<Integer, Integer> mineOrders = new HashMap<>();
 	private int treeCacheTick = Integer.MIN_VALUE;
 
 	private boolean supplyPaused;
@@ -263,6 +271,14 @@ public final class BuildingPlanExecutor {
 		}
 		for (final MacroTicket ticket : tickets) {
 			this.plan.append(ticket);
+		}
+		for (final CUnit unit : ours()) {
+			final CAbilityCargoHold cargo = unit.getCargoData();
+			if (cargo != null) {
+				MacroLog.line("mine h=" + unit.getHandleId() + " type="
+						+ unit.getUnitType().getTypeId().asStringValue() + " cargo=" + cargo.getCargoCount() + "/"
+						+ cargo.getCargoCapacity() + " gold=" + (unit.getOverlayedGoldMineData() != null));
+			}
 		}
 	}
 
@@ -483,10 +499,13 @@ public final class BuildingPlanExecutor {
 			claimed.merge(last, 1, Integer::sum);
 			return last;
 		}
-		final CUnit ownMine = nearestOwnMine(anchor(), unit.getPlayerIndex(), claimed);
+		final Integer mineOrderTick = this.mineOrders.get(unit.getHandleId());
+		final boolean offMines = (mineOrderTick != null) && ((gameTurnTick - mineOrderTick) < MINE_GIVE_UP_TICKS);
+		final CUnit ownMine = offMines ? null : nearestOwnMine(anchor(), unit.getPlayerIndex(), claimed);
 		if (ownMine != null) {
 			if (unit.order(this.simulation, OrderIds.harvest, ownMine)) {
 				claimed.merge(ownMine, 1, Integer::sum);
+				this.mineOrders.put(unit.getHandleId(), gameTurnTick);
 				return ownMine;
 			}
 			this.log.say("own-mine-refused", gameTurnTick, "restore: h=" + unit.getHandleId() + " refused its own mine h="
@@ -494,9 +513,10 @@ public final class BuildingPlanExecutor {
 					+ (ownMine.getFirstAbilityOfType(CAbilityEntangledMine.class) != null) + " mine="
 					+ (ownMine.getGoldMineData() != null) + " cargo=" + (ownMine.getCargoData() != null));
 		}
-		final CUnit mine = nearestMine(anchor());
+		final CUnit mine = offMines ? null : nearestMine(anchor());
 		if ((mine != null) && !mine.isDead() && unit.order(this.simulation, OrderIds.harvest, mine)) {
 			claimed.merge(mine, 1, Integer::sum);
+			this.mineOrders.put(unit.getHandleId(), gameTurnTick);
 			return mine;
 		}
 		int tries = 0;
@@ -509,6 +529,7 @@ public final class BuildingPlanExecutor {
 			}
 			if (unit.order(this.simulation, OrderIds.harvest, tree)) {
 				claimed.merge(tree, 1, Integer::sum);
+				this.mineOrders.remove(unit.getHandleId());
 				return tree;
 			}
 		}
