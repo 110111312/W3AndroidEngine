@@ -18,6 +18,7 @@ import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.MovementType;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid.PathingFlags;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CGroupMove;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitData;
 
@@ -31,7 +32,7 @@ class CGroupMoveSlotsTest {
 	private static final int SIZE = 64;
 	private static final float COLLISION = 24f;
 	/** Eight cells square, about what an Ancient's pathing map covers, near the middle of the test map. */
-	private static final int BUILDING_CELL = 26;
+	private static final int BUILDING_CELL = 18;
 	private static final int BUILDING_CELLS = 8;
 	/** The point a block is sent to in the middle of that building, and how far off its slot may end up. */
 	private static final float TARGET_X = 640f;
@@ -166,6 +167,8 @@ class CGroupMoveSlotsTest {
 			final CUnitMovementState movement = new CUnitMovementState();
 			movement.movementOverride = MovementType.FOOT;
 			TestObjects.set(unit, "movement", movement);
+			// A unit reads its movement type as DISABLED without a move behavior, and an immovable unit takes no slot.
+			TestObjects.set(unit, "moveBehavior", TestObjects.allocate(CBehaviorMove.class));
 			TestObjects.set(unit, "x", positions[i * 2]);
 			TestObjects.set(unit, "y", positions[(i * 2) + 1]);
 			units.add(unit);
