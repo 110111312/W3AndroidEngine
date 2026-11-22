@@ -68,6 +68,12 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildin
 public final class BuildingPlanExecutor {
 	/** How often the plan is looked at, in steps. One pass a second is the AI's own pace. */
 	public static final int PLAN_PASS_TICKS = CTimer.wholeSteps(1);
+	/**
+	 * How many passes the seed waits for the first worker. A script places a base's structures before it makes the
+	 * workers, so a base read in that gap has no builder, no race, and produces an empty plan. Ten passes is half a
+	 * minute: every map that gives a worker at all gives it well inside that.
+	 */
+	private static final int SEED_WAITS_FOR_WORKER = 10;
 	/** A build job older than this is given up: a worker that never arrived must not hold the plan forever. */
 	private static final int JOB_TIMEOUT_TICKS = CTimer.wholeSteps(90);
 	/** How long a job is given to start before the worker's order is taken as a refusal. */
@@ -265,12 +271,21 @@ public final class BuildingPlanExecutor {
 			this.log.say("waiting", gameTurnTick, "seed: waiting for the base -- nothing of ours exists yet");
 			return;
 		}
-		this.seeded = true;
 		this.baseReadable = (this.simulation.getUnitData() != null);
 		if (!this.baseReadable) {
+			this.seeded = true;
 			this.log.say("noseed", gameTurnTick, "seed: the techtree cannot be read, so the plan stays empty");
 			return;
 		}
+		if (!hasWorker() && (this.seedWaits++ < SEED_WAITS_FOR_WORKER)) {
+			// A script places the structures before it makes the workers, and a base read in that gap has no builder
+			// in it: no race either, so the plan comes back empty and the mission runs on the supply line alone. Give
+			// the map those few seconds. The wait is bounded, because a map that really has no worker must still seed
+			// -- the harvest sweep and the supply line do not need one to be seeded.
+			this.log.say("waiting-worker", gameTurnTick, "seed: waiting for the first worker -- the base has no builder yet");
+			return;
+		}
+		this.seeded = true;
 		final CUnitRace race = playerRace();
 		final List<PlanTypeFacts> buildable = buildableFacts();
 		final War3ID military = LiveBaseDefaults.militaryType(buildable, typeFacts());
@@ -1094,6 +1109,9 @@ public final class BuildingPlanExecutor {
 		}
 		return units;
 	}
+
+	/** Passes spent waiting for the first worker, so the wait above is bounded. */
+	private int seedWaits;
 
 	private boolean hasWorker() {
 		for (final CUnit unit : ours()) {
