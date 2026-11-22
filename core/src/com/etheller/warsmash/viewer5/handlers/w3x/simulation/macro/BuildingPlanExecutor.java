@@ -424,6 +424,11 @@ public final class BuildingPlanExecutor {
 			this.log.say("restore-busy", gameTurnTick, "restore: a build job is running, workers left alone");
 			return;
 		}
+		// One pass sends every idle worker, not just the first: a pass is a second apart, so a queue of wisps used to
+		// stand around for a second each waiting to be told where to go. What they are sent to is recorded as the pass
+		// goes, so the second worker does not pick the tree the first one just claimed.
+		final Map<CWidget, Integer> claimed = new IdentityHashMap<>();
+		int ordered = 0;
 		for (final CUnit unit : ours()) {
 			if (unit.isDead() || unit.isHidden() || unit.isBuilding() || unit.isLoaded()
 					|| (buildAbility(unit) == null)) {
@@ -437,22 +442,25 @@ public final class BuildingPlanExecutor {
 			// ability handle here and handing it to issueTargetOrder silently failed instead: the first ability whose
 			// checkCanUse says yes is `CAbilityMove`, which says yes to every order id, so the order was built on the
 			// move ability and did nothing -- the worker stood idle for the rest of the mission.
-			final CWidget accepted = sendToHarvest(unit, gameTurnTick);
+			final CWidget accepted = sendToHarvest(unit, gameTurnTick, claimed);
+			ordered++;
 			this.log.say("restore-" + unit.getHandleId(), gameTurnTick,
-					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted, unit));
-			return;
+					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted, unit, claimed));
 		}
-		this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
+		if (ordered == 0) {
+			this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
+		}
 	}
 
-	private String describeTarget(final CWidget target, final CUnit worker) {
+	private String describeTarget(final CWidget target, final CUnit worker,
+			final Map<CWidget, Integer> claimed) {
 		if (target == null) {
 			return "nothing (every candidate refused the harvest order)";
 		}
 		if (target instanceof CDestructable) {
 			return "tree " + target.getHandleId() + " (distance "
 					+ (int) distance(worker.getX(), worker.getY(), target.getX(), target.getY()) + ", crowd "
-					+ workersAt((CDestructable) target, worker) + ")";
+					+ workersAt((CDestructable) target, worker, claimed) + ")";
 		}
 		return "mine " + target.getHandleId();
 	}
@@ -468,14 +476,17 @@ public final class BuildingPlanExecutor {
 	 * last at, its own gold mine, the nearest base mine, the nearest trees, and finally the return order for a worker
 	 * that is carrying something.
 	 */
-	private CWidget sendToHarvest(final CUnit unit, final int gameTurnTick) {
+	private CWidget sendToHarvest(final CUnit unit, final int gameTurnTick,
+			final Map<CWidget, Integer> claimed) {
 		final CWidget last = lastHarvestTarget(unit);
 		if ((last != null) && !last.isDead() && unit.order(this.simulation, OrderIds.harvest, last)) {
+			claimed.merge(last, 1, Integer::sum);
 			return last;
 		}
-		final CUnit ownMine = nearestOwnMine(anchor(), unit.getPlayerIndex());
+		final CUnit ownMine = nearestOwnMine(anchor(), unit.getPlayerIndex(), claimed);
 		if (ownMine != null) {
 			if (unit.order(this.simulation, OrderIds.harvest, ownMine)) {
+				claimed.merge(ownMine, 1, Integer::sum);
 				return ownMine;
 			}
 			this.log.say("own-mine-refused", gameTurnTick, "restore: h=" + unit.getHandleId() + " refused its own mine h="
@@ -485,10 +496,11 @@ public final class BuildingPlanExecutor {
 		}
 		final CUnit mine = nearestMine(anchor());
 		if ((mine != null) && !mine.isDead() && unit.order(this.simulation, OrderIds.harvest, mine)) {
+			claimed.merge(mine, 1, Integer::sum);
 			return mine;
 		}
 		int tries = 0;
-		for (final CDestructable tree : treesToTry(unit, gameTurnTick)) {
+		for (final CDestructable tree : treesToTry(unit, gameTurnTick, claimed)) {
 			if (tree.isDead()) {
 				continue;
 			}
@@ -496,6 +508,7 @@ public final class BuildingPlanExecutor {
 				break;
 			}
 			if (unit.order(this.simulation, OrderIds.harvest, tree)) {
+				claimed.merge(tree, 1, Integer::sum);
 				return tree;
 			}
 		}
@@ -516,7 +529,8 @@ public final class BuildingPlanExecutor {
 	 * sent across them, because the base was nearer to the tree than the worker was. Sorting by the worker fixes the
 	 * walk; preferring a tree with nobody at it is what makes a group fan out instead of queueing at one trunk.
 	 */
-	private List<CDestructable> treesToTry(final CUnit worker, final int gameTurnTick) {
+	private List<CDestructable> treesToTry(final CUnit worker, final int gameTurnTick,
+			final Map<CWidget, Integer> claimed) {
 		final List<CDestructable> candidates = new ArrayList<>();
 		for (final CDestructable tree : trees(anchor(), gameTurnTick)) {
 			if (!tree.isDead()) {
@@ -528,7 +542,7 @@ public final class BuildingPlanExecutor {
 		final List<CDestructable> nearest = new ArrayList<>(
 				candidates.subList(0, Math.min(TREE_CANDIDATES, candidates.size())));
 		nearest.sort((a, b) -> {
-			final int crowd = Integer.compare(workersAt(a, worker), workersAt(b, worker));
+			final int crowd = Integer.compare(workersAt(a, worker, claimed), workersAt(b, worker, claimed));
 			return (crowd != 0) ? crowd
 					: Float.compare(distance(worker.getX(), worker.getY(), a.getX(), a.getY()),
 							distance(worker.getX(), worker.getY(), b.getX(), b.getY()));
@@ -540,7 +554,7 @@ public final class BuildingPlanExecutor {
 	 * The workers already chopping this tree, or standing at it. Workers only: a Tree of Life or a Moon Well standing
 	 * beside a tree is not chopping it, and counting the base as a crowd pushed the pick across the woods.
 	 */
-	private int workersAt(final CDestructable tree, final CUnit chopping) {
+	private int workersAt(final CDestructable tree, final CUnit chopping, final Map<CWidget, Integer> claimed) {
 		int workers = 0;
 		for (final CUnit unit : ours()) {
 			if ((unit == chopping) || unit.isDead() || unit.isHidden() || unit.isBuilding() || unit.isLoaded()
@@ -556,7 +570,7 @@ public final class BuildingPlanExecutor {
 				workers++;
 			}
 		}
-		return workers;
+		return workers + claimed.getOrDefault(tree, 0);
 	}
 
 	private List<CDestructable> trees(final float[] anchor, final int gameTurnTick) {
@@ -586,7 +600,8 @@ public final class BuildingPlanExecutor {
 	 * let a queue of wisps pile up outside a full mine and bounce off it for a while before giving up and going to the
 	 * trees. With the walkers counted, the sixth wisp is sent to lumber at once, and a second mine gets its own five.
 	 */
-	private CUnit nearestOwnMine(final float[] anchor, final int playerIndex) {
+	private CUnit nearestOwnMine(final float[] anchor, final int playerIndex,
+			final Map<CWidget, Integer> claimed) {
 		if (anchor == null) {
 			return null;
 		}
@@ -599,7 +614,7 @@ public final class BuildingPlanExecutor {
 			final CAbilityCargoHold cargo = unit.getCargoData();
 			final int holds = (cargo == null) ? GOLD_WORKERS_PER_MINE
 					: Math.min(GOLD_WORKERS_PER_MINE, cargo.getCargoCapacity());
-			if (workersOnMine(unit) >= holds) {
+			if ((workersOnMine(unit) + claimed.getOrDefault(unit, 0)) >= holds) {
 				continue;
 			}
 			final float distance = distance(anchor[0], anchor[1], unit.getX(), unit.getY());
