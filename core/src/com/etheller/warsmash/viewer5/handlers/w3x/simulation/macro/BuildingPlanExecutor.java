@@ -229,35 +229,22 @@ public final class BuildingPlanExecutor {
 			execute(next, gameTurnTick);
 		}
 		else {
-			final TicketState blocker = blocking(states);
-			final String holding = (blocker == null) ? "the plan is empty"
-					: ("t" + blocker.getNumber() + " " + blocker.getTicket() + " is holding it: " + describe(blocker));
-			this.log.transition("blocked", holding, "pass " + gameTurnTick + ": blocked -- " + holding);
+			final TicketState waiting = firstWaiting(states);
+			final String idle = (waiting == null) ? "the plan is empty"
+					: ("t" + waiting.getNumber() + " " + waiting.getTicket() + " is waiting: " + describe(waiting));
+			this.log.transition("blocked", idle, "pass " + gameTurnTick + ": nothing to buy -- " + idle);
 		}
 	}
 
 	/**
-	 * The ticket that keeps the whole plan idle, as {@link MacroRule#next} sees it: the first number still open that is
-	 * not ready. Null when no number is open, which means the plan has nothing left to ask for.
+	 * Why nothing was bought: the first ticket that is neither stuck nor ready, which is as close to a reason as one
+	 * ticket gets when the answer is "every plan is waiting for gold, or for an order of its own". Null when every
+	 * ticket is stuck, which reads as an empty plan.
 	 */
-	private static TicketState blocking(final List<TicketState> states) {
-		final Set<Integer> numbers = new java.util.TreeSet<>();
+	private static TicketState firstWaiting(final List<TicketState> states) {
 		for (final TicketState state : states) {
-			numbers.add(state.getNumber());
-		}
-		for (final Integer number : numbers) {
-			boolean anyLive = false;
-			for (final TicketState state : states) {
-				if ((state.getNumber() != number) || state.isStuck()) {
-					continue;
-				}
-				anyLive = true;
-				if (!state.isReady()) {
-					return state;
-				}
-			}
-			if (anyLive) {
-				return null;
+			if (!state.isStuck() && !state.isReady()) {
+				return state;
 			}
 		}
 		return null;
