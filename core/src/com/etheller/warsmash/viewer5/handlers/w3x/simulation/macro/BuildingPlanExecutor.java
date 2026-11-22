@@ -34,7 +34,6 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildingIntersector;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityActivationReceiver;
 
 /**
  * The building plan, executed.
@@ -89,7 +88,6 @@ public final class BuildingPlanExecutor {
 	/** Where each otherwise-ready ticket would go, found once so the pass does not search twice. */
 	private final Map<MacroTicket, float[]> sites = new IdentityHashMap<>();
 	private final MacroActivationReceiver receiver = new MacroActivationReceiver();
-	private final BooleanAbilityActivationReceiver harvestReceiver = BooleanAbilityActivationReceiver.INSTANCE;
 
 	private boolean supplyPaused;
 	private boolean seeded;
@@ -374,8 +372,12 @@ public final class BuildingPlanExecutor {
 			if (target == null) {
 				return;
 			}
-			this.listener.issueTargetOrder(unit.getHandleId(), harvestAbilityHandle(unit), OrderIds.harvest,
-					target.getHandleId(), false);
+			// `CUnit.order` is how the engine's own AI sends a worker back to work (AIHarvest.orderHarvestTarget):
+			// it picks the ability that both accepts the harvest order and can target this mine or tree. Choosing an
+			// ability handle here and handing it to issueTargetOrder silently failed instead: the first ability whose
+			// checkCanUse says yes is `CAbilityMove`, which says yes to every order id, so the order was built on the
+			// move ability and did nothing -- the worker stood idle for the rest of the mission.
+			unit.order(this.simulation, OrderIds.harvest, target);
 			return;
 		}
 	}
@@ -387,21 +389,6 @@ public final class BuildingPlanExecutor {
 			}
 		}
 		return null;
-	}
-
-	/**
-	 * The handle of whichever harvest ability this worker carries, asked rather than class-tested: an acolyte, a wisp
-	 * and a peon each have a different one, and the engine already answers "does this ability take a harvest order".
-	 */
-	private int harvestAbilityHandle(final CUnit worker) {
-		for (final CAbility ability : worker.getAbilities()) {
-			ability.checkCanUse(this.simulation, worker, this.playerIndex, OrderIds.harvest, false,
-					this.harvestReceiver.reset());
-			if (this.harvestReceiver.isOk()) {
-				return ability.getHandleId();
-			}
-		}
-		return 0;
 	}
 
 	// ------------------------------------------------------------------ supply
