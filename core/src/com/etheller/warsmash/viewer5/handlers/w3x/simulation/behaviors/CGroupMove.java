@@ -18,6 +18,10 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.pathing.CPathPoint;
  * units already nearest the front; within a row they keep their order from left to right, and a short last row
  * spreads over the outer lanes. A group move walks at the speed of its slowest unit still on the way, and a script
  * group order reaches at most 12 units.
+ * <p>
+ * A slot is a place a unit is asked to stand, and the ground decides whether that is possible: one laid over a
+ * building, a tree, a cliff or water is moved to the nearest cell the unit can stand on ({@link #snapToWalkable}), so
+ * the block steps around what is in its way instead of running at it.
  */
 public final class CGroupMove {
 	public static final int MAX_SCRIPT_GROUP_ORDER_UNITS = 12;
@@ -190,7 +194,28 @@ public final class CGroupMove {
 				result[(index * 2) + 1] = targetY + (dirY * alongOffset) + (leftY * sideOffset);
 			}
 		}
+		snapToWalkable(simulation, units, result);
 		return result;
+	}
+
+	/**
+	 * Moves the slots that landed on ground their unit cannot stand on - a building's footprint, a tree, a cliff, water -
+	 * to the nearest cell it can. A slot is invented here rather than given by the player or a script, so nothing else
+	 * bounds it: a block laid over a moonwell otherwise orders that unit at the wall, where it can never arrive, and the
+	 * order is re-issued with the block. Slots on ground the search says nothing about (no map yet) and slots that are
+	 * already fine are left exactly as they are; so are blocks of one, whose point is the caller's own.
+	 */
+	public static void snapToWalkable(final CSimulation simulation, final List<CUnit> units, final float[] slots) {
+		if ((simulation == null) || (units.size() < 2)) {
+			return;
+		}
+		for (int i = 0; i < units.size(); i++) {
+			final float[] standable = simulation.nearestStandablePoint(units.get(i), slots[i * 2], slots[(i * 2) + 1]);
+			if (standable != null) {
+				slots[i * 2] = standable[0];
+				slots[(i * 2) + 1] = standable[1];
+			}
+		}
 	}
 
 	/**

@@ -202,6 +202,9 @@ public final class CHeroArmy {
 		}
 		final float[] slots = CGroupMove.slots(simulation, walkers.units, frontX, frontY);
 		placeBehind(slots, frontX, frontY, dirX, dirY);
+		// placeBehind moves the whole block back by up to a row, which can push a slot the walkable-ground search of
+		// slots() had just lifted out of a building back into it.
+		CGroupMove.snapToWalkable(simulation, walkers.units, slots);
 		final List<Integer> kept = new ArrayList<>();
 		for (int i = 0; i < walkers.units.size(); i++) {
 			final CUnit unit = walkers.units.get(i);
