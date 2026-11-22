@@ -232,8 +232,7 @@ public final class BuildingPlanExecutor {
 			final TicketState blocker = blocking(states);
 			final String holding = (blocker == null) ? "the plan is empty"
 					: ("t" + blocker.getNumber() + " " + blocker.getTicket() + " is holding it: " + describe(blocker));
-			this.log.transition("blocked", holding,
-					"pass " + gameTurnTick + ": nothing the plan can do -- " + holding);
+			this.log.transition("blocked", holding, "pass " + gameTurnTick + ": blocked -- " + holding);
 		}
 	}
 
@@ -337,8 +336,20 @@ public final class BuildingPlanExecutor {
 		final CUnitRace race = playerRace();
 		final List<PlanTypeFacts> buildable = buildableFacts();
 		final War3ID military = LiveBaseDefaults.militaryType(buildable, typeFacts());
-		final List<MacroTicket> tickets = LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(),
-				military);
+		final List<MacroTicket> wanted = new ArrayList<>();
+		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
+		for (final MacroTicket ticket : LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(),
+				military)) {
+			// A mission can forbid a structure outright with a tech limit of zero, which is what the Night Elf
+			// campaign does to the Tree of Eternity and the Ancient of Wind. Those are not "not yet": no amount of
+			// gold buys one, so seeding them would only leave the plan with tickets that can never run.
+			if ((player != null) && (player.getTechtreeMaxAllowed(ticket.getRawcode()) == 0)) {
+				MacroLog.line("  skipped " + ticket + ": the mission allows none of it");
+				continue;
+			}
+			wanted.add(ticket);
+		}
+		final List<MacroTicket> tickets = wanted;
 		MacroLog.line("seed: race=" + race + " worker=" + hasWorker() + " owned=" + owned.size() + " plan="
 				+ tickets.size());
 		for (int i = 0; i < tickets.size(); i++) {
