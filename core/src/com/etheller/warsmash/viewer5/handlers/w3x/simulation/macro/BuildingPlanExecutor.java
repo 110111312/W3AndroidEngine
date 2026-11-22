@@ -2,6 +2,7 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -119,6 +120,12 @@ public final class BuildingPlanExecutor {
 	private List<CDestructable> treeCache;
 	/** When each worker was last sent to a mine, so one that could not get in is not sent straight back. */
 	private final Map<Integer, Integer> mineOrders = new HashMap<>();
+	/**
+	 * Workers that have just finished a structure. They go to lumber next, not to the mine: the plan promised the
+	 * builder returns to harvesting between jobs, and for a Night Elf wisp "harvesting" used to mean the gold trip
+	 * even when the worker had never been on gold.
+	 */
+	private final Set<Integer> justBuilt = new HashSet<>();
 	private int treeCacheTick = Integer.MIN_VALUE;
 
 	private boolean supplyPaused;
@@ -356,6 +363,7 @@ public final class BuildingPlanExecutor {
 			final BuildJob job = it.next();
 			if (laidDown(job)) {
 				it.remove();
+				this.justBuilt.add(job.worker.getHandleId());
 				if (job.ticket != null) {
 					this.plan.remove(job.ticket);
 					this.issues.remove(job.ticket);
@@ -447,6 +455,8 @@ public final class BuildingPlanExecutor {
 		// goes, so the second worker does not pick the tree the first one just claimed.
 		final Map<CWidget, Integer> claimed = new IdentityHashMap<>();
 		int ordered = 0;
+		int toMine = 0;
+		int toWood = 0;
 		for (final CUnit unit : ours()) {
 			if (unit.isDead() || unit.isHidden() || unit.isBuilding() || unit.isLoaded()
 					|| (buildAbility(unit) == null)) {
@@ -462,11 +472,22 @@ public final class BuildingPlanExecutor {
 			// move ability and did nothing -- the worker stood idle for the rest of the mission.
 			final CWidget accepted = sendToHarvest(unit, gameTurnTick, claimed);
 			ordered++;
+			if (accepted instanceof CDestructable) {
+				toWood++;
+			}
+			else if (accepted != null) {
+				toMine++;
+			}
 			this.log.say("restore-" + unit.getHandleId(), gameTurnTick,
 					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted, unit, claimed));
 		}
 		if (ordered == 0) {
 			this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
+		}
+		else {
+			// The shape of a sweep in one line: five to the mine, the rest to lumber is what a healthy base looks like.
+			this.log.say("restore-summary", gameTurnTick,
+					"restore: " + ordered + " idle -> mine " + toMine + ", wood " + toWood);
 		}
 	}
 
@@ -496,6 +517,14 @@ public final class BuildingPlanExecutor {
 	 */
 	private CWidget sendToHarvest(final CUnit unit, final int gameTurnTick,
 			final Map<CWidget, Integer> claimed) {
+		// A worker that has just finished a structure goes to lumber, as the plan promises: the mine already has its
+		// five, and a wisp walking to the mine to be turned away is a walk for nothing.
+		if (this.justBuilt.remove(unit.getHandleId())) {
+			final CDestructable justBuiltLumber = sendToTree(unit, gameTurnTick, claimed);
+			if (justBuiltLumber != null) {
+				return justBuiltLumber;
+			}
+		}
 		final CWidget last = lastHarvestTarget(unit);
 		if ((last != null) && !last.isDead() && unit.order(this.simulation, OrderIds.harvest, last)) {
 			claimed.merge(last, 1, Integer::sum);
@@ -540,6 +569,26 @@ public final class BuildingPlanExecutor {
 		final CAbilityHarvest harvest = unit.getFirstAbilityOfType(CAbilityHarvest.class);
 		if ((harvest != null) && (harvest.getCarriedResourceAmount() > 0)) {
 			unit.order(this.simulation, OrderIds.returnresources, null);
+		}
+		return null;
+	}
+
+	/** The tree this worker takes, or null if every tree it was offered refused the order. */
+	private CDestructable sendToTree(final CUnit unit, final int gameTurnTick,
+			final Map<CWidget, Integer> claimed) {
+		int tries = 0;
+		for (final CDestructable tree : treesToTry(unit, gameTurnTick, claimed)) {
+			if (tree.isDead()) {
+				continue;
+			}
+			if (tries++ >= TREE_TRIES) {
+				break;
+			}
+			if (unit.order(this.simulation, OrderIds.harvest, tree)) {
+				claimed.merge(tree, 1, Integer::sum);
+				this.mineOrders.remove(unit.getHandleId());
+				return tree;
+			}
 		}
 		return null;
 	}
@@ -693,6 +742,14 @@ public final class BuildingPlanExecutor {
 		int inFlight = 0;
 		for (final BuildJob job : this.jobs) {
 			if (job.typeId.equals(supplyType)) {
+				inFlight++;
+			}
+		}
+		// A supply building that is still going up counts as one in flight. Its food arrives only when it is finished,
+		// so without this the line wanted the next one the moment the foundation appeared, ordered it, and left a
+		// trail of foundations with a worker walking from one to the next.
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead() && unit.getTypeId().equals(supplyType) && unit.isConstructing()) {
 				inFlight++;
 			}
 		}
@@ -968,7 +1025,7 @@ public final class BuildingPlanExecutor {
 			if ((build == null) || !build.getStructuresBuilt().contains(rawcode)) {
 				continue;
 			}
-			if (hasJob(unit) || (!allowGoldGatherers && isGoldGatherer(unit))) {
+			if (hasJob(unit) || isBuilding(unit) || (!allowGoldGatherers && isGoldGatherer(unit))) {
 				continue;
 			}
 			final float distance = (anchor == null) ? 0f : distance(unit.getX(), unit.getY(), anchor[0], anchor[1]);
