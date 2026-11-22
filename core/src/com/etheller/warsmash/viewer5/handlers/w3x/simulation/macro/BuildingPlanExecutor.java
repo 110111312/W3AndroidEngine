@@ -505,6 +505,9 @@ public final class BuildingPlanExecutor {
 			// The shape of a sweep in one line: five to the mine, the rest to lumber is what a healthy base looks like.
 			this.log.say("restore-summary", gameTurnTick,
 					"restore: " + ordered + " idle -> mine " + toMine + ", wood " + toWood);
+			if (toMine == 0) {
+				mineCensus(gameTurnTick, claimed);
+			}
 		}
 	}
 
@@ -562,6 +565,29 @@ public final class BuildingPlanExecutor {
 		if ((best != null) && best.order(this.simulation, OrderIds.entangle, mine)) {
 			this.log.say("entangle", gameTurnTick,
 					"entangle: h=" + best.getHandleId() + " -> mine h=" + mine.getHandleId());
+		}
+	}
+
+	/**
+	 * Why no worker went to gold, in one line per mine: "nobody went to the mine" has four causes that look identical
+	 * from the phone -- no mine at all, a mine that is somebody else's, a plain mine nobody can enter, and a mine that
+	 * is already full -- and the sweep alone cannot tell them apart.
+	 */
+	private void mineCensus(final int gameTurnTick, final Map<CWidget, Integer> claimed) {
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			final CAbilityGoldMinable gold = unit.getGoldMineData();
+			if ((gold == null) || unit.isDead()) {
+				continue;
+			}
+			final CAbilityCargoHold cargo = unit.getCargoData();
+			this.log.say("census-" + unit.getHandleId(), gameTurnTick,
+					"gold: h=" + unit.getHandleId() + " type=" + unit.getUnitType().getTypeId().asStringValue()
+							+ " player=" + unit.getPlayerIndex() + " ours=" + this.playerIndex + " base=" + gold.isBaseMine()
+							+ " hidden=" + unit.isHidden() + " entangle="
+							+ (unit.getFirstAbilityOfType(CAbilityEntangledMine.class) != null) + " overlay="
+							+ (unit.getOverlayedGoldMineData() != null) + " cargo="
+							+ ((cargo == null) ? "none" : (cargo.getCargoCount() + "/" + cargo.getCargoCapacity()))
+							+ " workers=" + workersOnMine(unit) + " claimed=" + claimed.getOrDefault(unit, 0));
 		}
 	}
 
