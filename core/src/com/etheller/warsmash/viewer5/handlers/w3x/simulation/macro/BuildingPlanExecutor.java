@@ -27,6 +27,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.cargohold.CAbilityCargoHold;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorBoardTransport;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.queue.CAbilityQueue;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.upgrade.CAbilityUpgrade;
@@ -83,6 +84,11 @@ public final class BuildingPlanExecutor {
 	private static final float TREE_SEARCH_DISTANCE = 2500f;
 	private static final int TREE_TRIES = 6;
 	private static final int TREE_CACHE_TICKS = CTimer.wholeSteps(1);
+	/**
+	 * How many workers one of the player's own gold mines takes. Five is what an entangled mine holds, which is also
+	 * the limit the game gives a tree of gold: a sixth wisp there is a wisp standing still while the mine is full.
+	 */
+	private static final int GOLD_WORKERS_PER_MINE = 5;
 	/** How close a finished structure has to be to the point it was ordered at to count as this job's. */
 	private static final float LAID_DOWN_RADIUS = 64f;
 
@@ -415,7 +421,8 @@ public final class BuildingPlanExecutor {
 			return;
 		}
 		for (final CUnit unit : ours()) {
-			if (unit.isDead() || unit.isHidden() || unit.isBuilding() || (buildAbility(unit) == null)) {
+			if (unit.isDead() || unit.isHidden() || unit.isBuilding() || unit.isLoaded()
+					|| (buildAbility(unit) == null)) {
 				continue;
 			}
 			if (!isIdle(unit)) {
@@ -513,9 +520,12 @@ public final class BuildingPlanExecutor {
 	}
 
 	/**
-	 * The player's own gold mine: the entangled mine a wisp can enter and the haunted mine an acolyte can, which are
-	 * separate units in front of a base mine rather than the base mine itself. A mine whose cargo is full is skipped so
-	 * a wisp is not ordered into a hold that has no room for it.
+	 * The player's own gold mine with room for another worker: the entangled mine a wisp can enter and the haunted mine
+	 * an acolyte can, which are separate units in front of a base mine rather than the base mine itself.
+	 * <p>
+	 * A mine counts the workers inside it and the workers walking to it, because counting only the ones already inside
+	 * let a queue of wisps pile up outside a full mine and bounce off it for a while before giving up and going to the
+	 * trees. With the walkers counted, the sixth wisp is sent to lumber at once, and a second mine gets its own five.
 	 */
 	private CUnit nearestOwnMine(final float[] anchor, final int playerIndex) {
 		if (anchor == null) {
@@ -528,7 +538,9 @@ public final class BuildingPlanExecutor {
 				continue;
 			}
 			final CAbilityCargoHold cargo = unit.getCargoData();
-			if ((cargo != null) && (cargo.getCargoCount() >= cargo.getCargoCapacity())) {
+			final int holds = (cargo == null) ? GOLD_WORKERS_PER_MINE
+					: Math.min(GOLD_WORKERS_PER_MINE, cargo.getCargoCapacity());
+			if (workersOnMine(unit) >= holds) {
 				continue;
 			}
 			final float distance = distance(anchor[0], anchor[1], unit.getX(), unit.getY());
@@ -538,6 +550,24 @@ public final class BuildingPlanExecutor {
 			}
 		}
 		return best;
+	}
+
+	/** The workers already working a mine: those inside it, and those on their way in. */
+	private int workersOnMine(final CUnit mine) {
+		int workers = 0;
+		final CAbilityCargoHold cargo = mine.getCargoData();
+		if (cargo != null) {
+			workers += cargo.getCargoCount();
+		}
+		for (final CUnit unit : ours()) {
+			if (unit != mine) {
+				final CBehaviorBoardTransport board = unit.getBoardTransportBehavior();
+				if ((board != null) && (unit.getCurrentBehavior() == board) && (board.getTarget() == mine)) {
+					workers++;
+				}
+			}
+		}
+		return workers;
 	}
 
 	private static CWidget lastHarvestTarget(final CUnit unit) {
