@@ -127,17 +127,21 @@ at a good moment, with an obvious consequence.
 - **the building plan** (with research and upgrades): a numbered list of what the base does next. A number runs
   when affordable — same-number tickets compete, whatever has the gold first — and is done before the next starts,
   except requirement-stuck tickets, which never block anyone. One construction job at a time, the builder returns to
-  harvesting between jobs, placement is automatic near the base. A supply line above the list keeps the food cap
-  ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
+  harvesting between jobs, placement is automatic near the base. A supply line above the list keeps the food cap a
+  headroom of seven ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
 - **the unit plan**: the same animal as the building plan — numbered tickets, one numbering shared across both
   lists. A finished ticket disappears and the unit joins the owned counts; there are no standing rows and no
   self-refill, so after a fight the player re-adds by hand (two taps, because the available grid shows owned
   counts). Workers are tickets too.
 - **see the army**: how many units, what they are, whether they are alive — the available grid's owned counts are it.
 
-Defaults are derived from the live base, so they differ per mission by themselves: a campaign mission that starts
-with a barracks does not get a second one, a mission with no workers gets an inert plan, and a techtree the rules
-cannot read degrades to doing nothing. No per-campaign tables unless a real mission proves one necessary.
+The default is the race's whole order — buildings, then the hall's tiers, then the researches those buildings
+unlock — read off the sequence the melee AI builds in when nothing goes wrong. What makes it fit a mission is the
+filter: the live base drops the lines for anything the player owns, is building, has queued or would get from a hall
+upgrade, and a hall already past a tier is not asked for it. So a campaign mission that starts with a barracks keeps
+the rest of the order, a mission with no workers gets an inert plan, a techtree the rules cannot read degrades to
+doing nothing, and a base that has out-built the list has nothing to do. No per-campaign tables: the base is the
+table.
 
 The panel is settled: `docs/mockups/macro-panel.html`.
 
@@ -159,6 +163,7 @@ The point of this section is that none of it needs a rewrite: the engine already
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
 | the plan executor | `AIProduction.java:142-213` (producer scan, train, `requirementsMet`/`canAfford` at `:106-128`), `AIConstruction.java:35-65` (free worker), `:246-285` (site search), `:175-180` (obstruction test), `AIHarvest.java:74-120` (idle-worker sweep), `CSimulation.getDefaultPlayerUnitOrderExecutor` (`:1765-1767`) | **the computer AI is the template, not only the enemy's** — its primitives are engine Java, package-private and JASS-driven today; hero mode's executor copies the shapes and issues through the replay-safe per-player executor |
+| the plan executor, as built (E1) | `simulation/macro/` — `BuildingPlanExecutor` (the pass), `MacroRule` (the numbering), `MacroSupplyRule` (the supply line), `LiveBaseDefaults` (the defaults), `MacroPlacement` (sites), `MacroPlan`/`MacroTicket` (what E3 edits) | **built**: the decisions are pure functions of plain values, so the numbering rules are proved by `:core:test` rather than by a phone; affordability and stuckness are asked of the ability itself (`AbilityActivationReceiver`) rather than re-derived, and every order goes out through `CPlayerUnitOrderListener` |
 | income (rally-harvest) | `CUnitUpdate.java:332-348` → `CAbilityHarvest.java:225-270` | **already works**: a worker trained with a rally point on a mine or a tree starts gathering on its own |
 | computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | the *enemy* keeps playing RTS; its economy is also the template for the player's plan executor (see above) |
 
@@ -216,8 +221,11 @@ Settled, and no longer up for renegotiation without a good reason:
     counts as fighting when it is attacking, attack-moving, walking to a target it already picked, or standing with an
     enemy inside its own acquisition range; the last case is what keeps the army from marching through a battle to
     reach its slots, and it is bounded by the same 1000 retreat, so it cannot keep a unit away for good.
-17. **The army is every movable unit the local player owns minus the hero**, re-derived per order. No roster is
-    kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units.
+17. **The army is every fighting unit the local player owns minus the hero**, re-derived per order. No roster is
+    kept; `CGroupMove.canTakeSlot` already excludes buildings and zero-speed units, and the roster test excludes
+    builders by their build ability (`AbstractCAbilityBuild`) — the same test the base's plan uses to find one. A
+    worker in the army would be walked out of its mine every time the hero moved, and the plan could only walk it
+    back; the console never did that, because a worker was only in a selection the player put it in.
 18. **She crosses the army; the army never crosses her.** The engine never pushes a unit aside
     (`CBehaviorMove` refuses a step into another unit's footprint, `CUnitPlacement` only separates units that stand
     still), and a unit ordered to a point **walks straight at it** — no avoidance, no re-path — so a unit sent to a slot
@@ -312,13 +320,15 @@ Settled, and no longer up for renegotiation without a good reason:
     base. Done tickets disappear and the numbers behind slide down; new tickets enter at the end, tap = sooner,
     long-press = later, − removes.
 28. **Supply is a status line, not a ticket.** The food building is picked from the player's own build list by
-    its food stat, built ahead of the army's next train, at most one at a time, never past the map's food ceiling,
-    shown above the list with a pause toggle, and never inserted into the order. Dead farms are rebuilt by the
-    same rule. Supply outranks every number.
-29. **Defaults are derived from the live base, not hardcoded.** The same rules serve custom game and campaign: a
-    mission that starts with buildings is respected by rules that read them, a mission with no workers gets an
-    inert plan, and an unreadable techtree degrades to doing nothing. A per-campaign default profile is a follow-up
-    only if a specific mission proves it necessary.
+    its food stat, built a headroom of seven food ahead of the cap (the melee AI's own number), at most one at a
+    time, never past the map's food ceiling, shown above the list with a pause toggle, and never inserted into the
+    order. Dead farms are rebuilt by the same rule. Supply outranks every number.
+29. **The default is the race's order, filtered by the live base.** The order is the one the melee AI builds in when
+    nothing goes wrong — buildings, then the hall's tiers, then their researches — and the base drops the lines for
+    anything it owns, is building, has queued or would get from a hall upgrade. That is how a mission that starts
+    with a barracks keeps the rest of the order while a custom map builds the lot; a mission with no workers gets an
+    inert plan, and an unreadable techtree degrades to doing nothing. A per-campaign default profile is still a
+    follow-up only if a specific mission proves it necessary.
 30. **The unit plan is the same animal as the building plan.** Numbered tickets, done = gone — the unit joins the
     owned counts, workers included — and no standing rows, no self-refill: after a fight the player re-adds by hand,
     which the owned counts in the available grid make two taps. The hero is not a ticket.
@@ -376,7 +386,7 @@ issues: two plans and the panel that edits them.
 | B | skills and equipment | 2–4 skill buttons with drag-to-aim, usable items as buttons |
 | C | the army follows | hero moves → the army moves in formation (`CGroupMove` slots, army speed-linked, hero never slowed); a fighting unit ignores hero movement until the hero is **1000** away, then it is a retreat |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
-| E1 | building plan | numbered tickets for buildings and researches, executed by engine code; supply outranks every number; defaults derived from the live base |
+| E1 | building plan | numbered tickets for buildings, researches and hall upgrades, executed by engine code; supply outranks every number; the default is the race's order, filtered by the live base |
 | E2 | unit plan | the same tickets as buildings — one shared numbering; done = gone, re-added by hand after a fight |
 | E3 | macro panel | two buttons above the skill arc; available icons above, the numbered order below; the sketch in `docs/mockups/` |
 

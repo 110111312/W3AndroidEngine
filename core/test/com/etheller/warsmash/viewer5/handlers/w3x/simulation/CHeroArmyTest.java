@@ -14,8 +14,10 @@ import org.junit.jupiter.api.Test;
 import com.badlogic.gdx.math.Rectangle;
 
 import com.etheller.warsmash.testing.TestObjects;
+import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbilityMove;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.CAbilityHumanBuild;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorAttack;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorAttackMove;
@@ -38,7 +40,35 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 class CHeroArmyTest {
 	private static final int PLAYER = 0;
 	private static final int MOVE_ABILITY_HANDLE_ID = 900;
+	private static final int BUILD_ABILITY_HANDLE_ID = 901;
 	private static final int HERO_HANDLE_ID = 100;
+
+	@Test
+	void aWorkerIsNotPartOfTheArmy() {
+		// A worker walked along with the army leaves the mine it was in, and the base's plan can only walk it back.
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit soldier = unit(1, -50f, -50f, CBehaviorStop.class);
+		final CUnit worker = unit(2, -80f, -80f, CBehaviorStop.class);
+		giveBuildAbility(worker);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, soldier, worker), PLAYER, hero, 300f, 400f, orders.listener());
+
+		assertEquals(List.of(1), orders.unitHandleIds);
+	}
+
+	@Test
+	void aWorkerInAFightIsStillNotPulledFromTheMine() {
+		// The far-chase scan reads the same roster: a worker is not saved by being busy, it is simply not in the army.
+		final CUnit hero = hero(CBehaviorStop.class);
+		final CUnit worker = unit(2, 5000f, 5000f, CBehaviorAttack.class);
+		giveBuildAbility(worker);
+		final Orders orders = new Orders();
+
+		CHeroArmy.follow(game(hero, worker), PLAYER, hero, 300f, 400f, orders.listener());
+
+		assertTrue(orders.calls.isEmpty(), "the worker was ordered somewhere: " + orders.calls);
+	}
 
 	@Test
 	void anIdleFollowerFormsUpOnTheHerosOwnLine() {
@@ -305,6 +335,14 @@ class CHeroArmyTest {
 				}
 			}
 		}
+	}
+
+	/** A worker: the build ability is what the roster test looks for, which is also what the base's plan looks for. */
+	private static void giveBuildAbility(final CUnit unit) {
+		final List<CAbility> abilities = new ArrayList<>();
+		abilities.add(new CAbilityMove(MOVE_ABILITY_HANDLE_ID));
+		abilities.add(new CAbilityHumanBuild(BUILD_ABILITY_HANDLE_ID, List.of(War3ID.fromString("hhou"))));
+		TestObjects.set(unit, "abilities", abilities);
 	}
 
 	private static CUnit hero(final Class<? extends CBehavior> behavior) {
