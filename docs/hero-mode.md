@@ -126,9 +126,10 @@ at a good moment, with an obvious consequence.
 
 - **the building plan** (with research and upgrades): a numbered list of what the base does next. A number runs
   when affordable — same-number tickets compete, whatever has the gold first — and is done before the next starts,
-  except requirement-stuck tickets, which never block anyone. One construction job at a time, the builder returns to
-  harvesting between jobs, placement is automatic near the base. A supply line above the list keeps the food cap a
-  headroom of seven ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
+  except requirement-stuck tickets, which never block anyone. One construction job at a time, the nearest worker
+  that is not on gold is taken for it (a gold trip is the base's income; lumber or an idle walk costs seconds), the
+  builder returns to harvesting between jobs, placement is automatic near the base. A supply line above the list keeps
+  the food cap a headroom of seven ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
 - **the unit plan**: the same animal as the building plan — numbered tickets, one numbering shared across both
   lists. A finished ticket disappears and the unit joins the owned counts; there are no standing rows and no
   self-refill, so after a fight the player re-adds by hand (two taps, because the available grid shows owned

@@ -31,6 +31,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.cargohold
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CAbstractRangedBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorBoardTransport;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTargetVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.queue.CAbilityQueue;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.upgrade.CAbilityUpgrade;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
@@ -694,7 +696,11 @@ public final class BuildingPlanExecutor {
 				inFlight++;
 			}
 		}
-		final CUnit builder = findBuilder(supplyType);
+		final CUnit builder = findBuilder(supplyType, false);
+		if ((builder == null) && (findBuilder(supplyType, true) != null)) {
+			this.log.say("supply-gold", gameTurnTick,
+					"supply: " + supplyType.asStringValue() + " is wanted but every builder is on gold");
+		}
 		boolean typeStuck = false;
 		if (builder != null) {
 			buildAbility(builder).checkCanUse(this.simulation, builder, this.playerIndex, supplyType.getValue(), false,
@@ -780,9 +786,15 @@ public final class BuildingPlanExecutor {
 		if (type == null) {
 			return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.UNREADABLE));
 		}
-		final CUnit builder = findBuilder(rawcode);
+		final CUnit builder = findBuilder(rawcode, false);
 		if (builder == null) {
-			return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.NO_BUILDER));
+			if (findBuilder(rawcode, true) == null) {
+				return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.NO_BUILDER));
+			}
+			// Waiting beats taking a wisp off gold: the ticket keeps its number and the next pass asks again.
+			this.log.say("t" + number + "-gold", gameTurnTick,
+					"t" + number + " " + ticket + ": waiting, every builder is on gold");
+			return TicketState.pending(number, ticket);
 		}
 		buildAbility(builder).checkCanUse(this.simulation, builder, this.playerIndex, rawcode.getValue(), false,
 				this.receiver.reset());
@@ -869,7 +881,7 @@ public final class BuildingPlanExecutor {
 		switch (ticket.getKind()) {
 			case BUILD:
 				final float[] site = this.sites.get(ticket);
-				final CUnit builder = findBuilder(rawcode);
+				final CUnit builder = findBuilder(rawcode, false);
 				if ((site != null) && (builder != null) && this.jobs.isEmpty()) {
 					issueBuild(builder, ticket, rawcode, site, gameTurnTick);
 					MacroLog.line("do " + state.getNumber() + " BUILD " + rawcode.asStringValue() + " with h="
@@ -939,8 +951,12 @@ public final class BuildingPlanExecutor {
 	 * The free worker for a structure, as the AI picks one: it must be able to build this structure, it must not be
 	 * out on a job, and the nearest to the base wins. One worker, and the same one every time, which is what "the
 	 * builder returns to harvesting between jobs" needs.
+	 * <p>
+	 * A worker on the gold line is not offered unless {@code allowGoldGatherers} is set, which only the "is there a
+	 * builder at all" question does: taking a wisp off gold costs a whole trip and the base's income, while a lumber
+	 * worker or an idle one costs a few seconds of wood.
 	 */
-	private CUnit findBuilder(final War3ID rawcode) {
+	private CUnit findBuilder(final War3ID rawcode, final boolean allowGoldGatherers) {
 		final float[] anchor = anchor();
 		CUnit best = null;
 		float bestDistance = Float.MAX_VALUE;
@@ -952,7 +968,7 @@ public final class BuildingPlanExecutor {
 			if ((build == null) || !build.getStructuresBuilt().contains(rawcode)) {
 				continue;
 			}
-			if (hasJob(unit)) {
+			if (hasJob(unit) || (!allowGoldGatherers && isGoldGatherer(unit))) {
 				continue;
 			}
 			final float distance = (anchor == null) ? 0f : distance(unit.getX(), unit.getY(), anchor[0], anchor[1]);
@@ -963,6 +979,33 @@ public final class BuildingPlanExecutor {
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * A worker on gold: inside a mine, walking into one, or holding the harvest order for one. The walk out and back is
+	 * worth more than any building the plan can raise, so these are only ever counted, never pulled off.
+	 */
+	private boolean isGoldGatherer(final CUnit unit) {
+		if (unit.isLoaded()) {
+			return true;
+		}
+		final CBehaviorBoardTransport board = unit.getBoardTransportBehavior();
+		if ((board != null) && (unit.getCurrentBehavior() == board) && isGoldMine(board.getTarget())) {
+			return true;
+		}
+		final COrder order = unit.getCurrentOrder();
+		if ((order != null) && (order.getOrderId() == OrderIds.harvest)) {
+			return isGoldMine(order.getTarget(this.simulation));
+		}
+		return false;
+	}
+
+	private static boolean isGoldMine(final AbilityTarget target) {
+		if (target == null) {
+			return false;
+		}
+		final CUnit unit = target.visit(AbilityTargetVisitor.UNIT);
+		return (unit != null) && (unit.getOverlayedGoldMineData() != null);
 	}
 
 	private boolean hasJob(final CUnit unit) {
