@@ -1,14 +1,15 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
 /**
- * Supply is a status line that outranks every number: built when the army is about to hit the cap, one at a time, never
- * past the map's ceiling, and silent while paused. A dead farm needs no branch of its own -- the cap is the sum of the
- * living farms, so the same test fires.
+ * Supply is a status line that outranks every number: built a headroom before the army hits the cap, one at a time,
+ * never past the map's ceiling, and silent while paused. A dead farm needs no branch of its own -- the cap is the sum of
+ * the living farms, so the same test fires.
  */
 class MacroSupplyRuleTest {
 	private static final int FARM_FOOD = 6;
@@ -67,7 +68,16 @@ class MacroSupplyRuleTest {
 	}
 
 	@Test
-	void roomUnderTheCapIsNotRoomForTheArmy() {
-		assertFalse(wanted(6, 0, 10, FARM_FOOD, false, 0));
+	void theLineStartsAHeadroomBeforeTheCap() {
+		// The melee AI's own number: at 4 of 10 food there are 6 left, which is less than the headroom of 7, so the
+		// next farm is already worth starting while the base still has room to train.
+		assertEquals(7, MacroSupplyRule.SUPPLY_HEADROOM);
+		assertTrue(wanted(4, 0, 10, FARM_FOOD, false, 0));
+	}
+
+	@Test
+	void roomBeyondTheHeadroomIsStillRoom() {
+		assertFalse(wanted(3, 0, 10, FARM_FOOD, false, 0));
+		assertFalse(wanted(0, 0, 10, FARM_FOOD, false, 0));
 	}
 }

@@ -8,11 +8,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import com.etheller.warsmash.util.ArgbImage;
 import com.etheller.warsmash.util.War3ID;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitData;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitRace;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitClassification;
@@ -194,9 +197,38 @@ public final class BuildingPlanExecutor {
 		}
 		final List<PlanTypeFacts> buildable = buildableFacts();
 		final War3ID military = LiveBaseDefaults.militaryType(buildable, typeFacts());
-		for (final MacroTicket ticket : LiveBaseDefaults.seed(hasWorker(), true, military, owned)) {
+		for (final MacroTicket ticket : LiveBaseDefaults.seed(hasWorker(), true, playerRace(), owned, typeLookup(),
+				military)) {
 			this.plan.append(ticket);
 		}
+	}
+
+	/**
+	 * The race of the units that build: the worker's own, because that is the list of structures the base can actually
+	 * put down. The player's {@code CPlayer.getRace()} is a handle to a race-manager entry and can be null on a neutral
+	 * slot, so the live worker is both the simpler and the truer answer to "whose build order is this".
+	 */
+	private CUnitRace playerRace() {
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead() && !unit.isHidden() && !unit.isBuilding() && isWorkerType(unit)) {
+				final CUnitType type = unit.getUnitType();
+				if ((type != null) && (type.getRace() != null)) {
+					return type.getRace();
+				}
+			}
+		}
+		return CUnitRace.OTHER;
+	}
+
+	/** A type lookup for the rules that need to walk the hall chain; null for a rawcode the map does not define. */
+	private Function<War3ID, PlanTypeFacts> typeLookup() {
+		return rawcode -> {
+			final CUnitData unitData = this.simulation.getUnitData();
+			if ((unitData == null) || (rawcode == null)) {
+				return null;
+			}
+			return PlanTypeFacts.of(unitData.getUnitType(rawcode));
+		};
 	}
 
 	/** Everything the player owns, is building, has queued, or would get from a hall upgrade. */
