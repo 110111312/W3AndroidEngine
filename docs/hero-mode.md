@@ -170,7 +170,7 @@ The point of this section is that none of it needs a rewrite: the engine already
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
 | the plan executor | `AIProduction.java:142-213` (producer scan, train, `requirementsMet`/`canAfford` at `:106-128`), `AIConstruction.java:35-65` (free worker), `:246-285` (site search), `:175-180` (obstruction test), `AIHarvest.java:74-120` (idle-worker sweep), `CSimulation.getDefaultPlayerUnitOrderExecutor` (`:1765-1767`) | **the computer AI is the template, not only the enemy's** — its primitives are engine Java, package-private and JASS-driven today; hero mode's executor copies the shapes and issues through the replay-safe per-player executor |
-| the plan executor, as built (E1 + E2) | `simulation/macro/` — `MacroPlanExecutor` (the pass), `MacroRule` (the numbering), `MacroSupplyRule` (the supply line), `LiveBaseDefaults` + `RaceBuildOrder` + `RaceUnitOrder` (the defaults), `MacroPlacement` (sites), `MacroPlan`/`MacroTicket` (what E3 edits) | **built**: the decisions are pure functions of plain values, so the numbering rules are proved by `:core:test` rather than by a phone; affordability and stuckness are asked of the ability itself (`AbilityActivationReceiver`) rather than re-derived, and every order goes out through `CPlayerUnitOrderListener` |
+| the plan executor, as built (E1 + E2 + E3) | `simulation/macro/` — `MacroPlanExecutor` (the pass), `MacroRule` (the numbering), `MacroSupplyRule` (the supply line), `LiveBaseDefaults` + `RaceBuildOrder` + `RaceUnitOrder` (the defaults), `MacroPlacement` (sites), `MacroPlan`/`MacroTicket` (what the panel edits), `MacroStatusLine` (a ticket's words); `ui/MacroPanel` + `ui/MacroLayout` (the buttons, the sheets, the grid) | **built**: the decisions are pure functions of plain values, so the numbering rules are proved by `:core:test` rather than by a phone; affordability and stuckness are asked of the ability itself (`AbilityActivationReceiver`) rather than re-derived, every order goes out through `CPlayerUnitOrderListener`, and the panel's grid arithmetic is tested separately from its drawing |
 | income (rally-harvest) | `CUnitUpdate.java:332-348` → `CAbilityHarvest.java:225-270` | **already works**: a worker trained with a rally point on a mine or a tree starts gathering on its own |
 | computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | the *enemy* keeps playing RTS; its economy is also the template for the player's plan executor (see above) |
 
@@ -349,7 +349,13 @@ Settled, and no longer up for renegotiation without a good reason:
     units alike; it was decided while testing a town-hall upgrade that held the whole plan for several minutes.
 32. **The macro panel is two buttons above the skill arc**, each opening a sheet into the right-middle band that
     never covers the stick, the skills, or the hero: available icons above (owned counts, no grouping on the army
-    sheet), the numbered order below. `docs/mockups/macro-panel.html` is the settled design.
+    sheet), the numbered order below. `docs/mockups/macro-panel.html` is the settled design. On a touch screen the
+    sketch's right click is a **long press**, and its shift-click has no binding at all: a tap on a ticket makes it one
+    number sooner, a long press one number later, the `-` removes it, and the available grid adds a ticket at the end.
+    **Taps only** — drags belong to the stick and to aiming — so the sheet pages with two arrows in its header rather
+    than scrolling, since a scroll would have to swallow drags. Edits are local-player state for now; when multiplayer
+    is targeted they become commands, which is why every edit goes through `MacroPlanExecutor`'s own add/sooner/later/
+    remove and not through the panel's drawing code.
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why
@@ -401,7 +407,7 @@ issues: two plans and the panel that edits them.
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
 | E1 | building plan | numbered tickets for buildings, researches and hall upgrades, executed by engine code; supply outranks every number; the default is the race's order, filtered by the live base |
 | E2 | unit plan | **built**: the same tickets as buildings, one shared numbering; the default is the race's own bot army minus what the base has; done = gone — a unit ticket retires when its own unit appears |
-| E3 | macro panel | two buttons above the skill arc; available icons above, the numbered order below; the sketch in `docs/mockups/` |
+| E3 | macro panel | **built**: two buttons above the arc, one sheet per kind of ticket over the one shared numbering; tap sooner, long press later, `-` removes, header arrows page; the supply line and its pause, marked by a badge on the food number |
 
 ## The stick's art
 

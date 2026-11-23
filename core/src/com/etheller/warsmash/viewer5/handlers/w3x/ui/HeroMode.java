@@ -132,6 +132,8 @@ final class HeroMode implements HeroTouchHost {
 	private int nextArmyScanTick = Integer.MIN_VALUE;
 	/** The base playing itself, or null until hero mode is running; see {@link MacroPlanExecutor}. */
 	private MacroPlanExecutor planExecutor;
+	/** The plan's own two buttons and their sheets: the panel edits the plan, the executor runs it. */
+	private final MacroPanel panel;
 	/** The skill a finger is aiming right now, or -1. */
 	private int aimingSlot = -1;
 	/** A single-target skill that is waiting for the tap on its target, or -1. */
@@ -149,6 +151,7 @@ final class HeroMode implements HeroTouchHost {
 		this.stick = new HeroStick(settings);
 		this.emitter = new HeroStickOrderEmitter(settings);
 		this.tray = new HeroTray(ui);
+		this.panel = new MacroPanel(ui);
 	}
 
 	boolean isActive() {
@@ -480,8 +483,13 @@ final class HeroMode implements HeroTouchHost {
 
 	/** The minimap and the tray keep their own touches, and so does every button of the interface: the stick takes the rest. */
 	private boolean isOverInterface(final float screenX, final float screenY) {
-		return isOverMinimap(screenX, screenY) || isOverTray(screenX, screenY) || this.ui.input
-				.isOverClickableUi(Math.round(screenX), Math.round(screenY));
+		return isOverMinimap(screenX, screenY) || isOverTray(screenX, screenY) || isOverPanel(screenX, screenY)
+				|| this.ui.input.isOverClickableUi(Math.round(screenX), Math.round(screenY));
+	}
+
+	private boolean isOverPanel(final float screenX, final float screenY) {
+		final Vector2 point = toUi(screenX, screenY, this.uiPoint);
+		return this.panel.contains(point.x, point.y);
 	}
 
 	private boolean isOverTray(final float screenX, final float screenY) {
@@ -772,6 +780,10 @@ final class HeroMode implements HeroTouchHost {
 			return false;
 		}
 		final Vector2 point = toUi(screenX, screenY, this.uiPoint);
+		if (this.panel.tap(point.x, point.y, this.planExecutor)) {
+			// The macro panel is above everything the hero owns: its buttons and its sheet take the tap whole.
+			return true;
+		}
 		for (int i = 0; i < HeroTray.SKILL_SLOTS; i++) {
 			if (this.tray.onLearnBadge(i, point.x, point.y)) {
 				learnSkill(i);
@@ -809,6 +821,16 @@ final class HeroMode implements HeroTouchHost {
 			return true;
 		}
 		return tapGroundItem(screenX, screenY);
+	}
+
+	/** A long press on a ticket pushes it one number later: the panel's one gesture that is not a tap. */
+	@Override
+	public boolean longPress(final float screenX, final float screenY) {
+		if (!this.active) {
+			return false;
+		}
+		final Vector2 point = toUi(screenX, screenY, this.uiPoint);
+		return this.panel.longPress(point.x, point.y, this.planExecutor);
 	}
 
 	// ------------------------------------------------------------------ casting
@@ -1270,6 +1292,7 @@ final class HeroMode implements HeroTouchHost {
 		if (this.ui.cinematics.isInterfaceShown()) {
 			this.tray.render(batch, shapes, this.armedSlot);
 			drawAim(batch, shapes);
+			this.panel.render(batch, shapes, this.planExecutor);
 		}
 		if (!this.stick.isActive()) {
 			return;

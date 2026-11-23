@@ -145,6 +145,8 @@ public final class MacroPlanExecutor {
 	private boolean seeded;
 	private boolean baseReadable;
 	private int nextPassTick = Integer.MIN_VALUE;
+	/** The last pass's states, in plan order: the panel's word for a ticket, and empty until the first pass. */
+	private List<TicketState> states = List.of();
 
 	public MacroPlanExecutor(final CSimulation simulation, final int playerIndex,
 			final CPlayerUnitOrderListener listener) {
@@ -192,6 +194,173 @@ public final class MacroPlanExecutor {
 		return null;
 	}
 
+	// ------------------------------------------------------------------ the panel's end
+
+	/**
+	 * The states of the last pass, in plan order, so that a number is an index. The panel says what a ticket waits for
+	 * from these; they are one pass old at worst, which is the same beat the plan itself runs on.
+	 */
+	public List<TicketState> getStates() {
+		return this.states;
+	}
+
+	/** How many of this type the player owns, live: the panel's "xN" badge. */
+	public int ownedCount(final War3ID rawcode) {
+		return ownedUnits(rawcode);
+	}
+
+	/**
+	 * What a sheet offers to add. The army's sheet is what this base can train -- the race's own list plus whatever its
+	 * queues actually name -- and the build sheet is what its builders can put down plus the race's own order. One list
+	 * per type, in the order the race's own tables have them, because that order is the one the player reads first.
+	 */
+	public List<War3ID> available(final boolean army) {
+		final Set<War3ID> ids = new LinkedHashSet<>();
+		if (army) {
+			for (final RaceUnitOrder.Line line : RaceUnitOrder.forRace(playerRace())) {
+				ids.add(line.rawcode());
+			}
+			for (final CUnit unit : ours()) {
+				final CAbilityQueue queue = unit.getFirstAbilityOfType(CAbilityQueue.class);
+				if (queue != null) {
+					ids.addAll(queue.getUnitsTrained());
+				}
+			}
+		}
+		else {
+			for (final PlanTypeFacts buildable : buildableFacts()) {
+				ids.add(buildable.id());
+			}
+			for (final MacroTicket ticket : RaceBuildOrder.forRace(playerRace())) {
+				ids.add(ticket.getRawcode());
+			}
+		}
+		return new ArrayList<>(ids);
+	}
+
+	/**
+	 * Why this type cannot be made at all right now, or null when it can be: the same answer a ticket gets, asked before
+	 * there is a ticket, so that the available grid can grey the icon and say what it is waiting for. It goes through
+	 * the ability gate and not through a copy of its rules, which is also why an icon can be right about a requirement
+	 * the plan has never tried.
+	 */
+	public Stuck lockOf(final War3ID rawcode) {
+		final CUnit trainer = firstProducer(rawcode);
+		if (trainer != null) {
+			askQueue(trainer, rawcode);
+		}
+		else if (isUpgrade(rawcode)) {
+			final CUnit researcher = findResearchProducer(rawcode);
+			if (researcher == null) {
+				return Stuck.of(Stuck.Reason.NO_PRODUCER);
+			}
+			askQueue(researcher, rawcode);
+		}
+		else {
+			final CUnit builder = firstBuilder(rawcode);
+			if (builder == null) {
+				return Stuck.of(Stuck.Reason.NO_BUILDER);
+			}
+			buildAbility(builder).checkCanUse(this.simulation, builder, this.playerIndex, rawcode.getValue(), false,
+					this.receiver.reset());
+		}
+		return (this.receiver.getOutcome() == MacroActivationReceiver.Outcome.STUCK) ? this.receiver.getStuck() : null;
+	}
+
+	/**
+	 * A ticket for this type, at the end of the numbering, in whichever kind the plan would actually execute: an
+	 * upgrade is a research, a hall's successor is an upgrade, a structure is a build and anything else is a train.
+	 * Tapping the same icon twice is two tickets, because a ticket is one thing and an army is many.
+	 */
+	public MacroTicket addTicket(final War3ID rawcode) {
+		final MacroTicket ticket = ticketFor(rawcode);
+		final int number = this.plan.append(ticket);
+		MacroLog.line("panel: added " + number + " " + ticket);
+		return ticket;
+	}
+
+	private MacroTicket ticketFor(final War3ID rawcode) {
+		if (isUpgrade(rawcode)) {
+			return MacroTicket.research(rawcode);
+		}
+		if (findHall(rawcode) != null) {
+			return MacroTicket.upgrade(rawcode);
+		}
+		for (final PlanTypeFacts buildable : buildableFacts()) {
+			if (buildable.id().equals(rawcode)) {
+				return MacroTicket.build(rawcode);
+			}
+		}
+		return MacroTicket.train(rawcode);
+	}
+
+	/** Tapping a ticket: it runs one number sooner, and a number of zero cannot go sooner. */
+	public boolean sooner(final int number) {
+		final boolean moved = this.plan.sooner(number);
+		if (moved) {
+			MacroLog.line("panel: " + this.plan.get(number) + " sooner, now " + number);
+		}
+		return moved;
+	}
+
+	/** A long press: one number later. */
+	public boolean later(final int number) {
+		final boolean moved = this.plan.later(number);
+		if (moved) {
+			MacroLog.line("panel: " + this.plan.get(number) + " later, now " + (number + 1));
+		}
+		return moved;
+	}
+
+	/**
+	 * The minus: the ticket is gone and everything behind it slides down. A job already running is left alone -- the
+	 * worker finishes the structure, the ticket it was for is simply no longer promised -- because pulling a builder off
+	 * a foundation leaves half a building in the base.
+	 */
+	public boolean removeAt(final int number) {
+		if ((number < 0) || (number >= this.plan.size())) {
+			return false;
+		}
+		final MacroTicket ticket = this.plan.get(number);
+		MacroLog.line("panel: removed " + number + " " + ticket);
+		this.plan.remove(ticket);
+		this.issues.remove(ticket);
+		this.sites.remove(ticket);
+		return true;
+	}
+
+	private boolean isUpgrade(final War3ID rawcode) {
+		return (this.simulation.getUpgradeData() != null)
+				&& (this.simulation.getUpgradeData().getType(rawcode) != null);
+	}
+
+	private void askQueue(final CUnit producer, final War3ID rawcode) {
+		final CAbilityQueue queue = producer.getFirstAbilityOfType(CAbilityQueue.class);
+		if (queue != null) {
+			queue.checkCanUse(this.simulation, producer, this.playerIndex, rawcode.getValue(), false,
+					this.receiver.reset());
+		}
+	}
+
+	private CUnit firstProducer(final War3ID rawcode) {
+		final List<CUnit> producers = producers(rawcode);
+		return producers.isEmpty() ? null : producers.get(0);
+	}
+
+	/** Any own unit whose build ability lists this structure, whether or not it is free to take the job. */
+	private CUnit firstBuilder(final War3ID rawcode) {
+		for (final CUnit unit : ours()) {
+			if (unit.isDead() || unit.isHidden()) {
+				continue;
+			}
+			final AbstractCAbilityBuild build = buildAbility(unit);
+			if ((build != null) && build.getStructuresBuilt().contains(rawcode)) {
+				return unit;
+			}
+		}
+		return null;
+	}
+
 	/**
 	 * One pass, on the simulation's beat.
 	 * <p>
@@ -223,6 +392,7 @@ public final class MacroPlanExecutor {
 			return;
 		}
 		final List<TicketState> states = states(gameTurnTick);
+		this.states = states;
 		logStates(states, gameTurnTick);
 		final TicketState next = MacroRule.next(List.of(states));
 		this.log.say("heartbeat", gameTurnTick,

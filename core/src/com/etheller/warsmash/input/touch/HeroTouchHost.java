@@ -53,4 +53,17 @@ public interface HeroTouchHost {
 	 * @return true when the tray took it — a skill, an item or a level — so no world click is synthesized
 	 */
 	boolean tap(float screenX, float screenY);
+
+	/**
+	 * A long press, offered before the interface's own meanings.
+	 * <p>
+	 * Hero mode's one long-press gesture is the macro panel's: a press on a ticket pushes it one number later, the
+	 * touch equivalent of the sketch's right click. A screen that has no such gesture says no, and the long press keeps
+	 * its RTS meanings (skip the cinematic, assign a group).
+	 *
+	 * @return true when hero mode took the press, so nothing else may act on it
+	 */
+	default boolean longPress(final float screenX, final float screenY) {
+		return false;
+	}
 }
