@@ -201,6 +201,11 @@ public final class RtsTouchAdapter implements GestureListener {
 			log("long press -> skip cinematic");
 			return;
 		}
+		final HeroTouchHost heroTouch = (target == null) ? null : target.heroTouch();
+		if ((heroTouch != null) && heroTouch.longPress(x, y)) {
+			log("long press -> macro panel");
+			return;
+		}
 		moveTo(processor, x, y);
 		final int slot = (target == null) ? -1 : target.touchOverlaySlotAt(Math.round(x), Math.round(y));
 		if ((slot >= 0) && (slot != SHIFT_SLOT)) {
