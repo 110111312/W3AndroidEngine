@@ -522,7 +522,7 @@ public final class CHeroArmy {
 	 * walk it back -- two orders a second apart disagreeing about the same unit, which is the one thing the console
 	 * never did (a worker was only in a selection the player put it in). The test is the build ability and not the
 	 * {@code PEON} classification, because it is the ability the base's plan already looks for when it needs a builder
-	 * ({@code BuildingPlanExecutor}), so the two cannot disagree about who counts as a worker.
+	 * ({@code MacroPlanExecutor}), so the two cannot disagree about who counts as a worker.
 	 */
 	private static boolean isBuilder(final CUnit unit) {
 		return unit.getFirstAbilityOfType(AbstractCAbilityBuild.class) != null;

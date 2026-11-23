@@ -80,4 +80,17 @@ class MacroPlanTest {
 		assertFalse(plan.remove(MacroTicket.build(id("hfoo"))));
 		assertEquals(1, plan.size());
 	}
+
+	@Test
+	void incomingCountsOnlyThisUnitsTickets() {
+		final MacroPlan plan = new MacroPlan();
+		plan.append(MacroTicket.train(id("hfoo")));
+		plan.append(MacroTicket.build(id("hbar")));
+		plan.append(MacroTicket.train(id("hfoo")));
+		plan.append(MacroTicket.train(id("hrif")));
+		// Two footmen and a rifleman are on the way; the barracks is not a footman.
+		assertEquals(2, plan.incoming(id("hfoo")));
+		assertEquals(1, plan.incoming(id("hrif")));
+		assertEquals(0, plan.incoming(id("hkni")));
+	}
 }

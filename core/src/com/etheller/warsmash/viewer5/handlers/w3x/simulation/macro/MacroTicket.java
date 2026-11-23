@@ -39,6 +39,11 @@ public final class MacroTicket {
 		return new MacroTicket(MacroTicketKind.UPGRADE, rawcode);
 	}
 
+	/** One unit: two of these are two units, and each disappears when its own unit has been trained. */
+	public static MacroTicket train(final War3ID rawcode) {
+		return new MacroTicket(MacroTicketKind.TRAIN, rawcode);
+	}
+
 	public MacroTicketKind getKind() {
 		return this.kind;
 	}

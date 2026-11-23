@@ -14,6 +14,7 @@ import java.util.function.Function;
 
 import com.etheller.warsmash.util.ArgbImage;
 import com.etheller.warsmash.util.War3ID;
+import com.etheller.warsmash.util.WarsmashConstants;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitData;
@@ -49,11 +50,14 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnit
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildingIntersector;
 
 /**
- * The building plan, executed.
+ * Both plans, executed: the base's buildings and the army's units.
  * <p>
  * This is the half that reads the simulation and sends orders; the decisions themselves are in {@link MacroRule},
- * {@link MacroSupplyRule} and {@link LiveBaseDefaults}, which take plain values and are tested without one. The split
- * is not decoration: it is what lets the numbering rules be proved by {@code :core:test} rather than by watching a
+ * {@link MacroSupplyRule}, {@link LiveBaseDefaults} and {@link RaceUnitOrder}, which take plain values and are tested
+ * without a simulation. The split is not decoration: it is what lets the numbering rules be proved by
+ * {@code :core:test} rather than by watching a phone. A unit ticket is the same animal as a build ticket -- one number,
+ * one purchase, gone when it arrives -- which is why both live in one {@link MacroPlan}: a build's 0 and an army's 1
+ * compete for the same gold, and nothing has to reconcile two numberings.
  * phone.
  * <p>
  * Three things are copied from the computer AI rather than shared with it, because every class in
@@ -66,7 +70,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildin
  * rule named. The order it issues is picked up by the delaying listener at the end of the same step, so the whole plan
  * is aligned to steps even though it is called from the interface.
  */
-public final class BuildingPlanExecutor {
+public final class MacroPlanExecutor {
 	/** How often the plan is looked at, in steps. One pass a second is the AI's own pace. */
 	public static final int PLAN_PASS_TICKS = CTimer.wholeSteps(1);
 	/**
@@ -142,7 +146,7 @@ public final class BuildingPlanExecutor {
 	private boolean baseReadable;
 	private int nextPassTick = Integer.MIN_VALUE;
 
-	public BuildingPlanExecutor(final CSimulation simulation, final int playerIndex,
+	public MacroPlanExecutor(final CSimulation simulation, final int playerIndex,
 			final CPlayerUnitOrderListener listener) {
 		this.simulation = simulation;
 		this.playerIndex = playerIndex;
@@ -276,7 +280,9 @@ public final class BuildingPlanExecutor {
 		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
 		for (final TicketState state : states) {
 			final String now = describe(state) + counts(state, player);
-			this.log.transition("ticket " + state.getTicket(), now,
+			// Keyed on the ticket's identity, not its number: numbers shift when a ticket retires, and two tickets for
+			// the same unit are two lines, not one. MacroLog never prints the key.
+			this.log.transition("ticket " + System.identityHashCode(state.getTicket()), now,
 					"t" + state.getNumber() + " " + state.getTicket() + ": " + now);
 		}
 	}
@@ -339,22 +345,20 @@ public final class BuildingPlanExecutor {
 		final CUnitRace race = playerRace();
 		final List<PlanTypeFacts> buildable = buildableFacts();
 		final War3ID military = LiveBaseDefaults.militaryType(buildable, typeFacts());
-		final List<MacroTicket> wanted = new ArrayList<>();
 		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
-		for (final MacroTicket ticket : LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(),
-				military)) {
-			// A mission can forbid a structure outright with a tech limit of zero, which is what the Night Elf
-			// campaign does to the Tree of Eternity and the Ancient of Wind. Those are not "not yet": no amount of
-			// gold buys one, so seeding them would only leave the plan with tickets that can never run.
-			if ((player != null) && (player.getTechtreeMaxAllowed(ticket.getRawcode()) == 0)) {
-				MacroLog.line("  skipped " + ticket + ": the mission allows none of it");
-				continue;
-			}
-			wanted.add(ticket);
-		}
-		final List<MacroTicket> tickets = wanted;
+		final List<MacroTicket> buildings = allowed(player,
+				LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(), military));
+		final LiveBaseDefaults.UnitSeed units = LiveBaseDefaults.seedUnits(race, ownedCounts());
+		final List<MacroTicket> army = allowed(player, units.army());
+		final List<MacroTicket> workers = allowed(player, units.workers());
+		// Workers first: every bot script trains its workers before its soldiers, and a worker is income for the rest
+		// of the mission. Then the buildings, then the army those buildings make.
+		final List<MacroTicket> tickets = new ArrayList<>(workers);
+		tickets.addAll(buildings);
+		tickets.addAll(army);
 		MacroLog.line("seed: race=" + race + " worker=" + hasWorker() + " owned=" + owned.size() + " plan="
-				+ tickets.size());
+				+ tickets.size() + " (workers " + workers.size() + ", buildings " + buildings.size() + ", army "
+				+ army.size() + ")");
 		for (int i = 0; i < tickets.size(); i++) {
 			MacroLog.line("  " + i + " " + tickets.get(i));
 		}
@@ -383,6 +387,57 @@ public final class BuildingPlanExecutor {
 					+ ((unit.getCargoData() == null) ? "none"
 							: (unit.getCargoData().getCargoCount() + "/" + unit.getCargoData().getCargoCapacity())));
 		}
+	}
+
+	/**
+	 * The tickets this mission can actually use, and the only place a seeded ticket is dropped for being impossible.
+	 * <p>
+	 * A mission can forbid a structure or a unit outright with a tech limit of zero, which is what the Night Elf
+	 * campaign does to the Tree of Eternity and to the Druid of the Talon. Those are not "not yet": no amount of gold
+	 * buys one, so seeding them would only leave the plan with tickets that can never run. The same goes for a rawcode
+	 * this map's data does not define at all -- there is nowhere for that order to go.
+	 */
+	private List<MacroTicket> allowed(final CPlayer player, final List<MacroTicket> tickets) {
+		final List<MacroTicket> allowed = new ArrayList<>();
+		for (final MacroTicket ticket : tickets) {
+			if ((player != null) && (player.getTechtreeMaxAllowed(ticket.getRawcode()) == 0)) {
+				MacroLog.line("  skipped " + ticket + ": the mission allows none of it");
+				continue;
+			}
+			if (namesAUnit(ticket) && (this.simulation.getUnitData().getUnitType(ticket.getRawcode()) == null)) {
+				MacroLog.line("  skipped " + ticket + ": this map has no such unit");
+				continue;
+			}
+			allowed.add(ticket);
+		}
+		return allowed;
+	}
+
+	/** Whether the ticket names a type in the unit data: a structure to put down, or a unit to train. */
+	private static boolean namesAUnit(final MacroTicket ticket) {
+		return (ticket.getKind() == MacroTicketKind.BUILD) || (ticket.getKind() == MacroTicketKind.TRAIN);
+	}
+
+	/** How many of each type the player has, for the unit seed's "minus what you already own". */
+	private Map<War3ID, Integer> ownedCounts() {
+		final Map<War3ID, Integer> counts = new HashMap<>();
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead()) {
+				counts.merge(unit.getTypeId(), 1, Integer::sum);
+			}
+		}
+		return counts;
+	}
+
+	/** How many of this type the player has: the "have N" in "N + incoming is the whole picture". */
+	private int ownedUnits(final War3ID rawcode) {
+		int count = 0;
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead() && unit.getTypeId().equals(rawcode)) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	/**
@@ -483,7 +538,7 @@ public final class BuildingPlanExecutor {
 				finished.add(ticket);
 			}
 			else if (ticket.getKind() == MacroTicketKind.RESEARCH) {
-				if (player.getTechtreeUnlocked(ticket.getRawcode()) >= issue.targetLevel) {
+				if (player.getTechtreeUnlocked(ticket.getRawcode()) >= issue.targetCount) {
 					if (moreLevelsToResearch(player, ticket.getRawcode())) {
 						// The level landed and another one may be bought: the ticket stays, and is ready again next pass.
 						finished.add(ticket);
@@ -492,6 +547,18 @@ public final class BuildingPlanExecutor {
 						this.plan.remove(ticket);
 						finished.add(ticket);
 					}
+				}
+			}
+			else if (ticket.getKind() == MacroTicketKind.TRAIN) {
+				if (ownedUnits(ticket.getRawcode()) >= issue.targetCount) {
+					// The unit is here: the ticket was the decision, the unit is the result, so the ticket goes.
+					this.plan.remove(ticket);
+					finished.add(ticket);
+				}
+				else if (!queueHolds(ticket.getRawcode())) {
+					// Nothing is training it any more: the order was cancelled or declined. Forget the order so the next
+					// pass offers the ticket again, rather than waiting forever for a unit nobody is making.
+					finished.add(ticket);
 				}
 			}
 			else if (ticket.getKind() == MacroTicketKind.UPGRADE) {
@@ -972,7 +1039,7 @@ public final class BuildingPlanExecutor {
 		else {
 			typeStuck = true;
 		}
-		if (!MacroSupplyRule.wanted(true, typeStuck, player.getFoodUsed(), 0, player.getFoodCap(),
+		if (!MacroSupplyRule.wanted(true, typeStuck, player.getFoodUsed(), nextTrainFood(), player.getFoodCap(),
 				player.getFoodCapLimit(), player.getFoodCapCeiling(), type.getFoodMade(), this.supplyPaused, inFlight)) {
 			return false;
 		}
@@ -990,6 +1057,21 @@ public final class BuildingPlanExecutor {
 				+ (int) site[0] + "," + (int) site[1] + " (food " + player.getFoodUsed() + "/" + player.getFoodCapLimit()
 				+ ")");
 		return true;
+	}
+
+	/**
+	 * What the army is about to ask for: the food of the first unit ticket in the plan, zero when it has none. The supply
+	 * line builds a farm on the army plus a headroom, so a unit the plan is about to train has to be in that sum --
+	 * otherwise the farm is ordered one train too late and the train is refused for food.
+	 */
+	private int nextTrainFood() {
+		for (final MacroTicket ticket : this.plan.getTickets()) {
+			if (ticket.getKind() == MacroTicketKind.TRAIN) {
+				final CUnitType type = this.simulation.getUnitData().getUnitType(ticket.getRawcode());
+				return (type == null) ? 0 : type.getFoodUsed();
+			}
+		}
+		return 0;
 	}
 
 	// ------------------------------------------------------------------ the numbers
@@ -1017,6 +1099,9 @@ public final class BuildingPlanExecutor {
 					break;
 				case UPGRADE:
 					state = upgradeState(number, ticket, gameTurnTick);
+					break;
+				case TRAIN:
+					state = trainState(number, ticket, gameTurnTick);
 					break;
 				default:
 					state = TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.UNREADABLE));
@@ -1126,6 +1211,139 @@ public final class BuildingPlanExecutor {
 		}
 	}
 
+	/**
+	 * A unit ticket: the best producer makes one, and the ticket disappears when the count rises.
+	 * <p>
+	 * The engine's own queue gate answers affordability, requirements and the mission's cap, exactly as it does for a
+	 * research, so nothing here re-derives a price. What the gate cannot answer is "this ticket already has an order
+	 * out" -- it says OK again the moment it is asked, and a full queue is not an error it reports -- so the order the
+	 * executor recorded is what makes the ticket pending, and a producer still going up or with a full queue is "not
+	 * yet", never "never".
+	 */
+	private TicketState trainState(final int number, final MacroTicket ticket, final int gameTurnTick) {
+		final War3ID rawcode = ticket.getRawcode();
+		final Issue issue = this.issues.get(ticket);
+		if ((issue != null) && (ownedUnits(rawcode) < issue.targetCount)) {
+			// An order is out and its unit has not arrived: the ticket waits for its own unit, not for the gold.
+			return TicketState.pending(number, ticket);
+		}
+		if (producers(rawcode).isEmpty()) {
+			return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.NO_PRODUCER));
+		}
+		final CUnit producer = bestProducer(rawcode);
+		if (producer == null) {
+			// Every producer is still going up or has a full queue: waiting, and the ticket keeps its number.
+			return TicketState.pending(number, ticket);
+		}
+		producer.getFirstAbilityOfType(CAbilityQueue.class).checkCanUse(this.simulation, producer, this.playerIndex,
+				rawcode.getValue(), false, this.receiver.reset());
+		switch (this.receiver.getOutcome()) {
+			case OK:
+				return TicketState.ready(number, ticket);
+			case UNAFFORDABLE:
+				return TicketState.waiting(number, ticket);
+			case PENDING:
+				return TicketState.pending(number, ticket);
+			default:
+				return TicketState.stuck(number, ticket, this.receiver.getStuck());
+		}
+	}
+
+	/**
+	 * The player's producers of this unit: alive, ours, and listing it in their queue ability. A worker's ticket is the
+	 * same shape -- a peon comes out of the hall that trains a grunt -- so nothing here is special-cased per unit.
+	 */
+	private List<CUnit> producers(final War3ID rawcode) {
+		final List<CUnit> producers = new ArrayList<>();
+		for (final CUnit unit : ours()) {
+			if (unit.isDead() || unit.isHidden()) {
+				continue;
+			}
+			final CAbilityQueue queue = unit.getFirstAbilityOfType(CAbilityQueue.class);
+			if ((queue != null) && queue.getUnitsTrained().contains(rawcode)) {
+				producers.add(unit);
+			}
+		}
+		return producers;
+	}
+
+	/**
+	 * The producer with room for one more: the shortest queue, then the nearest to the base, then the lowest handle, so
+	 * the choice is the same on every pass. Null when every producer is still going up or its queue is full.
+	 */
+	private CUnit bestProducer(final War3ID rawcode) {
+		final float[] anchor = anchor();
+		CUnit best = null;
+		int bestQueue = Integer.MAX_VALUE;
+		float bestDistance = Float.MAX_VALUE;
+		for (final CUnit unit : producers(rawcode)) {
+			if (unit.isConstructing() || unit.isUpgrading()) {
+				continue;
+			}
+			final int queue = queueLength(unit);
+			if (queue >= WarsmashConstants.BUILD_QUEUE_SIZE) {
+				continue;
+			}
+			final float distance = (anchor == null) ? 0f : distance(unit.getX(), unit.getY(), anchor[0], anchor[1]);
+			if ((best == null) || (queue < bestQueue)
+					|| ((queue == bestQueue) && (distance < bestDistance))
+					|| ((queue == bestQueue) && (distance == bestDistance)
+							&& (unit.getHandleId() < best.getHandleId()))) {
+				best = unit;
+				bestQueue = queue;
+				bestDistance = distance;
+			}
+		}
+		return best;
+	}
+
+	/** How many slots of a producer's queue are taken; the engine has no length accessor of its own. */
+	private static int queueLength(final CUnit unit) {
+		int length = 0;
+		for (final War3ID queued : unit.getBuildQueue()) {
+			if (queued != null) {
+				length++;
+			}
+		}
+		return length;
+	}
+
+	/** Whether any of the player's producers is making one of these right now. */
+	private boolean queueHolds(final War3ID rawcode) {
+		for (final CUnit unit : ours()) {
+			if (unit.isDead()) {
+				continue;
+			}
+			for (final War3ID queued : unit.getBuildQueue()) {
+				if (rawcode.equals(queued)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** How many orders for this unit are out and have not arrived: the other half of {@link #expectedCount}. */
+	private int outstanding(final War3ID rawcode, final MacroTicket exclude) {
+		int count = 0;
+		for (final MacroTicket waiting : this.issues.keySet()) {
+			if ((waiting != exclude) && (waiting.getKind() == MacroTicketKind.TRAIN)
+					&& waiting.getRawcode().equals(rawcode)) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * The count that means "this order arrived": what the player owns, plus the orders for the same unit that are still
+	 * outstanding, plus this one. Two grunt tickets queued on one barracks expect the third and the fourth grunt, not the
+	 * third one twice -- otherwise the second ticket would retire on the first ticket's grunt.
+	 */
+	static int expectedCount(final int owned, final int outstanding) {
+		return owned + outstanding + 1;
+	}
+
 	private boolean backingOff(final MacroTicket ticket, final int gameTurnTick) {
 		final Issue issue = this.issues.get(ticket);
 		return (issue != null) && ((gameTurnTick - issue.issuedTick) < RETRY_TICKS);
@@ -1164,6 +1382,19 @@ public final class BuildingPlanExecutor {
 				this.issues.put(ticket,
 						new Issue(gameTurnTick, this.simulation.getPlayer(this.playerIndex).getTechtreeUnlocked(rawcode)
 								+ 1, 0, 0));
+				break;
+			case TRAIN:
+				final CUnit trainer = bestProducer(rawcode);
+				if (trainer == null) {
+					return;
+				}
+				this.listener.issueImmediateOrder(trainer.getHandleId(),
+						trainer.getFirstAbilityOfType(CAbilityQueue.class).getHandleId(), rawcode.getValue(), false);
+				MacroLog.line("do " + state.getNumber() + " TRAIN " + rawcode.asStringValue() + " at h="
+						+ trainer.getHandleId() + " (have " + ownedUnits(rawcode) + ")");
+				// The count this ticket has to see, with the orders already out for the same unit counted in.
+				this.issues.put(ticket, new Issue(gameTurnTick,
+						expectedCount(ownedUnits(rawcode), outstanding(rawcode, ticket)), 0, 0));
 				break;
 			case UPGRADE:
 				final CUnit hall = findHall(rawcode);
@@ -1480,17 +1711,18 @@ public final class BuildingPlanExecutor {
 		}
 	}
 
-	/** A research or an upgrade on its way, and how to tell that it arrived. */
+	/** A research, an upgrade or a unit on its way, and how to tell that it arrived. */
 	private static final class Issue {
 		private final int issuedTick;
-		private final int targetLevel;
+		/** The techtree level for a research, or the unit count for a train, that means "it arrived". */
+		private final int targetCount;
 		private final int hallHandleId;
 		/** How many times an order for this ticket did not take. */
 		private final int retries;
 
-		private Issue(final int issuedTick, final int targetLevel, final int hallHandleId, final int retries) {
+		private Issue(final int issuedTick, final int targetCount, final int hallHandleId, final int retries) {
 			this.issuedTick = issuedTick;
-			this.targetLevel = targetLevel;
+			this.targetCount = targetCount;
 			this.hallHandleId = hallHandleId;
 			this.retries = retries;
 		}

@@ -134,10 +134,12 @@ at a good moment, with an obvious consequence.
   that is not on gold is taken for it (a gold trip is the base's income; lumber or an idle walk costs seconds), the
   builder returns to harvesting between jobs, placement is automatic near the base. A supply line above the list keeps
   the food cap a headroom of seven ahead of the army — never a ticket, pausable. An empty list keeps the base sane.
-- **the unit plan**: the same animal as the building plan — numbered tickets, one numbering shared across both
-  lists. A finished ticket disappears and the unit joins the owned counts; there are no standing rows and no
-  self-refill, so after a fight the player re-adds by hand (two taps, because the available grid shows owned
-  counts). Workers are tickets too.
+- **the unit plan**: the same animal as the building plan — numbered tickets in the same list, one numbering shared
+  across both. A finished ticket disappears and the unit joins the owned counts; nothing refills itself, so after a
+  fight the player re-adds by hand (two taps, because the available grid shows owned counts). Workers are tickets too,
+  and they are seeded first: the default army is the race's own bot list (`RaceUnitOrder`), read off the melee AI's
+  `SetBuildUnit` totals, cut down by the live base and by the mission's tech limits — a mission that starts with twelve
+  wisps is asked for none of them.
 - **see the army**: how many units, what they are, whether they are alive — the available grid's owned counts are it.
 
 The default is the race's whole order — buildings, then the hall's tiers, then the researches those buildings
@@ -168,7 +170,7 @@ The point of this section is that none of it needs a rewrite: the engine already
 | units fighting for themselves | `CUnitAcquisition` (`autoAcquireIdleTargets` `:95`, `autoAcquireTargets` `:57-93`) | this is the per-unit brain, and it is where hero-mode unit behaviour belongs — **not** in the JASS AI |
 | train / build | `CAbilityQueue.java:27-41` (train list), `AbstractCAbilityBuild.java` (build list), `MeleeUICommands.java:422-460` (submenu stack) | the macro panel is a different projection of the same lists the command card shows today |
 | the plan executor | `AIProduction.java:142-213` (producer scan, train, `requirementsMet`/`canAfford` at `:106-128`), `AIConstruction.java:35-65` (free worker), `:246-285` (site search), `:175-180` (obstruction test), `AIHarvest.java:74-120` (idle-worker sweep), `CSimulation.getDefaultPlayerUnitOrderExecutor` (`:1765-1767`) | **the computer AI is the template, not only the enemy's** — its primitives are engine Java, package-private and JASS-driven today; hero mode's executor copies the shapes and issues through the replay-safe per-player executor |
-| the plan executor, as built (E1) | `simulation/macro/` — `BuildingPlanExecutor` (the pass), `MacroRule` (the numbering), `MacroSupplyRule` (the supply line), `LiveBaseDefaults` (the defaults), `MacroPlacement` (sites), `MacroPlan`/`MacroTicket` (what E3 edits) | **built**: the decisions are pure functions of plain values, so the numbering rules are proved by `:core:test` rather than by a phone; affordability and stuckness are asked of the ability itself (`AbilityActivationReceiver`) rather than re-derived, and every order goes out through `CPlayerUnitOrderListener` |
+| the plan executor, as built (E1 + E2) | `simulation/macro/` — `MacroPlanExecutor` (the pass), `MacroRule` (the numbering), `MacroSupplyRule` (the supply line), `LiveBaseDefaults` + `RaceBuildOrder` + `RaceUnitOrder` (the defaults), `MacroPlacement` (sites), `MacroPlan`/`MacroTicket` (what E3 edits) | **built**: the decisions are pure functions of plain values, so the numbering rules are proved by `:core:test` rather than by a phone; affordability and stuckness are asked of the ability itself (`AbilityActivationReceiver`) rather than re-derived, and every order goes out through `CPlayerUnitOrderListener` |
 | income (rally-harvest) | `CUnitUpdate.java:332-348` → `CAbilityHarvest.java:225-270` | **already works**: a worker trained with a rally point on a mine or a tree starts gathering on its own |
 | computer players | `parsers/jass/ai/AIController.java`, `AIProduction`, `AIAttack` | the *enemy* keeps playing RTS; its economy is also the template for the player's plan executor (see above) |
 
@@ -336,9 +338,15 @@ Settled, and no longer up for renegotiation without a good reason:
     follow-up only if a specific mission proves it necessary.
 30. **The unit plan is the same animal as the building plan.** Numbered tickets, done = gone — the unit joins the
     owned counts, workers included — and no standing rows, no self-refill: after a fight the player re-adds by hand,
-    which the owned counts in the available grid make two taps. The hero is not a ticket.
+    which the owned counts in the available grid make two taps. The hero is not a ticket. The list is not empty either:
+    it is seeded from the race's own bot army (`RaceUnitOrder`, the melee AI's cumulative `SetBuildUnit` totals) minus
+    what the base already has, so the player edits a plan instead of tapping one out. A unit ticket retires when the
+    count for its type rises above what it was when the order went out, and one ticket is one unit.
 31. **The spending order, one sentence:** supply first, then the lowest number across both lists, whatever has the
-    gold first — unaffordable tickets wait visibly, requirement-stuck ones never block.
+    gold first — unaffordable tickets wait visibly, requirement-stuck ones never block, one purchase per pass. Order is
+    a preference and only a preference: **a ticket waits for the one that is executing only when it depends on it**, and
+    a dependency is the game's own answer (`MISSING_REQUIREMENT`), never the number. This holds for buildings and for
+    units alike; it was decided while testing a town-hall upgrade that held the whole plan for several minutes.
 32. **The macro panel is two buttons above the skill arc**, each opening a sheet into the right-middle band that
     never covers the stick, the skills, or the hero: available icons above (owned counts, no grouping on the army
     sheet), the numbered order below. `docs/mockups/macro-panel.html` is the settled design.
@@ -392,7 +400,7 @@ issues: two plans and the panel that edits them.
 | C | the army follows | hero moves → the army moves in formation (`CGroupMove` slots, army speed-linked, hero never slowed); a fighting unit ignores hero movement until the hero is **1000** away, then it is a retreat |
 | D | the army fights | engagement and chase limits in `CUnitAcquisition`, opt-in per player, plus support casting |
 | E1 | building plan | numbered tickets for buildings, researches and hall upgrades, executed by engine code; supply outranks every number; the default is the race's order, filtered by the live base |
-| E2 | unit plan | the same tickets as buildings — one shared numbering; done = gone, re-added by hand after a fight |
+| E2 | unit plan | **built**: the same tickets as buildings, one shared numbering; the default is the race's own bot army minus what the base has; done = gone — a unit ticket retires when its own unit appears |
 | E3 | macro panel | two buttons above the skill arc; available icons above, the numbered order below; the sketch in `docs/mockups/` |
 
 ## The stick's art

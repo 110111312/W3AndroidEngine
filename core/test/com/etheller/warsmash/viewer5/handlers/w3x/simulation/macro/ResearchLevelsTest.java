@@ -18,32 +18,32 @@ class ResearchLevelsTest {
 
 	@Test
 	void aResearchWithLevelsLeftIsBoughtAgain() {
-		assertTrue(BuildingPlanExecutor.anotherLevel(THREE_LEVELS, UNLIMITED, 0));
-		assertTrue(BuildingPlanExecutor.anotherLevel(THREE_LEVELS, UNLIMITED, 2));
+		assertTrue(MacroPlanExecutor.anotherLevel(THREE_LEVELS, UNLIMITED, 0));
+		assertTrue(MacroPlanExecutor.anotherLevel(THREE_LEVELS, UNLIMITED, 2));
 	}
 
 	@Test
 	void theDataStopsItWhenTheMissionDoesNot() {
 		// -1 means the mission sets no cap, so the third level is the last one.
-		assertFalse(BuildingPlanExecutor.anotherLevel(THREE_LEVELS, UNLIMITED, 3));
+		assertFalse(MacroPlanExecutor.anotherLevel(THREE_LEVELS, UNLIMITED, 3));
 	}
 
 	@Test
 	void theMissionCanStopItEarly() {
 		// SetPlayerTechMaxAllowed(Player(1), 'Resm', 2): the second level is the last one, whatever the data allows.
-		assertTrue(BuildingPlanExecutor.anotherLevel(THREE_LEVELS, 2, 1));
-		assertFalse(BuildingPlanExecutor.anotherLevel(THREE_LEVELS, 2, 2));
+		assertTrue(MacroPlanExecutor.anotherLevel(THREE_LEVELS, 2, 1));
+		assertFalse(MacroPlanExecutor.anotherLevel(THREE_LEVELS, 2, 2));
 	}
 
 	@Test
 	void aCapOfZeroWasNeverSeededButIsStillNo() {
 		// The seed drops a ticket the mission allows none of, so this cannot reach a plan; the sum agrees anyway.
-		assertFalse(BuildingPlanExecutor.anotherLevel(THREE_LEVELS, 0, 0));
+		assertFalse(MacroPlanExecutor.anotherLevel(THREE_LEVELS, 0, 0));
 	}
 
 	@Test
 	void aRawcodeTheDataDoesNotKnowHasNothingToBuy() {
-		assertFalse(BuildingPlanExecutor.anotherLevel(0, UNLIMITED, 0));
-		assertFalse(BuildingPlanExecutor.anotherLevel(0, 2, 0));
+		assertFalse(MacroPlanExecutor.anotherLevel(0, UNLIMITED, 0));
+		assertFalse(MacroPlanExecutor.anotherLevel(0, 2, 0));
 	}
 }

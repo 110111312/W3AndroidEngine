@@ -142,4 +142,25 @@ class MacroRuleTest {
 				TicketState.stuck(0, building, Stuck.of(Stuck.Reason.NO_BUILDER)), TicketState.ready(1, research))));
 		assertSame(research, withoutThePending.getTicket());
 	}
+
+	@Test
+	void aUnitTicketAtOneRunsWhileTheBuildingAtZeroWaits() {
+		// The army does not wait on a building it does not need: a waiting zero holds nothing. This is the pair the two
+		// plans actually meet on -- same gold, one numbering.
+		final MacroTicket grunt = MacroTicket.train(War3ID.fromString("ogru"));
+		final TicketState next = MacroRule.next(List.of(List.of(TicketState.waiting(0, build(BARRACKS)),
+				TicketState.ready(1, grunt))));
+		assertSame(grunt, next.getTicket());
+	}
+
+	@Test
+	void aUnitTicketKeepsItsNumberWhenItsOwnOrderIsOut() {
+		final MacroTicket grunt = MacroTicket.train(War3ID.fromString("ogru"));
+		final MacroTicket rifleman = MacroTicket.train(RIFLEMAN);
+		final TicketState next = MacroRule.next(List.of(List.of(TicketState.pending(0, grunt),
+				TicketState.ready(1, rifleman))));
+		// Two units means two orders, and the first one being in flight is a reason for the second to wait for its own
+		// gold, not for the first one's unit.
+		assertSame(rifleman, next.getTicket());
+	}
 }

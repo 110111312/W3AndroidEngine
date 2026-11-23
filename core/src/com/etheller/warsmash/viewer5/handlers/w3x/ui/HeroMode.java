@@ -37,7 +37,7 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.GetAbilit
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.hero.CAbilityHero;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.inventory.CAbilityInventory;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityPointTarget;
-import com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro.BuildingPlanExecutor;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro.MacroPlanExecutor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityActivationReceiver;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.util.BooleanAbilityTargetCheckReceiver;
@@ -130,8 +130,8 @@ final class HeroMode implements HeroTouchHost {
 	private float worldPerScreenPixel = 1f;
 	/** The step the army's chase cap is next looked at on; see {@link CHeroArmy#RETREAT_SCAN_TICKS}. */
 	private int nextArmyScanTick = Integer.MIN_VALUE;
-	/** The base playing itself, or null until hero mode is running; see {@link BuildingPlanExecutor}. */
-	private BuildingPlanExecutor planExecutor;
+	/** The base playing itself, or null until hero mode is running; see {@link MacroPlanExecutor}. */
+	private MacroPlanExecutor planExecutor;
 	/** The skill a finger is aiming right now, or -1. */
 	private int aimingSlot = -1;
 	/** A single-target skill that is waiting for the tap on its target, or -1. */
@@ -208,7 +208,7 @@ final class HeroMode implements HeroTouchHost {
 		this.active = true;
 		if (this.planExecutor == null) {
 			// The base runs on the player's own plan from here on: the plan is seeded from whatever this mission gave.
-			this.planExecutor = new BuildingPlanExecutor(this.ui.war3MapViewer.simulation,
+			this.planExecutor = new MacroPlanExecutor(this.ui.war3MapViewer.simulation,
 					this.ui.war3MapViewer.getLocalPlayerIndex(), this.ui.unitOrderListener);
 		}
 		this.heroAbility = findHeroAbility();
@@ -567,7 +567,7 @@ final class HeroMode implements HeroTouchHost {
 	}
 
 	/** The plan executor, for the macro panel (E3) to read the plan and toggle the supply line. */
-	BuildingPlanExecutor getPlanExecutor() {
+	MacroPlanExecutor getPlanExecutor() {
 		return this.planExecutor;
 	}
 
