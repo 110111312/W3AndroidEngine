@@ -195,4 +195,53 @@ class LiveBaseDefaultsTest {
 		final List<PlanTypeFacts> buildable = new ArrayList<>(List.of(farm(), barracks(), altar(), townHall()));
 		assertEquals(LiveBaseDefaults.militaryType(buildable, types), LiveBaseDefaults.militaryType(buildable, types));
 	}
+
+	@Test
+	void theRaceArmyIsSeededMinusWhatTheBaseAlreadyHas() {
+		final LiveBaseDefaults.UnitSeed seed = LiveBaseDefaults.seedUnits(CUnitRace.HUMAN,
+				Map.of(PEASANT, 13, FOOTMAN, 2));
+		// The bot's thirteen peasants are already there; four of its six footmen are not.
+		assertTrue(seed.workers().isEmpty());
+		assertEquals(4, count(seed.army(), FOOTMAN));
+		assertEquals(2, count(seed.army(), War3ID.fromString("hgyr")));
+	}
+
+	@Test
+	void workersAreSeededApartFromTheArmy() {
+		final LiveBaseDefaults.UnitSeed seed = LiveBaseDefaults.seedUnits(CUnitRace.HUMAN, Map.of());
+		assertEquals(13, seed.workers().size());
+		assertEquals(25, seed.army().size());
+		for (final MacroTicket ticket : seed.workers()) {
+			assertEquals(PEASANT, ticket.getRawcode());
+			assertEquals(MacroTicketKind.TRAIN, ticket.getKind());
+		}
+	}
+
+	@Test
+	void aBaseWithTheBotsWholeArmyGetsNoUnitTickets() {
+		final Map<War3ID, Integer> owned = new LinkedHashMap<>();
+		for (final RaceUnitOrder.Line line : RaceUnitOrder.forRace(CUnitRace.NIGHTELF)) {
+			owned.put(line.rawcode(), line.count());
+		}
+		final LiveBaseDefaults.UnitSeed seed = LiveBaseDefaults.seedUnits(CUnitRace.NIGHTELF, owned);
+		assertTrue(seed.workers().isEmpty());
+		assertTrue(seed.army().isEmpty());
+	}
+
+	@Test
+	void aRaceWithNoArmySeedsNoUnits() {
+		final LiveBaseDefaults.UnitSeed seed = LiveBaseDefaults.seedUnits(CUnitRace.OTHER, Map.of());
+		assertTrue(seed.workers().isEmpty());
+		assertTrue(seed.army().isEmpty());
+	}
+
+	private static int count(final List<MacroTicket> tickets, final War3ID rawcode) {
+		int count = 0;
+		for (final MacroTicket ticket : tickets) {
+			if (ticket.getRawcode().equals(rawcode)) {
+				count++;
+			}
+		}
+		return count;
+	}
 }

@@ -25,7 +25,9 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitRace;
  * <li><b>the filter</b> is the live base: a building the player owns, is building, has queued, or upgrades into is
  * dropped, and a hall upgrade is dropped when the player's hall is already that tier or a later one;</li>
  * <li><b>a supply building</b> is picked here too -- the one the player's workers can build that makes the most food,
- * cheapest first -- but it is not a ticket: the supply line owns it.</li>
+ * cheapest first -- but it is not a ticket: the supply line owns it;</li>
+ * <li><b>the army</b> comes from {@link RaceUnitOrder}, minus what the player already has: the unit plan's tickets
+ * ({@link #seedUnits}), seeded once and then the player's to edit.</li>
  * </ul>
  * A race with no order in the table (naga, and anything the rules cannot name) falls back to the one thing no base
  * should have to ask for: a structure that trains a soldier, if this base can build one at all.
@@ -124,6 +126,34 @@ public final class LiveBaseDefaults {
 			return List.of(MacroTicket.build(militaryType));
 		}
 		return List.of();
+	}
+
+	/**
+	 * The unit tickets a base starts with, split the way they are seeded: the workers' line before the buildings, the
+	 * army's after them.
+	 * <p>
+	 * The default is the race's own bot army ({@link RaceUnitOrder}), minus what the player already has, so a mission
+	 * that starts with twelve wisps asks for none and a mission that starts with two asks for the bot's eleven. What the
+	 * player removes stays removed: this runs once, and a unit ticket is a decision, not a policy.
+	 *
+	 * @param owned how many of each type the player has right now; a type missing from the map is the same as zero here
+	 *              and is dropped later, by the caller that can see the mission's tech limits
+	 */
+	public static UnitSeed seedUnits(final CUnitRace race, final Map<War3ID, Integer> owned) {
+		final List<MacroTicket> workers = new ArrayList<>();
+		final List<MacroTicket> army = new ArrayList<>();
+		for (final RaceUnitOrder.Line line : RaceUnitOrder.forRace(race)) {
+			final Integer have = owned.get(line.rawcode());
+			final int ownedCount = (have == null) ? 0 : have;
+			for (int i = ownedCount; i < line.count(); i++) {
+				(line.worker() ? workers : army).add(MacroTicket.train(line.rawcode()));
+			}
+		}
+		return new UnitSeed(workers, army);
+	}
+
+	/** The two halves of the unit seed, kept apart because they enter the plan at different numbers. */
+	public record UnitSeed(List<MacroTicket> workers, List<MacroTicket> army) {
 	}
 
 	/** Whether the base already did this ticket, so that seeding it would ask for something that exists. */

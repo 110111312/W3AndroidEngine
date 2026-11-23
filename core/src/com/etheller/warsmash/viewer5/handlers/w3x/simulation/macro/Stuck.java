@@ -5,8 +5,9 @@ import com.etheller.warsmash.util.War3ID;
 /**
  * Why a ticket cannot run at all, as opposed to why it is not running yet.
  * <p>
- * The distinction is the load-bearing one of the whole plan: an unaffordable ticket waits and holds its number, while a
- * stuck one is greyed, says why, and blocks nobody -- the numbers behind it start without it. The reason travels as a
+ * The distinction is the load-bearing one of the whole plan: an unaffordable ticket waits for its price, while a stuck
+ * one is greyed and says why. Neither holds the numbers behind it: order is a preference, and the only thing that truly
+ * orders two tickets is a requirement, which the game reports as MISSING_REQUIREMENT until it is met. The reason travels as a
  * value so that the panel can word it and so that a test can assert it; the words themselves belong to E3's panel.
  */
 public final class Stuck {

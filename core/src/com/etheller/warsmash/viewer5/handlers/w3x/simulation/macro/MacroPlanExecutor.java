@@ -2,6 +2,7 @@ package com.etheller.warsmash.viewer5.handlers.w3x.simulation.macro;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -13,6 +14,7 @@ import java.util.function.Function;
 
 import com.etheller.warsmash.util.ArgbImage;
 import com.etheller.warsmash.util.War3ID;
+import com.etheller.warsmash.util.WarsmashConstants;
 import com.etheller.warsmash.viewer5.handlers.w3x.environment.PathingGrid;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CSimulation;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.data.CUnitData;
@@ -21,9 +23,12 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.timers.CTimer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnit;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitClassification;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUnitType;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CUpgradeType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CDestructable;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.CWidget;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityEntangledMine;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.mine.CAbilityGoldMinable;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.nightelf.root.CAbilityEntangleGoldMine;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.combat.CTargetType;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.CAbility;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.build.AbstractCAbilityBuild;
@@ -31,6 +36,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.cargohold
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CAbstractRangedBehavior;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehaviorBoardTransport;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.harvest.CAbilityHarvest;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTarget;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.targeting.AbilityTargetVisitor;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.queue.CAbilityQueue;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.abilities.upgrade.CAbilityUpgrade;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.behaviors.CBehavior;
@@ -43,11 +50,14 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnit
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildingIntersector;
 
 /**
- * The building plan, executed.
+ * Both plans, executed: the base's buildings and the army's units.
  * <p>
  * This is the half that reads the simulation and sends orders; the decisions themselves are in {@link MacroRule},
- * {@link MacroSupplyRule} and {@link LiveBaseDefaults}, which take plain values and are tested without one. The split
- * is not decoration: it is what lets the numbering rules be proved by {@code :core:test} rather than by watching a
+ * {@link MacroSupplyRule}, {@link LiveBaseDefaults} and {@link RaceUnitOrder}, which take plain values and are tested
+ * without a simulation. The split is not decoration: it is what lets the numbering rules be proved by
+ * {@code :core:test} rather than by watching a phone. A unit ticket is the same animal as a build ticket -- one number,
+ * one purchase, gone when it arrives -- which is why both live in one {@link MacroPlan}: a build's 0 and an army's 1
+ * compete for the same gold, and nothing has to reconcile two numberings.
  * phone.
  * <p>
  * Three things are copied from the computer AI rather than shared with it, because every class in
@@ -60,9 +70,15 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildin
  * rule named. The order it issues is picked up by the delaying listener at the end of the same step, so the whole plan
  * is aligned to steps even though it is called from the interface.
  */
-public final class BuildingPlanExecutor {
+public final class MacroPlanExecutor {
 	/** How often the plan is looked at, in steps. One pass a second is the AI's own pace. */
 	public static final int PLAN_PASS_TICKS = CTimer.wholeSteps(1);
+	/**
+	 * How many passes the seed waits for the first worker. A script places a base's structures before it makes the
+	 * workers, so a base read in that gap has no builder, no race, and produces an empty plan. Ten passes is half a
+	 * minute: every map that gives a worker at all gives it well inside that.
+	 */
+	private static final int SEED_WAITS_FOR_WORKER = 10;
 	/** A build job older than this is given up: a worker that never arrived must not hold the plan forever. */
 	private static final int JOB_TIMEOUT_TICKS = CTimer.wholeSteps(90);
 	/** How long a job is given to start before the worker's order is taken as a refusal. */
@@ -117,6 +133,12 @@ public final class BuildingPlanExecutor {
 	private List<CDestructable> treeCache;
 	/** When each worker was last sent to a mine, so one that could not get in is not sent straight back. */
 	private final Map<Integer, Integer> mineOrders = new HashMap<>();
+	/**
+	 * Workers that have just finished a structure. They go to lumber next, not to the mine: the plan promised the
+	 * builder returns to harvesting between jobs, and for a Night Elf wisp "harvesting" used to mean the gold trip
+	 * even when the worker had never been on gold.
+	 */
+	private final Set<Integer> justBuilt = new HashSet<>();
 	private int treeCacheTick = Integer.MIN_VALUE;
 
 	private boolean supplyPaused;
@@ -124,7 +146,7 @@ public final class BuildingPlanExecutor {
 	private boolean baseReadable;
 	private int nextPassTick = Integer.MIN_VALUE;
 
-	public BuildingPlanExecutor(final CSimulation simulation, final int playerIndex,
+	public MacroPlanExecutor(final CSimulation simulation, final int playerIndex,
 			final CPlayerUnitOrderListener listener) {
 		this.simulation = simulation;
 		this.playerIndex = playerIndex;
@@ -196,6 +218,7 @@ public final class BuildingPlanExecutor {
 			return;
 		}
 		restoreIdleWorker(gameTurnTick);
+		ensureEntangledMine(gameTurnTick);
 		if (runSupply(player, gameTurnTick)) {
 			return;
 		}
@@ -210,6 +233,41 @@ public final class BuildingPlanExecutor {
 		if (next != null) {
 			execute(next, gameTurnTick);
 		}
+		else {
+			this.log.transition("blocked", idleReason(states),
+					"pass " + gameTurnTick + ": nothing to buy -- " + idleReason(states));
+		}
+	}
+
+	/**
+	 * Why nothing was bought, in words: an empty plan, or the first ticket that is neither stuck nor ready, or -- when
+	 * every ticket left is stuck, which is where a finished plan ends up with its researches parked at their maximum --
+	 * how many are parked and which.
+	 */
+	private static String idleReason(final List<TicketState> states) {
+		final TicketState waiting = firstWaiting(states);
+		if (waiting != null) {
+			return "t" + waiting.getNumber() + " " + waiting.getTicket() + " is waiting: " + describe(waiting);
+		}
+		if (states.isEmpty()) {
+			return "the plan is empty";
+		}
+		final TicketState parked = states.get(0);
+		return "the plan is done -- " + states.size() + " left, all stuck: t" + parked.getNumber() + " "
+				+ parked.getTicket() + " " + describe(parked);
+	}
+
+	/**
+	 * The first ticket that is neither stuck nor ready: as close to a reason as one ticket gets when the answer is
+	 * "everything is waiting for gold, or for an order of its own". Null when every ticket is stuck.
+	 */
+	private static TicketState firstWaiting(final List<TicketState> states) {
+		for (final TicketState state : states) {
+			if (!state.isStuck() && !state.isReady()) {
+				return state;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -217,14 +275,30 @@ public final class BuildingPlanExecutor {
 	 * "no site for it" from "requirement not met yet" -- the three ways a plan looks like it is doing nothing.
 	 */
 	private void logStates(final List<TicketState> states, final int gameTurnTick) {
-		if ((gameTurnTick % 10) != 0) {
-			return;
-		}
+		// No tick gate here: transitions are already deduplicated against the last value, and a gate on the turn
+		// number silently swallowed every line, because passes land on the same turns every time.
+		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
 		for (final TicketState state : states) {
-			final String now = describe(state);
-			this.log.transition("ticket " + state.getNumber(), now,
+			final String now = describe(state) + counts(state, player);
+			// Keyed on the ticket's identity, not its number: numbers shift when a ticket retires, and two tickets for
+			// the same unit are two lines, not one. MacroLog never prints the key.
+			this.log.transition("ticket " + System.identityHashCode(state.getTicket()), now,
 					"t" + state.getNumber() + " " + state.getTicket() + ": " + now);
 		}
+	}
+
+	/**
+	 * What the player's limit on this rawcode is and where the count stands, for a ticket that is at its maximum: "at
+	 * maximum" with none of them built only makes sense next to the two numbers the engine compared.
+	 */
+	private static String counts(final TicketState state, final CPlayer player) {
+		if ((player == null) || !state.isStuck()
+				|| (state.getStuck().getReason() != Stuck.Reason.AT_MAXIMUM)) {
+			return "";
+		}
+		final War3ID rawcode = state.getTicket().getRawcode();
+		return " (have " + player.getTechtreeUnlockedOrInProgress(rawcode) + ", max "
+				+ player.getTechtreeMaxAllowed(rawcode) + ")";
 	}
 
 	private static String describe(final TicketState state) {
@@ -253,19 +327,38 @@ public final class BuildingPlanExecutor {
 			this.log.say("waiting", gameTurnTick, "seed: waiting for the base -- nothing of ours exists yet");
 			return;
 		}
-		this.seeded = true;
 		this.baseReadable = (this.simulation.getUnitData() != null);
 		if (!this.baseReadable) {
+			this.seeded = true;
 			this.log.say("noseed", gameTurnTick, "seed: the techtree cannot be read, so the plan stays empty");
 			return;
 		}
+		if (!hasWorker() && (this.seedWaits++ < SEED_WAITS_FOR_WORKER)) {
+			// A script places the structures before it makes the workers, and a base read in that gap has no builder
+			// in it: no race either, so the plan comes back empty and the mission runs on the supply line alone. Give
+			// the map those few seconds. The wait is bounded, because a map that really has no worker must still seed
+			// -- the harvest sweep and the supply line do not need one to be seeded.
+			this.log.say("waiting-worker", gameTurnTick, "seed: waiting for the first worker -- the base has no builder yet");
+			return;
+		}
+		this.seeded = true;
 		final CUnitRace race = playerRace();
 		final List<PlanTypeFacts> buildable = buildableFacts();
 		final War3ID military = LiveBaseDefaults.militaryType(buildable, typeFacts());
-		final List<MacroTicket> tickets = LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(),
-				military);
+		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
+		final List<MacroTicket> buildings = allowed(player,
+				LiveBaseDefaults.seed(hasWorker(), true, race, owned, typeLookup(), military));
+		final LiveBaseDefaults.UnitSeed units = LiveBaseDefaults.seedUnits(race, ownedCounts());
+		final List<MacroTicket> army = allowed(player, units.army());
+		final List<MacroTicket> workers = allowed(player, units.workers());
+		// Workers first: every bot script trains its workers before its soldiers, and a worker is income for the rest
+		// of the mission. Then the buildings, then the army those buildings make.
+		final List<MacroTicket> tickets = new ArrayList<>(workers);
+		tickets.addAll(buildings);
+		tickets.addAll(army);
 		MacroLog.line("seed: race=" + race + " worker=" + hasWorker() + " owned=" + owned.size() + " plan="
-				+ tickets.size());
+				+ tickets.size() + " (workers " + workers.size() + ", buildings " + buildings.size() + ", army "
+				+ army.size() + ")");
 		for (int i = 0; i < tickets.size(); i++) {
 			MacroLog.line("  " + i + " " + tickets.get(i));
 		}
@@ -280,6 +373,71 @@ public final class BuildingPlanExecutor {
 						+ cargo.getCargoCapacity() + " gold=" + (unit.getOverlayedGoldMineData() != null));
 			}
 		}
+		// Every mine on the map, ours or not, with what it takes to enter it: this is the line that says why no worker
+		// was sent to gold, which is otherwise indistinguishable from a map that has no mine at all.
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			final String type = unit.getUnitType().getTypeId().asStringValue();
+			if (!"ngol".equals(type) && !"egol".equals(type) && !"ugol".equals(type) && !"agol".equals(type)) {
+				continue;
+			}
+			MacroLog.line("gold: h=" + unit.getHandleId() + " type=" + type + " player="
+					+ unit.getPlayerIndex() + " dead=" + unit.isDead() + " entangled="
+					+ (unit.getFirstAbilityOfType(CAbilityEntangledMine.class) != null) + " overlay="
+					+ (unit.getOverlayedGoldMineData() != null) + " cargo="
+					+ ((unit.getCargoData() == null) ? "none"
+							: (unit.getCargoData().getCargoCount() + "/" + unit.getCargoData().getCargoCapacity())));
+		}
+	}
+
+	/**
+	 * The tickets this mission can actually use, and the only place a seeded ticket is dropped for being impossible.
+	 * <p>
+	 * A mission can forbid a structure or a unit outright with a tech limit of zero, which is what the Night Elf
+	 * campaign does to the Tree of Eternity and to the Druid of the Talon. Those are not "not yet": no amount of gold
+	 * buys one, so seeding them would only leave the plan with tickets that can never run. The same goes for a rawcode
+	 * this map's data does not define at all -- there is nowhere for that order to go.
+	 */
+	private List<MacroTicket> allowed(final CPlayer player, final List<MacroTicket> tickets) {
+		final List<MacroTicket> allowed = new ArrayList<>();
+		for (final MacroTicket ticket : tickets) {
+			if ((player != null) && (player.getTechtreeMaxAllowed(ticket.getRawcode()) == 0)) {
+				MacroLog.line("  skipped " + ticket + ": the mission allows none of it");
+				continue;
+			}
+			if (namesAUnit(ticket) && (this.simulation.getUnitData().getUnitType(ticket.getRawcode()) == null)) {
+				MacroLog.line("  skipped " + ticket + ": this map has no such unit");
+				continue;
+			}
+			allowed.add(ticket);
+		}
+		return allowed;
+	}
+
+	/** Whether the ticket names a type in the unit data: a structure to put down, or a unit to train. */
+	private static boolean namesAUnit(final MacroTicket ticket) {
+		return (ticket.getKind() == MacroTicketKind.BUILD) || (ticket.getKind() == MacroTicketKind.TRAIN);
+	}
+
+	/** How many of each type the player has, for the unit seed's "minus what you already own". */
+	private Map<War3ID, Integer> ownedCounts() {
+		final Map<War3ID, Integer> counts = new HashMap<>();
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead()) {
+				counts.merge(unit.getTypeId(), 1, Integer::sum);
+			}
+		}
+		return counts;
+	}
+
+	/** How many of this type the player has: the "have N" in "N + incoming is the whole picture". */
+	private int ownedUnits(final War3ID rawcode) {
+		int count = 0;
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead() && unit.getTypeId().equals(rawcode)) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	/**
@@ -315,10 +473,9 @@ public final class BuildingPlanExecutor {
 		final Set<War3ID> types = new LinkedHashSet<>();
 		for (final CUnit unit : ours()) {
 			types.add(unit.getTypeId());
-			final CAbilityUpgrade upgrade = unit.getFirstAbilityOfType(CAbilityUpgrade.class);
-			if (upgrade != null) {
-				types.addAll(upgrade.getUpgradesTo());
-			}
+			// The hall's upgrade targets are deliberately not added: "this could become a Tree of Ages" is not "there
+			// is a Tree of Ages", and adding them dropped the very ticket that would make one. What a hall already is
+			// or is becoming is enough, and LiveBaseDefaults.hallIsPast walks the upgrade chain for the rest.
 			final CAbilityQueue queue = unit.getFirstAbilityOfType(CAbilityQueue.class);
 			if (queue != null) {
 				for (final War3ID queued : unit.getBuildQueue()) {
@@ -354,6 +511,7 @@ public final class BuildingPlanExecutor {
 			final BuildJob job = it.next();
 			if (laidDown(job)) {
 				it.remove();
+				this.justBuilt.add(job.worker.getHandleId());
 				if (job.ticket != null) {
 					this.plan.remove(job.ticket);
 					this.issues.remove(job.ticket);
@@ -380,8 +538,26 @@ public final class BuildingPlanExecutor {
 				finished.add(ticket);
 			}
 			else if (ticket.getKind() == MacroTicketKind.RESEARCH) {
-				if (player.getTechtreeUnlocked(ticket.getRawcode()) >= issue.targetLevel) {
+				if (player.getTechtreeUnlocked(ticket.getRawcode()) >= issue.targetCount) {
+					if (moreLevelsToResearch(player, ticket.getRawcode())) {
+						// The level landed and another one may be bought: the ticket stays, and is ready again next pass.
+						finished.add(ticket);
+					}
+					else {
+						this.plan.remove(ticket);
+						finished.add(ticket);
+					}
+				}
+			}
+			else if (ticket.getKind() == MacroTicketKind.TRAIN) {
+				if (ownedUnits(ticket.getRawcode()) >= issue.targetCount) {
+					// The unit is here: the ticket was the decision, the unit is the result, so the ticket goes.
 					this.plan.remove(ticket);
+					finished.add(ticket);
+				}
+				else if (!queueHolds(ticket.getRawcode())) {
+					// Nothing is training it any more: the order was cancelled or declined. Forget the order so the next
+					// pass offers the ticket again, rather than waiting forever for a unit nobody is making.
 					finished.add(ticket);
 				}
 			}
@@ -416,6 +592,29 @@ public final class BuildingPlanExecutor {
 		return (order != null) && (order.getOrderId() == job.typeId.getValue());
 	}
 
+	/**
+	 * Whether the player may buy one more level of this research: the upgrade's own level count, cut down to the
+	 * mission's cap when the mission sets one ({@code -1} there means unlimited). A research ticket that has run out
+	 * of levels is retired; one that has not stays in the plan and asks for the next level with the gold already
+	 * banked, which is what a five-minute hall upgrade is good for.
+	 */
+	private boolean moreLevelsToResearch(final CPlayer player, final War3ID rawcode) {
+		final CUpgradeType type = this.simulation.getUpgradeData().getType(rawcode);
+		return anotherLevel((type == null) ? 0 : type.getLevelCount(), player.getTechtreeMaxAllowed(rawcode),
+				player.getTechtreeUnlocked(rawcode));
+	}
+
+	/**
+	 * The same question as a sum, so it can be proved without a simulation: how many levels of this research may
+	 * exist, against how many the player has. {@code cap} is the mission's {@code SetPlayerTechMaxAllowed}, where
+	 * {@code -1} means the data is the only limit; {@code levelCount} is 0 for a rawcode the data does not know,
+	 * which reads as nothing left to buy.
+	 */
+	static boolean anotherLevel(final int levelCount, final int cap, final int unlocked) {
+		final int ceiling = (cap < 0) ? levelCount : Math.min(cap, levelCount);
+		return unlocked < ceiling;
+	}
+
 	/** Remembers that this ticket's order did not take, so it waits before it is offered again. */
 	private void refused(final BuildJob job, final int gameTurnTick) {
 		if (job.ticket == null) {
@@ -445,6 +644,8 @@ public final class BuildingPlanExecutor {
 		// goes, so the second worker does not pick the tree the first one just claimed.
 		final Map<CWidget, Integer> claimed = new IdentityHashMap<>();
 		int ordered = 0;
+		int toMine = 0;
+		int toWood = 0;
 		for (final CUnit unit : ours()) {
 			if (unit.isDead() || unit.isHidden() || unit.isBuilding() || unit.isLoaded()
 					|| (buildAbility(unit) == null)) {
@@ -460,11 +661,105 @@ public final class BuildingPlanExecutor {
 			// move ability and did nothing -- the worker stood idle for the rest of the mission.
 			final CWidget accepted = sendToHarvest(unit, gameTurnTick, claimed);
 			ordered++;
+			if (accepted instanceof CDestructable) {
+				toWood++;
+			}
+			else if (accepted != null) {
+				toMine++;
+			}
 			this.log.say("restore-" + unit.getHandleId(), gameTurnTick,
 					"restore: idle h=" + unit.getHandleId() + " -> " + describeTarget(accepted, unit, claimed));
 		}
 		if (ordered == 0) {
 			this.log.say("restore-none", gameTurnTick, "restore: no idle builder");
+		}
+		else {
+			// The shape of a sweep in one line: five to the mine, the rest to lumber is what a healthy base looks like.
+			this.log.say("restore-summary", gameTurnTick,
+					"restore: " + ordered + " idle -> mine " + toMine + ", wood " + toWood);
+			if (toMine == 0) {
+				mineCensus(gameTurnTick, claimed);
+			}
+		}
+	}
+
+	/**
+	 * Night Elf gold comes from an entangled mine, and a campaign base starts with the plain one: no wisp can enter it
+	 * until one of them entangles it, so without this the whole base went to lumber and the gold never moved off the
+	 * mission's starting amount.
+	 * <p>
+	 * The ability is the wisp's own (it walks to the mine and builds the entangled mine over it), and one worker is put
+	 * on it at a time: a second order on a mine another wisp is already walking to would be the same trip twice.
+	 */
+	private void ensureEntangledMine(final int gameTurnTick) {
+		for (final CUnit unit : ours()) {
+			if (unit.getOverlayedGoldMineData() != null) {
+				return;
+			}
+		}
+		final float[] anchor = anchor();
+		CUnit mine = null;
+		float mineDistance = Float.MAX_VALUE;
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			final CAbilityGoldMinable gold = unit.getGoldMineData();
+			if ((gold == null) || !gold.isBaseMine() || unit.isDead() || unit.isHidden()) {
+				continue;
+			}
+			final float distance = (anchor == null) ? 0f : distance(anchor[0], anchor[1], unit.getX(), unit.getY());
+			if ((mine == null) || (distance < mineDistance)) {
+				mine = unit;
+				mineDistance = distance;
+			}
+		}
+		if (mine == null) {
+			return;
+		}
+		CUnit best = null;
+		float bestDistance = Float.MAX_VALUE;
+		for (final CUnit unit : ours()) {
+			if (unit.isDead() || unit.isHidden() || unit.isBuilding()) {
+				continue;
+			}
+			final COrder order = unit.getCurrentOrder();
+			if ((order != null) && (order.getOrderId() == OrderIds.entangle)) {
+				// One worker is already on it; nothing to add until it gets there.
+				return;
+			}
+			if (unit.getFirstAbilityOfType(CAbilityEntangleGoldMine.class) == null) {
+				continue;
+			}
+			final float distance = distance(unit.getX(), unit.getY(), mine.getX(), mine.getY());
+			if ((best == null) || (distance < bestDistance)) {
+				best = unit;
+				bestDistance = distance;
+			}
+		}
+		if ((best != null) && best.order(this.simulation, OrderIds.entangle, mine)) {
+			this.log.say("entangle", gameTurnTick,
+					"entangle: h=" + best.getHandleId() + " -> mine h=" + mine.getHandleId());
+		}
+	}
+
+	/**
+	 * Why no worker went to gold, in one line per mine: "nobody went to the mine" has four causes that look identical
+	 * from the phone -- no mine at all, a mine that is somebody else's, a plain mine nobody can enter, and a mine that
+	 * is already full -- and the sweep alone cannot tell them apart.
+	 */
+	private void mineCensus(final int gameTurnTick, final Map<CWidget, Integer> claimed) {
+		for (final CUnit unit : this.simulation.getUnitsIncludingNew()) {
+			final CAbilityGoldMinable gold = unit.getGoldMineData();
+			if ((gold == null) || unit.isDead()) {
+				continue;
+			}
+			final CAbilityCargoHold cargo = unit.getCargoData();
+			this.log.say("census-" + unit.getHandleId(), gameTurnTick,
+					"gold: h=" + unit.getHandleId() + " type=" + unit.getUnitType().getTypeId().asStringValue()
+							+ " player=" + unit.getPlayerIndex() + " ours=" + this.playerIndex + " base=" + gold.isBaseMine()
+							+ " hidden=" + unit.isHidden() + " entangle="
+							+ (unit.getFirstAbilityOfType(CAbilityEntangledMine.class) != null) + " overlay="
+							+ (unit.getOverlayedGoldMineData() != null) + " cargo="
+							+ ((cargo == null) ? "none" : (cargo.getCargoCount() + "/" + cargo.getCargoCapacity()))
+							+ " workers=" + workersOnMine(unit) + " claimed=" + claimed.getOrDefault(unit, 0));
 		}
 	}
 
@@ -494,6 +789,14 @@ public final class BuildingPlanExecutor {
 	 */
 	private CWidget sendToHarvest(final CUnit unit, final int gameTurnTick,
 			final Map<CWidget, Integer> claimed) {
+		// A worker that has just finished a structure goes to lumber, as the plan promises: the mine already has its
+		// five, and a wisp walking to the mine to be turned away is a walk for nothing.
+		if (this.justBuilt.remove(unit.getHandleId())) {
+			final CDestructable justBuiltLumber = sendToTree(unit, gameTurnTick, claimed);
+			if (justBuiltLumber != null) {
+				return justBuiltLumber;
+			}
+		}
 		final CWidget last = lastHarvestTarget(unit);
 		if ((last != null) && !last.isDead() && unit.order(this.simulation, OrderIds.harvest, last)) {
 			claimed.merge(last, 1, Integer::sum);
@@ -538,6 +841,26 @@ public final class BuildingPlanExecutor {
 		final CAbilityHarvest harvest = unit.getFirstAbilityOfType(CAbilityHarvest.class);
 		if ((harvest != null) && (harvest.getCarriedResourceAmount() > 0)) {
 			unit.order(this.simulation, OrderIds.returnresources, null);
+		}
+		return null;
+	}
+
+	/** The tree this worker takes, or null if every tree it was offered refused the order. */
+	private CDestructable sendToTree(final CUnit unit, final int gameTurnTick,
+			final Map<CWidget, Integer> claimed) {
+		int tries = 0;
+		for (final CDestructable tree : treesToTry(unit, gameTurnTick, claimed)) {
+			if (tree.isDead()) {
+				continue;
+			}
+			if (tries++ >= TREE_TRIES) {
+				break;
+			}
+			if (unit.order(this.simulation, OrderIds.harvest, tree)) {
+				claimed.merge(tree, 1, Integer::sum);
+				this.mineOrders.remove(unit.getHandleId());
+				return tree;
+			}
 		}
 		return null;
 	}
@@ -694,7 +1017,19 @@ public final class BuildingPlanExecutor {
 				inFlight++;
 			}
 		}
-		final CUnit builder = findBuilder(supplyType);
+		// A supply building that is still going up counts as one in flight. Its food arrives only when it is finished,
+		// so without this the line wanted the next one the moment the foundation appeared, ordered it, and left a
+		// trail of foundations with a worker walking from one to the next.
+		for (final CUnit unit : ours()) {
+			if (!unit.isDead() && unit.getTypeId().equals(supplyType) && unit.isConstructing()) {
+				inFlight++;
+			}
+		}
+		final CUnit builder = findBuilder(supplyType, false);
+		if ((builder == null) && (findBuilder(supplyType, true) != null)) {
+			this.log.say("supply-gold", gameTurnTick,
+					"supply: " + supplyType.asStringValue() + " is wanted but every builder is on gold");
+		}
 		boolean typeStuck = false;
 		if (builder != null) {
 			buildAbility(builder).checkCanUse(this.simulation, builder, this.playerIndex, supplyType.getValue(), false,
@@ -704,7 +1039,7 @@ public final class BuildingPlanExecutor {
 		else {
 			typeStuck = true;
 		}
-		if (!MacroSupplyRule.wanted(true, typeStuck, player.getFoodUsed(), 0, player.getFoodCap(),
+		if (!MacroSupplyRule.wanted(true, typeStuck, player.getFoodUsed(), nextTrainFood(), player.getFoodCap(),
 				player.getFoodCapLimit(), player.getFoodCapCeiling(), type.getFoodMade(), this.supplyPaused, inFlight)) {
 			return false;
 		}
@@ -722,6 +1057,21 @@ public final class BuildingPlanExecutor {
 				+ (int) site[0] + "," + (int) site[1] + " (food " + player.getFoodUsed() + "/" + player.getFoodCapLimit()
 				+ ")");
 		return true;
+	}
+
+	/**
+	 * What the army is about to ask for: the food of the first unit ticket in the plan, zero when it has none. The supply
+	 * line builds a farm on the army plus a headroom, so a unit the plan is about to train has to be in that sum --
+	 * otherwise the farm is ordered one train too late and the train is refused for food.
+	 */
+	private int nextTrainFood() {
+		for (final MacroTicket ticket : this.plan.getTickets()) {
+			if (ticket.getKind() == MacroTicketKind.TRAIN) {
+				final CUnitType type = this.simulation.getUnitData().getUnitType(ticket.getRawcode());
+				return (type == null) ? 0 : type.getFoodUsed();
+			}
+		}
+		return 0;
 	}
 
 	// ------------------------------------------------------------------ the numbers
@@ -749,6 +1099,9 @@ public final class BuildingPlanExecutor {
 					break;
 				case UPGRADE:
 					state = upgradeState(number, ticket, gameTurnTick);
+					break;
+				case TRAIN:
+					state = trainState(number, ticket, gameTurnTick);
 					break;
 				default:
 					state = TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.UNREADABLE));
@@ -780,9 +1133,15 @@ public final class BuildingPlanExecutor {
 		if (type == null) {
 			return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.UNREADABLE));
 		}
-		final CUnit builder = findBuilder(rawcode);
+		final CUnit builder = findBuilder(rawcode, false);
 		if (builder == null) {
-			return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.NO_BUILDER));
+			if (findBuilder(rawcode, true) == null) {
+				return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.NO_BUILDER));
+			}
+			// Waiting beats taking a wisp off gold: the ticket keeps its number and the next pass asks again.
+			this.log.say("t" + number + "-gold", gameTurnTick,
+					"t" + number + " " + ticket + ": waiting, every builder is on gold");
+			return TicketState.pending(number, ticket);
 		}
 		buildAbility(builder).checkCanUse(this.simulation, builder, this.playerIndex, rawcode.getValue(), false,
 				this.receiver.reset());
@@ -852,6 +1211,139 @@ public final class BuildingPlanExecutor {
 		}
 	}
 
+	/**
+	 * A unit ticket: the best producer makes one, and the ticket disappears when the count rises.
+	 * <p>
+	 * The engine's own queue gate answers affordability, requirements and the mission's cap, exactly as it does for a
+	 * research, so nothing here re-derives a price. What the gate cannot answer is "this ticket already has an order
+	 * out" -- it says OK again the moment it is asked, and a full queue is not an error it reports -- so the order the
+	 * executor recorded is what makes the ticket pending, and a producer still going up or with a full queue is "not
+	 * yet", never "never".
+	 */
+	private TicketState trainState(final int number, final MacroTicket ticket, final int gameTurnTick) {
+		final War3ID rawcode = ticket.getRawcode();
+		final Issue issue = this.issues.get(ticket);
+		if ((issue != null) && (ownedUnits(rawcode) < issue.targetCount)) {
+			// An order is out and its unit has not arrived: the ticket waits for its own unit, not for the gold.
+			return TicketState.pending(number, ticket);
+		}
+		if (producers(rawcode).isEmpty()) {
+			return TicketState.stuck(number, ticket, Stuck.of(Stuck.Reason.NO_PRODUCER));
+		}
+		final CUnit producer = bestProducer(rawcode);
+		if (producer == null) {
+			// Every producer is still going up or has a full queue: waiting, and the ticket keeps its number.
+			return TicketState.pending(number, ticket);
+		}
+		producer.getFirstAbilityOfType(CAbilityQueue.class).checkCanUse(this.simulation, producer, this.playerIndex,
+				rawcode.getValue(), false, this.receiver.reset());
+		switch (this.receiver.getOutcome()) {
+			case OK:
+				return TicketState.ready(number, ticket);
+			case UNAFFORDABLE:
+				return TicketState.waiting(number, ticket);
+			case PENDING:
+				return TicketState.pending(number, ticket);
+			default:
+				return TicketState.stuck(number, ticket, this.receiver.getStuck());
+		}
+	}
+
+	/**
+	 * The player's producers of this unit: alive, ours, and listing it in their queue ability. A worker's ticket is the
+	 * same shape -- a peon comes out of the hall that trains a grunt -- so nothing here is special-cased per unit.
+	 */
+	private List<CUnit> producers(final War3ID rawcode) {
+		final List<CUnit> producers = new ArrayList<>();
+		for (final CUnit unit : ours()) {
+			if (unit.isDead() || unit.isHidden()) {
+				continue;
+			}
+			final CAbilityQueue queue = unit.getFirstAbilityOfType(CAbilityQueue.class);
+			if ((queue != null) && queue.getUnitsTrained().contains(rawcode)) {
+				producers.add(unit);
+			}
+		}
+		return producers;
+	}
+
+	/**
+	 * The producer with room for one more: the shortest queue, then the nearest to the base, then the lowest handle, so
+	 * the choice is the same on every pass. Null when every producer is still going up or its queue is full.
+	 */
+	private CUnit bestProducer(final War3ID rawcode) {
+		final float[] anchor = anchor();
+		CUnit best = null;
+		int bestQueue = Integer.MAX_VALUE;
+		float bestDistance = Float.MAX_VALUE;
+		for (final CUnit unit : producers(rawcode)) {
+			if (unit.isConstructing() || unit.isUpgrading()) {
+				continue;
+			}
+			final int queue = queueLength(unit);
+			if (queue >= WarsmashConstants.BUILD_QUEUE_SIZE) {
+				continue;
+			}
+			final float distance = (anchor == null) ? 0f : distance(unit.getX(), unit.getY(), anchor[0], anchor[1]);
+			if ((best == null) || (queue < bestQueue)
+					|| ((queue == bestQueue) && (distance < bestDistance))
+					|| ((queue == bestQueue) && (distance == bestDistance)
+							&& (unit.getHandleId() < best.getHandleId()))) {
+				best = unit;
+				bestQueue = queue;
+				bestDistance = distance;
+			}
+		}
+		return best;
+	}
+
+	/** How many slots of a producer's queue are taken; the engine has no length accessor of its own. */
+	private static int queueLength(final CUnit unit) {
+		int length = 0;
+		for (final War3ID queued : unit.getBuildQueue()) {
+			if (queued != null) {
+				length++;
+			}
+		}
+		return length;
+	}
+
+	/** Whether any of the player's producers is making one of these right now. */
+	private boolean queueHolds(final War3ID rawcode) {
+		for (final CUnit unit : ours()) {
+			if (unit.isDead()) {
+				continue;
+			}
+			for (final War3ID queued : unit.getBuildQueue()) {
+				if (rawcode.equals(queued)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** How many orders for this unit are out and have not arrived: the other half of {@link #expectedCount}. */
+	private int outstanding(final War3ID rawcode, final MacroTicket exclude) {
+		int count = 0;
+		for (final MacroTicket waiting : this.issues.keySet()) {
+			if ((waiting != exclude) && (waiting.getKind() == MacroTicketKind.TRAIN)
+					&& waiting.getRawcode().equals(rawcode)) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * The count that means "this order arrived": what the player owns, plus the orders for the same unit that are still
+	 * outstanding, plus this one. Two grunt tickets queued on one barracks expect the third and the fourth grunt, not the
+	 * third one twice -- otherwise the second ticket would retire on the first ticket's grunt.
+	 */
+	static int expectedCount(final int owned, final int outstanding) {
+		return owned + outstanding + 1;
+	}
+
 	private boolean backingOff(final MacroTicket ticket, final int gameTurnTick) {
 		final Issue issue = this.issues.get(ticket);
 		return (issue != null) && ((gameTurnTick - issue.issuedTick) < RETRY_TICKS);
@@ -869,7 +1361,7 @@ public final class BuildingPlanExecutor {
 		switch (ticket.getKind()) {
 			case BUILD:
 				final float[] site = this.sites.get(ticket);
-				final CUnit builder = findBuilder(rawcode);
+				final CUnit builder = findBuilder(rawcode, false);
 				if ((site != null) && (builder != null) && this.jobs.isEmpty()) {
 					issueBuild(builder, ticket, rawcode, site, gameTurnTick);
 					MacroLog.line("do " + state.getNumber() + " BUILD " + rawcode.asStringValue() + " with h="
@@ -890,6 +1382,19 @@ public final class BuildingPlanExecutor {
 				this.issues.put(ticket,
 						new Issue(gameTurnTick, this.simulation.getPlayer(this.playerIndex).getTechtreeUnlocked(rawcode)
 								+ 1, 0, 0));
+				break;
+			case TRAIN:
+				final CUnit trainer = bestProducer(rawcode);
+				if (trainer == null) {
+					return;
+				}
+				this.listener.issueImmediateOrder(trainer.getHandleId(),
+						trainer.getFirstAbilityOfType(CAbilityQueue.class).getHandleId(), rawcode.getValue(), false);
+				MacroLog.line("do " + state.getNumber() + " TRAIN " + rawcode.asStringValue() + " at h="
+						+ trainer.getHandleId() + " (have " + ownedUnits(rawcode) + ")");
+				// The count this ticket has to see, with the orders already out for the same unit counted in.
+				this.issues.put(ticket, new Issue(gameTurnTick,
+						expectedCount(ownedUnits(rawcode), outstanding(rawcode, ticket)), 0, 0));
 				break;
 			case UPGRADE:
 				final CUnit hall = findHall(rawcode);
@@ -926,6 +1431,9 @@ public final class BuildingPlanExecutor {
 		return units;
 	}
 
+	/** Passes spent waiting for the first worker, so the wait above is bounded. */
+	private int seedWaits;
+
 	private boolean hasWorker() {
 		for (final CUnit unit : ours()) {
 			if (!unit.isDead() && !unit.isHidden() && !unit.isBuilding() && isWorkerType(unit)) {
@@ -939,8 +1447,12 @@ public final class BuildingPlanExecutor {
 	 * The free worker for a structure, as the AI picks one: it must be able to build this structure, it must not be
 	 * out on a job, and the nearest to the base wins. One worker, and the same one every time, which is what "the
 	 * builder returns to harvesting between jobs" needs.
+	 * <p>
+	 * A worker on the gold line is not offered unless {@code allowGoldGatherers} is set, which only the "is there a
+	 * builder at all" question does: taking a wisp off gold costs a whole trip and the base's income, while a lumber
+	 * worker or an idle one costs a few seconds of wood.
 	 */
-	private CUnit findBuilder(final War3ID rawcode) {
+	private CUnit findBuilder(final War3ID rawcode, final boolean allowGoldGatherers) {
 		final float[] anchor = anchor();
 		CUnit best = null;
 		float bestDistance = Float.MAX_VALUE;
@@ -952,7 +1464,7 @@ public final class BuildingPlanExecutor {
 			if ((build == null) || !build.getStructuresBuilt().contains(rawcode)) {
 				continue;
 			}
-			if (hasJob(unit)) {
+			if (hasJob(unit) || isBuilding(unit) || (!allowGoldGatherers && isGoldGatherer(unit))) {
 				continue;
 			}
 			final float distance = (anchor == null) ? 0f : distance(unit.getX(), unit.getY(), anchor[0], anchor[1]);
@@ -963,6 +1475,33 @@ public final class BuildingPlanExecutor {
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * A worker on gold: inside a mine, walking into one, or holding the harvest order for one. The walk out and back is
+	 * worth more than any building the plan can raise, so these are only ever counted, never pulled off.
+	 */
+	private boolean isGoldGatherer(final CUnit unit) {
+		if (unit.isLoaded()) {
+			return true;
+		}
+		final CBehaviorBoardTransport board = unit.getBoardTransportBehavior();
+		if ((board != null) && (unit.getCurrentBehavior() == board) && isGoldMine(board.getTarget())) {
+			return true;
+		}
+		final COrder order = unit.getCurrentOrder();
+		if ((order != null) && (order.getOrderId() == OrderIds.harvest)) {
+			return isGoldMine(order.getTarget(this.simulation));
+		}
+		return false;
+	}
+
+	private static boolean isGoldMine(final AbilityTarget target) {
+		if (target == null) {
+			return false;
+		}
+		final CUnit unit = target.visit(AbilityTargetVisitor.UNIT);
+		return (unit != null) && (unit.getOverlayedGoldMineData() != null);
 	}
 
 	private boolean hasJob(final CUnit unit) {
@@ -1172,17 +1711,18 @@ public final class BuildingPlanExecutor {
 		}
 	}
 
-	/** A research or an upgrade on its way, and how to tell that it arrived. */
+	/** A research, an upgrade or a unit on its way, and how to tell that it arrived. */
 	private static final class Issue {
 		private final int issuedTick;
-		private final int targetLevel;
+		/** The techtree level for a research, or the unit count for a train, that means "it arrived". */
+		private final int targetCount;
 		private final int hallHandleId;
 		/** How many times an order for this ticket did not take. */
 		private final int retries;
 
-		private Issue(final int issuedTick, final int targetLevel, final int hallHandleId, final int retries) {
+		private Issue(final int issuedTick, final int targetCount, final int hallHandleId, final int retries) {
 			this.issuedTick = issuedTick;
-			this.targetLevel = targetLevel;
+			this.targetCount = targetCount;
 			this.hallHandleId = hallHandleId;
 			this.retries = retries;
 		}

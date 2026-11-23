@@ -109,6 +109,26 @@ class RaceBuildOrderTest {
 	}
 
 	@Test
+	void aResearchComesAfterTheBuildingThatPerformsIt() {
+		// The Ancient of Lore teaches the Druid of the Claw, so its training ticket waits behind the building rather
+		// than in front of it; the campaign order ends up buying both, in that order.
+		final List<MacroTicket> order = RaceBuildOrder.forRace(CUnitRace.NIGHTELF);
+		final int lore = indexOf(order, "eaoe");
+		final int training = indexOf(order, "Redc");
+		assertTrue((lore >= 0) && (training > lore), "Redc must come after eaoe for the Night Elf order");
+	}
+
+	@Test
+	void theWildUpgradesComeWithTheHunterSHall() {
+		// Strength of the Wild and Reinforced Hides are the Hunter's Hall's own researches.
+		final List<MacroTicket> order = RaceBuildOrder.forRace(CUnitRace.NIGHTELF);
+		final int hall = indexOf(order, "edob");
+		assertTrue(hall >= 0, "no Hunter's Hall in the Night Elf order");
+		assertTrue(indexOf(order, "Resw") > hall, "Resw must come after edob");
+		assertTrue(indexOf(order, "Rerh") > hall, "Rerh must come after edob");
+	}
+
+	@Test
 	void everyTicketNamesATypeOnce() {
 		for (final CUnitRace race : RACES) {
 			final List<War3ID> seen = new ArrayList<>();

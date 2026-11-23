@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.etheller.warsmash.util.War3ID;
+
 /**
  * An ordered list of tickets. The number of a ticket is its position, starting at zero.
  * <p>
@@ -28,10 +30,23 @@ public final class MacroPlan {
 		return this.tickets.get(number);
 	}
 
-	/** A new ticket enters at the end of the numbering, however far down that is. */
+	/**
+	 * A new ticket enters at the end of the numbering, however far down that is.
+	 */
 	public int append(final MacroTicket ticket) {
 		this.tickets.add(ticket);
 		return this.tickets.size() - 1;
+	}
+
+	/** How many of this unit the plan has asked for and not yet received: the incoming half of "current + incoming". */
+	public int incoming(final War3ID rawcode) {
+		int count = 0;
+		for (final MacroTicket ticket : this.tickets) {
+			if ((ticket.getKind() == MacroTicketKind.TRAIN) && ticket.getRawcode().equals(rawcode)) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	public int indexOf(final MacroTicket ticket) {
