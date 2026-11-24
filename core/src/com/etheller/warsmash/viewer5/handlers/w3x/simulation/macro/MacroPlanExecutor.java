@@ -47,6 +47,8 @@ import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.COrder;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.orders.OrderIds;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayer;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CPlayerUnitOrderListener;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CRaceManager;
+import com.etheller.warsmash.viewer5.handlers.w3x.simulation.players.CRaceManagerEntry;
 import com.etheller.warsmash.viewer5.handlers.w3x.simulation.unit.BuildOnBuildingIntersector;
 
 /**
@@ -615,13 +617,40 @@ public final class MacroPlanExecutor {
 	 * put down. The player's {@code CPlayer.getRace()} is a handle to a race-manager entry and can be null on a neutral
 	 * slot, so the live worker is both the simpler and the truer answer to "whose build order is this".
 	 */
+	/**
+	 * The race whose plans this base runs. The player's own race is the answer, not a unit's: a mission opening that has
+	 * structures and a hero but no worker yet still knows what it is, and asking a worker first meant those openings
+	 * seeded an empty plan -- Orc's or Other's no-op -- once and never looked again. A worker's type, then any own unit's,
+	 * is the fallback for a map that leaves the player's race unset.
+	 */
 	private CUnitRace playerRace() {
+		final CPlayer player = this.simulation.getPlayer(this.playerIndex);
+		if ((player != null) && (player.getRace() != null) && (this.simulation.getGameData() != null)) {
+			final CRaceManager raceManager = this.simulation.getGameData().getRaceManager();
+			final CRaceManagerEntry entry = (raceManager == null) ? null : raceManager.tryGet(player.getRace());
+			if (entry != null) {
+				final CUnitRace race = CUnitRace.parseRace(entry.getKey());
+				if (race != CUnitRace.OTHER) {
+					return race;
+				}
+			}
+		}
 		for (final CUnit unit : ours()) {
 			if (!unit.isDead() && !unit.isHidden() && !unit.isBuilding() && isWorkerType(unit)) {
 				final CUnitType type = unit.getUnitType();
 				if ((type != null) && (type.getRace() != null)) {
 					return type.getRace();
 				}
+			}
+		}
+		// Last resort: any unit of ours, so a mission that starts with no worker at all still knows its race.
+		for (final CUnit unit : ours()) {
+			if (unit.isDead() || unit.isHidden() || (unit.getTypeId() == null)) {
+				continue;
+			}
+			final CUnitType type = unit.getUnitType();
+			if ((type != null) && (type.getRace() != null) && (type.getRace() != CUnitRace.OTHER)) {
+				return type.getRace();
 			}
 		}
 		return CUnitRace.OTHER;

@@ -26,24 +26,7 @@ public final class MacroStatusLine {
 
 	public static String of(final TicketState state, final Function<War3ID, String> nameOf) {
 		if (state.isStuck()) {
-			final Stuck stuck = state.getStuck();
-			switch (stuck.getReason()) {
-				case MISSING_REQUIREMENT:
-					final War3ID missing = stuck.getMissing();
-					return (missing == null) ? "needs tech" : ("needs " + nameOf.apply(missing));
-				case AT_MAXIMUM:
-					return "max";
-				case NO_BUILDER:
-					return "no builder";
-				case NO_PRODUCER:
-					return "no trainer";
-				case NO_HALL:
-					return "no hall";
-				case NO_SITE:
-					return "no room";
-				default:
-					return "unreadable";
-			}
+			return of(state.getStuck(), nameOf);
 		}
 		if (state.isPending()) {
 			// An order is out for it: the ticket is not waiting for gold, it is waiting for the thing it ordered.
@@ -53,5 +36,33 @@ public final class MacroStatusLine {
 			return "wait";
 		}
 		return "";
+	}
+
+	/**
+	 * The same words for a type that has no ticket yet: the panel asks the game what it would say about an icon before the
+	 * player spends anything on it.
+	 */
+	public static String of(final Stuck stuck) {
+		return of(stuck, RAWCODES);
+	}
+
+	public static String of(final Stuck stuck, final Function<War3ID, String> nameOf) {
+		switch (stuck.getReason()) {
+			case MISSING_REQUIREMENT:
+				final War3ID missing = stuck.getMissing();
+				return (missing == null) ? "needs tech" : ("needs " + nameOf.apply(missing));
+			case AT_MAXIMUM:
+				return "max";
+			case NO_BUILDER:
+				return "no builder";
+			case NO_PRODUCER:
+				return "no trainer";
+			case NO_HALL:
+				return "no hall";
+			case NO_SITE:
+				return "no room";
+			default:
+				return "unreadable";
+		}
 	}
 }

@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Macro panel — redesign sketch</title>
+<style>
+/* ---------------------------------------------------------------------------------------------
+   A 760 x 360 dp phone (Realme RMX3357, 2400 x 1080 px at 3x). Everything below is written in dp
+   through --u, so the numbers here are the numbers the Java panel uses.
+   --------------------------------------------------------------------------------------------- */
+:root {
+	--u: 1.2px;                       /* 1 dp; the phone is 760 dp wide */
+	--gold: #c8a552;
+	--gold-dim: #8a7136;
+	--panel: rgba(18, 13, 8, 0.94);
+	--panel2: #211a10;
+	--text: #e8dcb8;
+	--sub: #9a8b62;
+	--danger: #b0563f;
+	--ordered: #d9a441;
+	--ready: #c8a552;
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0; padding: 28px;
+	background: #0c0a07;
+	color: var(--text);
+	font: 14px/1.5 "Segoe UI", "Trebuchet MS", system-ui, sans-serif;
+	display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap;
+}
+h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: .04em; font-weight: 600; }
+h1 span { color: var(--gold); }
+.lede { margin: 0 0 16px; max-width: 640px; color: var(--sub); font-size: 13px; }
+.switch { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.switch button {
+	background: #1a140d; color: var(--sub); border: 1px solid #3a2f1c; border-radius: 5px;
+	padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.switch button.on { background: #2a2013; color: var(--text); border-color: var(--gold-dim); }
+
+/* the phone ---------------------------------------------------------------------------------- */
+.phone {
+	position: relative; overflow: hidden;
+	width: calc(760 * var(--u)); height: calc(360 * var(--u));
+	background: #000; border: 1px solid #3a2f1c; border-radius: 6px;
+	user-select: none; -webkit-user-select: none;
+}
+.phone .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* the right edge of a phone HUD is usually darkened, and here it also hides the old buttons */
+.phone .hud-edge {
+	position: absolute; top: 0; right: 0; bottom: 0; width: calc(120 * var(--u));
+	background: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,.62));
+	pointer-events: none;
+}
+
+/* the two buttons, closed state --------------------------------------------------------------- */
+.buttons { position: absolute; right: calc(12 * var(--u)); bottom: calc(140 * var(--u)); display: flex; flex-direction: column-reverse; gap: calc(12 * var(--u)); }
+.sheet-open .buttons { display: none; }
+.mbtn {
+	position: relative; width: calc(44 * var(--u)); height: calc(44 * var(--u)); border-radius: 50%;
+	border: calc(1.5 * var(--u)) solid var(--gold-dim);
+	background: radial-gradient(circle at 38% 32%, #2b2213, #100c07 72%);
+	display: grid; place-items: center; cursor: pointer;
+	box-shadow: 0 calc(1 * var(--u)) calc(3 * var(--u)) rgba(0,0,0,.6);
+}
+.mbtn img { width: calc(34 * var(--u)); height: calc(34 * var(--u)); border-radius: 50%; }
+.mbtn:active { border-color: var(--gold); }
+.mbtn .badge {
+	position: absolute; top: calc(-6 * var(--u)); right: calc(-6 * var(--u));
+	min-width: calc(17 * var(--u)); height: calc(17 * var(--u)); padding: 0 calc(3 * var(--u));
+	border-radius: calc(9 * var(--u));
+	background: var(--gold); color: #1a1206; border: calc(1 * var(--u)) solid #100c07;
+	font-size: calc(10 * var(--u)); line-height: calc(15 * var(--u)); font-weight: 700; text-align: center;
+}
+.mbtn .badge.empty { background: #2f2515; color: #a9966a; border-color: #100c07; }
+
+/* a one-line answer to the last tap, shared by both variants ---------------------------------- */
+.toast {
+	position: absolute; left: calc(12 * var(--u)); right: calc(12 * var(--u)); bottom: calc(6 * var(--u));
+	height: calc(20 * var(--u)); line-height: calc(20 * var(--u)); padding: 0 calc(8 * var(--u));
+	font-size: calc(11 * var(--u)); color: var(--text);
+	background: rgba(12, 9, 5, .82); border-left: calc(2 * var(--u)) solid var(--gold-dim);
+	opacity: 0; transition: opacity .25s;
+}
+.toast.show { opacity: 1; }
+
+/* ---------------------------------------------------------------------------------------------
+   Variant A: the sheet keeps the resource bar, then splits into a queue column and an icon grid.
+   --------------------------------------------------------------------------------------------- */
+.sheet { position: absolute; inset: 0; display: none; }
+.sheet.open { display: block; }
+.sheet.inner {
+	top: calc(26 * var(--u)); left: calc(4 * var(--u)); right: calc(4 * var(--u)); bottom: calc(4 * var(--u));
+	background: var(--panel); border: calc(1 * var(--u)) solid var(--gold);
+	display: none;
+}
+.sheet.inner.open { display: flex; flex-direction: column; }
+
+.head {
+	display: flex; align-items: center; gap: calc(6 * var(--u));
+	height: calc(30 * var(--u)); padding: 0 calc(8 * var(--u));
+	border-bottom: calc(1 * var(--u)) solid #3a2f1c; background: var(--panel2);
+}
+.tab {
+	display: flex; align-items: center; gap: calc(4 * var(--u)); cursor: pointer;
+	padding: calc(3 * var(--u)) calc(7 * var(--u)); border-radius: calc(3 * var(--u));
+	font-size: calc(11 * var(--u)); letter-spacing: .08em; text-transform: uppercase; color: var(--sub);
+}
+.tab img { width: calc(15 * var(--u)); height: calc(15 * var(--u)); opacity: .55; }
+.tab.on { background: #3a2d19; color: var(--text); }
+.tab.on img { opacity: 1; }
+.head .supply { margin-left: auto; display: flex; align-items: center; gap: calc(6 * var(--u)); font-size: calc(10 * var(--u)); color: var(--sub); }
+.head .bar { width: calc(52 * var(--u)); height: calc(5 * var(--u)); background: #2c2315; border: calc(1 * var(--u)) solid #4a3c22; }
+.head .bar i { display: block; height: 100%; width: 72%; background: var(--gold-dim); }
+.chip {
+	font-size: calc(10 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u));
+	border: calc(1 * var(--u)) solid #4a3c22; border-radius: calc(3 * var(--u)); color: var(--sub); cursor: pointer;
+}
+.chip.on { color: var(--text); border-color: var(--ordered); background: rgba(217, 164, 65, .18); }
+.close {
+	margin-left: calc(4 * var(--u)); width: calc(20 * var(--u)); height: calc(20 * var(--u));
+	display: grid; place-items: center; cursor: pointer; color: var(--sub);
+	border: calc(1 * var(--u)) solid #4a3c22; border-radius: calc(3 * var(--u)); font-size: calc(12 * var(--u));
+}
+
+.body { flex: 1; display: flex; min-height: 0; padding: calc(6 * var(--u)) calc(8 * var(--u)) calc(20 * var(--u)); gap: calc(8 * var(--u)); }
+.queue { width: calc(276 * var(--u)); display: flex; flex-direction: column; min-height: 0; }
+.grid { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.label { font-size: calc(9 * var(--u)); letter-spacing: .12em; text-transform: uppercase; color: var(--sub); margin-bottom: calc(4 * var(--u)); }
+.label b { color: var(--gold); font-weight: 600; }
+
+/* a queue row: number, icon, name over status, and the two handles */
+.row {
+	display: flex; align-items: center; gap: calc(6 * var(--u)); height: calc(34 * var(--u));
+	padding: 0 calc(5 * var(--u)); margin-bottom: calc(2 * var(--u));
+	background: #1b150d; border-left: calc(2 * var(--u)) solid var(--ready); cursor: pointer;
+}
+.row.wait { border-left-color: var(--gold-dim); }
+.row.ordered { border-left-color: var(--ordered); }
+.row.stuck { border-left-color: var(--danger); }
+.row img { width: calc(26 * var(--u)); height: calc(26 * var(--u)); }
+.row .n { width: calc(14 * var(--u)); font-size: calc(10 * var(--u)); color: var(--gold); text-align: right; }
+.row .txt { flex: 1; min-width: 0; }
+.row .txt span { display: block; }
+.row .name { font-size: calc(11 * var(--u)); line-height: calc(13 * var(--u)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .st { font-size: calc(9 * var(--u)); line-height: calc(10 * var(--u)); color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row.stuck .st { color: #d9846a; }
+.row .x { width: calc(16 * var(--u)); height: calc(16 * var(--u)); display: grid; place-items: center; color: var(--danger); font-size: calc(11 * var(--u)); }
+.row .x:hover { color: #ffb89f; }
+.empty { font-size: calc(10 * var(--u)); color: #6b5c3a; padding: calc(6 * var(--u)) 0; }
+
+/* the available icons: 44 dp art in a 50 dp cell, greyed with the reason when locked */
+.cells { display: flex; flex-wrap: wrap; gap: calc(6 * var(--u)); }
+.cell {
+	position: relative; width: calc(46 * var(--u)); height: calc(46 * var(--u)); cursor: pointer;
+	border: calc(1 * var(--u)) solid #4a3c22; background: #0d0a06;
+}
+.cell img { width: 100%; height: 100%; display: block; }
+.cell.locked img { filter: grayscale(.85) brightness(.5); }
+.cell .own {
+	position: absolute; right: calc(1 * var(--u)); bottom: calc(1 * var(--u));
+	min-width: calc(14 * var(--u)); height: calc(13 * var(--u)); padding: 0 calc(2 * var(--u));
+	font-size: calc(9 * var(--u)); line-height: calc(13 * var(--u)); text-align: center;
+	background: rgba(10, 8, 4, .85); color: var(--text);
+}
+.cell.locked .own { display: none; }
+.cell .lvl {
+	position: absolute; left: calc(1 * var(--u)); bottom: calc(1 * var(--u));
+	font-size: calc(9 * var(--u)); color: var(--gold); background: rgba(10, 8, 4, .85); padding: 0 calc(2 * var(--u));
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Variant B: a bottom sheet, so the fight stays on screen. The queue becomes a horizontal strip.
+   --------------------------------------------------------------------------------------------- */
+.sheet.bottom {
+	top: auto; height: calc(164 * var(--u));
+	background: var(--panel); border-top: calc(1 * var(--u)) solid var(--gold);
+	display: none; flex-direction: column;
+}
+.sheet.bottom.open { display: flex; }
+.sheet.bottom .head { border-bottom: none; height: calc(26 * var(--u)); background: transparent; }
+.sheet.bottom .body { flex-direction: column; padding: 0 calc(8 * var(--u)) calc(6 * var(--u)); gap: calc(4 * var(--u)); }
+.strip { display: flex; gap: calc(4 * var(--u)); height: calc(46 * var(--u)); overflow-x: auto; overflow-y: hidden; }
+.tile {
+	position: relative; flex: 0 0 auto; width: calc(42 * var(--u)); height: calc(42 * var(--u)); cursor: pointer;
+	border: calc(2 * var(--u)) solid var(--ready); background: #0d0a06;
+}
+.tile.wait { border-color: var(--gold-dim); }
+.tile.ordered { border-color: var(--ordered); }
+.tile.stuck { border-color: var(--danger); }
+.tile img { width: 100%; height: 100%; display: block; }
+.tile .n {
+	position: absolute; left: 0; top: 0; min-width: calc(13 * var(--u)); height: calc(12 * var(--u));
+	font-size: calc(9 * var(--u)); line-height: calc(12 * var(--u)); text-align: center;
+	background: var(--gold); color: #1a1206; font-weight: 700;
+}
+.tile .x {
+	position: absolute; right: 0; top: 0; width: calc(13 * var(--u)); height: calc(12 * var(--u));
+	font-size: calc(9 * var(--u)); line-height: calc(12 * var(--u)); text-align: center;
+	background: var(--danger); color: #fff;
+}
+.sheet.bottom .cells { flex: none; align-content: flex-start; overflow-y: auto; max-height: calc(84 * var(--u)); }
+.sheet.bottom .cell { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
+
+/* notes -------------------------------------------------------------------------------------- */
+.notes { width: 380px; font-size: 13px; color: #b9ab86; }
+.notes h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--gold); margin: 18px 0 8px; }
+.notes h2:first-child { margin-top: 0; }
+.notes ol, .notes ul { margin: 0; padding-left: 18px; }
+.notes li { margin-bottom: 7px; }
+.notes b { color: #e8dcb8; font-weight: 600; }
+.notes .q { color: var(--gold); }
+</style>
+
+<div>
+	<h1>Macro panel — <span>redesign sketch</span></h1>
+	<p class="lede">
+		760 × 360 dp (your phone), real game art from your 1.29.2 data, drawn over a mission screenshot.
+		Click things: a button opens its sheet, a tab switches, an available icon adds a ticket, a ticket takes
+		one tap to come sooner and a hold to go later, the × removes it.
+	</p>
+	<div class="switch">
+		<button data-view="closed" class="on">closed — the buttons</button>
+		<button data-view="A">A · full sheet, queue + grid</button>
+		<button data-view="B">B · bottom sheet, game visible</button>
+	</div>
+	<div class="phone" id="phone">
+		<img class="bg" src="assets/game.jpg" alt="">
+		<div class="hud-edge"></div>
+		<div class="buttons">
+			<div class="mbtn" data-open="build">
+				<img src="assets/btn-build.png" alt="">
+				<span class="badge" id="badge-build">7</span>
+			</div>
+			<div class="mbtn" data-open="army">
+				<img src="assets/btn-army.png" alt="">
+				<span class="badge" id="badge-army">7</span>
+			</div>
+		</div>
+		<div class="sheet" id="sheet"></div>
+		<div class="toast" id="toast"></div>
+	</div>
+</div>
+
+<aside class="notes">
+	<h2>What changed, and why</h2>
+	<ul>
+		<li><b>Buttons 44 dp, art inside, count as a badge.</b> One visual idea instead of a number and a word:
+			the icon says what it is, the badge says how many tickets are behind it. Two labels of 10 px at the
+			bottom of the screen were the least readable thing in the old layout.</li>
+		<li><b>The badge hides at 0</b> instead of showing “0”, and reads blank while the plan has not seeded yet.</li>
+		<li><b>Three tabs, not two.</b> Upgrades had nowhere to live, so they sat inside the build sheet and every
+			comparison looked wrong: a Moon Well and Strength of the Moon are not things you choose between.</li>
+		<li><b>The queue is a list with words.</b> Today a red frame is the only sign that a ticket is stuck; the row
+			says <i>needs Ancient of Wind</i> in the same breath as the name, and the frame colour stays for a glance.</li>
+		<li><b>Numbers start at 1.</b> They are positions in a queue, not array indices.</li>
+		<li><b>Handles you can see.</b> A queue row has the × on its right; the whole row is the “sooner” target and a
+			hold is “later”, so no 15 dp chip has to carry both the number and a second meaning.</li>
+		<li><b>44 dp art hits the finger.</b> Every icon is at least 44 dp in both variants, the minimum for a thumb
+			that is not looking.</li>
+	</ul>
+
+	<h2>Open questions for you</h2>
+	<ol>
+		<li class="q">A or B? A shows the whole plan without scrolling and covers the fight; B keeps the game visible
+			but halves the icons on screen.</li>
+		<li class="q">Is 3 tabs right, or do upgrades belong under BUILD as a second row?</li>
+		<li class="q">Should the queue show the gold it is about to spend (a total under the list)?</li>
+		<li class="q">The build icon is the Night Elf hammer; the army icon is a Huntress face. Pick a better pair?</li>
+		<li class="q">Do you want the hold-to-go-later gesture at all, or two arrows per row?</li>
+	</ol>
+
+	<h2>Not in this sketch</h2>
+	<ul>
+		<li>Two of the building icons are stand-ins: Ancient of War and Ancient of Wind use other tree art because
+			their buttons are not in the archives I can read.</li>
+		<li>No supply pause chip styling decisions, no fading, no sound.</li>
+	</ul>
+</aside>
+
+<script>
+/* ---------------------------------------------------------------------------------------------
+   The plan, and what a base can put down. Statuses: ready, wait, ordered, stuck.
+   --------------------------------------------------------------------------------------------- */
+const AVAIL = {
+	build: [
+		{ id: 'emow', name: 'Moon Well',        icon: 'assets/b-moonwell.png', owned: 3, state: 'ready', st: '' },
+		{ id: 'eaom', name: 'Ancient of War',   icon: 'assets/b-war.png',      owned: 1, state: 'ready', st: '' },
+		{ id: 'edob', name: "Hunter's Hall",    icon: 'assets/b-hall.png',     owned: 0, state: 'ready', st: '' },
+		{ id: 'eaoe', name: 'Ancient of Lore',  icon: 'assets/b-lore.png',     owned: 0, state: 'ready', st: '' },
+		{ id: 'eaow', name: 'Ancient of Wind',  icon: 'assets/b-wind.png',     owned: 0, state: 'ready', st: '' },
+		{ id: 'eden', name: 'Den of Wonders',   icon: 'assets/b-den.png',      owned: 0, state: 'ready', st: '' },
+		{ id: 'etrp', name: 'Ancient Protector',icon: 'assets/b-war.png',      owned: 1, state: 'ready', st: '' },
+		{ id: 'egol', name: 'Entangled Mine',   icon: 'assets/b-mine.png',     owned: 1, state: 'ready', st: '' },
+		{ id: 'edos', name: 'Chimaera Roost',   icon: 'assets/b-roost.png',    owned: 0, state: 'locked', st: 'needs Ancient of Wind' },
+		{ id: 'eate', name: 'Altar of Elders',  icon: 'assets/b-altar.png',    owned: 0, state: 'locked', st: "needs Hunter's Hall" }
+	],
+	army: [
+		{ id: 'ewsp', name: 'Wisp',              icon: 'assets/u-wisp.png',    owned: 12, state: 'ready', st: '' },
+		{ id: 'earc', name: 'Archer',            icon: 'assets/u-archer.png',  owned: 6,  state: 'ready', st: '' },
+		{ id: 'esen', name: 'Huntress',          icon: 'assets/u-huntress.png',owned: 3,  state: 'ready', st: '' },
+		{ id: 'edry', name: 'Dryad',             icon: 'assets/u-dryad.png',   owned: 0,  state: 'locked', st: 'needs Ancient of Lore' },
+		{ id: 'edoc', name: 'Druid of the Claw', icon: 'assets/u-claw.png',    owned: 0,  state: 'locked', st: 'needs Ancient of Lore' },
+		{ id: 'edot', name: 'Druid of the Talon',icon: 'assets/u-talon.png',   owned: 0,  state: 'locked', st: 'needs Ancient of Wind' },
+		{ id: 'ebal', name: 'Glaive Thrower',    icon: 'assets/u-glaive.png',  owned: 0,  state: 'locked', st: 'needs Ancient of Lore' },
+		{ id: 'echm', name: 'Chimaera',          icon: 'assets/u-chimaera.png',owned: 0,  state: 'locked', st: 'needs Chimaera Roost' },
+		{ id: 'efdr', name: 'Faerie Dragon',     icon: 'assets/u-faerie.png',  owned: 0,  state: 'locked', st: 'needs Den of Wonders' },
+		{ id: 'emtg', name: 'Mountain Giant',    icon: 'assets/u-giant.png',   owned: 0,  state: 'locked', st: 'needs Ancient of Lore' },
+		{ id: 'efon', name: 'Ent',               icon: 'assets/u-ent.png',     owned: 0,  state: 'locked', st: 'needs Ancient of War' }
+	],
+	up: [
+		{ id: 'etoa', name: 'Tree of Ages',        icon: 'assets/b-ages.png',  lvl: 'T2',  state: 'ready', st: '' },
+		{ id: 'Resm', name: 'Strength of the Moon',icon: 'assets/r-moon.png',  lvl: '0/3', state: 'ready', st: '' },
+		{ id: 'Rema', name: 'Moon Armor',          icon: 'assets/r-armor.png', lvl: '0/3', state: 'ready', st: '' },
+		{ id: 'Rews', name: 'Well Spring',         icon: 'assets/r-well.png',  lvl: '0/1', state: 'ready', st: '' },
+		{ id: 'Reuv', name: 'Ultravision',         icon: 'assets/r-ultra.png', lvl: '0/1', state: 'ready', st: '' },
+		{ id: 'Resw', name: 'Strength of the Wild',icon: 'assets/r-wild.png',  lvl: '0/3', state: 'locked', st: "needs Hunter's Hall" },
+		{ id: 'Rerh', name: 'Reinforced Hides',    icon: 'assets/r-hides.png', lvl: '0/3', state: 'locked', st: "needs Hunter's Hall" },
+		{ id: 'Remk', name: 'Marksmanship',        icon: 'assets/r-marks.png', lvl: '0/1', state: 'locked', st: 'needs Ancient of Wind' },
+		{ id: 'Resc', name: 'Scout',               icon: 'assets/r-scout.png', lvl: '0/1', state: 'locked', st: 'needs Ancient of Wind' }
+	]
+};
+
+/* One plan for the base (buildings and upgrades keep their shared order) and one for the army. */
+const plan = { base: [], army: [] };
+const seed = (tab, name, state, st) => {
+	const item = AVAIL[tab].find(a => a.name === name);
+	return { tab, name: item.name, icon: item.icon, state, st: st || item.st };
+};
+plan.base.push(seed('up', 'Tree of Ages', 'ordered'), seed('build', 'Moon Well', 'wait', 'wait 85 gold'),
+	seed('build', 'Ancient of Lore', 'ready'), seed('up', 'Strength of the Moon', 'ready'),
+	seed('up', 'Tree of Ages', 'ready'), seed('build', "Hunter's Hall", 'ready'),
+	seed('build', 'Ancient of War', 'wait', 'wait 95 gold'));
+plan.army.push(seed('army', 'Huntress', 'ready'), seed('army', 'Huntress', 'ready'),
+	seed('army', 'Archer', 'wait', 'wait 130 gold'), seed('army', 'Huntress', 'wait', 'wait 195 gold'),
+	seed('army', 'Archer', 'ready'), seed('army', 'Glaive Thrower', 'stuck', 'needs Ancient of Lore'),
+	seed('army', 'Wisp', 'ordered'));
+
+let view = 'closed';
+let tab = 'build';
+let paused = false;
+let hold = null;
+
+const el = id => document.getElementById(id);
+const phone = el('phone');
+const toast = el('toast');
+const say = msg => { toast.textContent = msg; toast.classList.add('show'); clearTimeout(say.t); say.t = setTimeout(() => toast.classList.remove('show'), 2600); };
+
+const LIST = t => (t === 'army') ? plan.army : plan.base;
+const QUEUE = t => (t === 'army') ? plan.army : plan.base;
+const KIND = t => (t === 'army') ? 'army' : 'base';
+const number = (t, i) => (t === 'army') ? (plan.base.length + i + 1) : (i + 1);
+
+function badges() {
+	const b = el('badge-build'), a = el('badge-army');
+	b.textContent = plan.base.length; b.classList.toggle('empty', plan.base.length === 0);
+	a.textContent = plan.army.length; a.classList.toggle('empty', plan.army.length === 0);
+}
+
+/* ------------------------------------------------------------------ the sheet, both variants */
+function render() {
+	badges();
+	const sheet = el('sheet');
+	sheet.className = 'sheet ' + (view === 'A' ? 'inner' : 'bottom') + (view === 'closed' ? '' : ' open');
+	phone.classList.toggle('sheet-open', view !== 'closed');
+	if (view === 'closed') { sheet.innerHTML = ''; return; }
+	sheet.innerHTML = (view === 'A') ? fullSheet() : bottomSheet();
+	wire(sheet);
+}
+
+const head = () => `
+	<div class="head">
+		<div class="tab ${tab === 'build' ? 'on' : ''}" data-tab="build"><img src="assets/btn-build.png" alt="">Buildings</div>
+		<div class="tab ${tab === 'army' ? 'on' : ''}" data-tab="army"><img src="assets/btn-army.png" alt="">Units</div>
+		<div class="tab ${tab === 'up' ? 'on' : ''}" data-tab="up"><img src="assets/r-moon.png" alt="">Upgrades</div>
+		<div class="supply">food 29/40 <span class="bar"><i></i></span>
+			<span class="chip ${paused ? 'on' : ''}" data-act="pause">${paused ? 'supply paused' : 'hold supply'}</span>
+		</div>
+		<div class="close" data-act="close">×</div>
+	</div>`;
+
+function rows() {
+	const here = QUEUE(tab).map((t, i) => ({ t, i }));
+	if (here.length === 0) { return `<div class="empty">nothing yet — the plan does nothing here</div>`; }
+	return here.map(({ t, i }) => `
+		<div class="row ${t.state}" data-row="${i}">
+			<span class="n">${number(tab, i)}</span>
+			<img src="${t.icon}" alt="">
+			<span class="txt"><span class="name">${t.name}</span><span class="st">${status(t)}</span></span>
+			<span class="x" data-remove="${i}">×</span>
+		</div>`).join('');
+}
+
+const status = t => t.st || ({ ready: 'ready', wait: 'waiting for gold', ordered: 'ordered', stuck: 'stuck' })[t.state];
+
+function cells() {
+	return AVAIL[tab].map(a => `
+		<div class="cell ${a.state === 'locked' ? 'locked' : ''}" data-add="${a.name}" title="${a.name}${a.st ? ' — ' + a.st : ''}">
+			<img src="${a.icon}" alt="">
+			${a.owned > 0 ? `<span class="own">${a.owned}</span>` : ''}
+			${a.lvl ? `<span class="lvl">${a.lvl}</span>` : ''}
+		</div>`).join('');
+}
+
+const fullSheet = () => `${head()}
+	<div class="body">
+		<div class="queue">
+			<div class="label">order · what happens next · <b>${QUEUE(tab).length}</b></div>
+			${rows()}
+			<div class="empty" style="margin-top:auto">tap a row to bring it sooner · hold to send it later</div>
+		</div>
+		<div class="grid">
+			<div class="label">available · ${tab === 'up' ? 'research and tiers' : tab === 'army' ? 'what your halls train' : 'what you can put down'}</div>
+			<div class="cells">${cells()}</div>
+		</div>
+	</div>`;
+
+const bottomSheet = () => `${head()}
+	<div class="body">
+		<div class="label">order · <b>${QUEUE(tab).length}</b> &nbsp;·&nbsp; tap to come sooner, hold to go later</div>
+		<div class="strip">${tiles()}</div>
+		<div class="cells">${cells()}</div>
+	</div>`;
+
+function tiles() {
+	const here = QUEUE(tab).map((t, i) => ({ t, i }));
+	if (!here.length) { return `<div class="empty">nothing yet</div>`; }
+	return here.map(({ t, i }) => `
+		<div class="tile ${t.state}" data-row="${i}" title="${t.name} — ${status(t)}">
+			<img src="${t.icon}" alt=""><span class="n">${number(tab, i)}</span><span class="x" data-remove="${i}">×</span>
+		</div>`).join('');
+}
+
+/* ------------------------------------------------------------------ wiring */
+function wire(root) {
+	root.querySelectorAll('[data-tab]').forEach(n => n.onclick = () => { tab = n.dataset.tab; render(); });
+	root.querySelector('[data-act="close"]').onclick = () => { view = 'closed'; render(); };
+	const pause = root.querySelector('[data-act="pause"]');
+	if (pause) pause.onclick = () => { paused = !paused; say(paused ? 'supply line held — no new supply buildings' : 'supply line running'); render(); };
+
+	root.querySelectorAll('[data-add]').forEach(n => n.onclick = () => {
+		const item = AVAIL[tab].find(a => a.name === n.dataset.add);
+		if (item.state === 'locked') { say(`${item.name} — ${item.st}`); return; }
+		LIST(tab).push({ tab, name: item.name, icon: item.icon, state: 'ready', st: '' });
+		say(`${item.name} — added at ${number(tab, LIST(tab).length - 1)}`);
+		render();
+	});
+
+	root.querySelectorAll('.row, .tile').forEach(node => {
+		const index = Number(node.dataset.row);
+		node.onpointerdown = e => {
+			if (e.target.dataset.remove !== undefined) { return; }
+			hold = setTimeout(() => { later(KIND(tab), index); hold = null; }, 380);
+		};
+		node.onpointerup = e => {
+			if (e.target.dataset.remove !== undefined) { return; }
+			if (hold) { clearTimeout(hold); hold = null; sooner(KIND(tab), index); }
+		};
+		node.onpointerleave = () => { if (hold) { clearTimeout(hold); hold = null; } };
+	});
+
+	root.querySelectorAll('[data-remove]').forEach(n => n.onclick = e => {
+		e.stopPropagation();
+		const index = Number(n.dataset.remove);
+		const ticket = LIST(tab)[index];
+		LIST(tab).splice(index, 1);
+		say(`${ticket.name} — removed`);
+		render();
+	});
+}
+
+function sooner(kind, index) {
+	const list = (kind === 'army') ? plan.army : plan.base;
+	if (index <= 0) { say(`${list[index].name} — already first`); return; }
+	[list[index - 1], list[index]] = [list[index], list[index - 1]];
+	say(`${list[index - 1].name} — now ${number(kind === 'army' ? 'army' : 'build', index - 1)}`);
+	render();
+}
+
+function later(kind, index) {
+	const list = (kind === 'army') ? plan.army : plan.base;
+	if (index >= list.length - 1) { say(`${list[index].name} — already last`); return; }
+	[list[index + 1], list[index]] = [list[index], list[index + 1]];
+	say(`${list[index + 1].name} — now ${number(kind === 'army' ? 'army' : 'build', index + 1)}`);
+	render();
+}
+
+/* the two round buttons */
+document.querySelectorAll('[data-open]').forEach(n => n.onclick = () => {
+	tab = (n.dataset.open === 'army') ? 'army' : 'build';
+	view = (view === 'closed') ? 'A' : view;
+	render();
+});
+
+document.querySelectorAll('.switch button').forEach(n => n.onclick = () => {
+	document.querySelectorAll('.switch button').forEach(b => b.classList.toggle('on', b === n));
+	view = n.dataset.view;
+	render();
+});
+
+/* open a variant straight from the address bar: macro-redesign.html#A */
+const wanted = (location.hash || '').replace('#', '');
+if (wanted === 'A' || wanted === 'B' || wanted === 'closed') { view = wanted; }
+
+render();
+	document.querySelectorAll('.switch button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+
+/* ---------------------------------------------------------------------------------------------
+   A headless self-test: ?selftest drives the same clicks a finger would and reports in the DOM, so
+   the sketch can be checked with chrome --dump-dom instead of by eye.
+   --------------------------------------------------------------------------------------------- */
+function selftest() {
+	const log = [];
+	const ok = (name, got, want) => log.push((got === want ? 'PASS ' : 'FAIL ') + name + ' got=' + got + ' want=' + want);
+	const click = sel => document.querySelector(sel).click();
+	const press = (sel, ms) => {
+		const node = document.querySelector(sel);
+		node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		return new Promise(done => setTimeout(() => {
+			node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+			done();
+		}, ms));
+	};
+
+	view = 'A'; tab = 'build'; render();
+	click('[data-add="Moon Well"]');
+	ok('adding from the grid appends a ticket', plan.base.length, 8);
+
+	return press('[data-row="1"]', 40).then(() => {
+		ok('a tap moves a ticket one sooner', plan.base[0].name + '/' + plan.base[1].name, 'Moon Well/Tree of Ages');
+		return press('[data-row="1"]', 500);
+	}).then(() => {
+		ok('a hold moves it one later', plan.base[1].name + '/' + plan.base[2].name, 'Ancient of Lore/Tree of Ages');
+		click('[data-row="1"] [data-remove]');
+		ok('the x removes it', plan.base.length, 7);
+		click('[data-tab="army"]');
+		ok('the units tab shows the army queue', QUEUE(tab).length, 7);
+		click('[data-tab="up"]');
+		ok('the upgrades tab keeps the base queue', QUEUE(tab).length, 7);
+		view = 'B'; render();
+		ok('variant B draws one tile per ticket', document.querySelectorAll('.tile').length, 7);
+		view = 'closed'; render();
+		ok('closed draws no sheet', document.querySelectorAll('.row, .tile').length, 0);
+		ok('the build badge counts the base', document.getElementById('badge-build').textContent, '7');
+		const node = document.createElement('div');
+		node.id = 'selftest';
+		node.textContent = log.join(' | ');
+		document.body.appendChild(node);
+	});
+}
+if (location.search.indexOf('selftest') >= 0) { selftest(); }
+</script>
+</html>

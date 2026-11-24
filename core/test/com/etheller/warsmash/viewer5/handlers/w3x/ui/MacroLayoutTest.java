@@ -11,24 +11,24 @@ import org.junit.jupiter.api.Test;
  */
 class MacroLayoutTest {
 	@Test
-	void theSheetHoldsSixIconsAcross() {
-		// The sketch's 360dp: the margins come off, and the gaps go between the cells rather than around them.
-		assertEquals(6, MacroLayout.columns(360f));
+	void theWholeWidthOfAPhoneHoldsSixteenIcons() {
+		// The sheet as this phone shows it: nearly the whole 800dp screen, less its margins.
+		assertEquals(16, MacroLayout.columns(788f));
 	}
 
 	@Test
 	void aNarrowSheetStillHoldsOneIconAndNeverNone() {
-		assertEquals(1, MacroLayout.columns(80f));
+		assertEquals(1, MacroLayout.columns(52f));
 		assertEquals(1, MacroLayout.columns(0f));
 	}
 
 	@Test
 	void rowsStackByTheirOwnHeightPlusTheGap() {
 		assertEquals(0f, MacroLayout.rowTopDp(0), 0.001f);
-		assertEquals(MacroLayout.STRIP + MacroLayout.GAP, MacroLayout.rowTopDp(1), 0.001f);
+		assertEquals(MacroLayout.CELL + MacroLayout.GAP, MacroLayout.rowTopDp(1), 0.001f);
 		assertEquals(0f, MacroLayout.rowsHeightDp(0), 0.001f);
 		// Two rows are two cells and the gap between them, not three.
-		assertEquals((2f * MacroLayout.STRIP) + MacroLayout.GAP, MacroLayout.rowsHeightDp(2), 0.001f);
+		assertEquals((2f * MacroLayout.CELL) + MacroLayout.GAP, MacroLayout.rowsHeightDp(2), 0.001f);
 	}
 
 	@Test

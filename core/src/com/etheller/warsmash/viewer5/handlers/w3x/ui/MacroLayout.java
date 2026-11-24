@@ -1,52 +1,44 @@
 package com.etheller.warsmash.viewer5.handlers.w3x.ui;
 
 /**
- * The macro sheet's geometry, in dp: how many cells fit across it, which cell a point lands on, how far the body has
- * scrolled.
- * <p>
- * These are the parts of the panel that are arithmetic rather than art, so they are static and a test can walk the
- * corners of the grid without a phone. The panel draws with the same numbers, which is the whole point: a hit test that
- * disagrees with the drawing is a tap that does nothing, and it is invisible on a screenshot.
+ * The macro sheet's arithmetic, in dp: how many icons fit across a sheet of a given width, how tall a grid of rows is,
+ * and where a scroll stops. The panel draws and hit-tests with these numbers, so a mistake here is a cell nobody can
+ * tap -- which is exactly the kind of bug a screenshot cannot show.
  */
 final class MacroLayout {
 	/**
-	 * One icon and the cell it sits in, the gap between cells and the margin at the sheet's edge. The cell is small
-	 * because the sheet is: a 4:3 interface on a wide phone leaves the right-middle band about 230dp, which is four
-	 * icons across -- and the hero owns everything left of it.
+	 * A small icon in a tight cell: the sheet is nearly the whole screen, so it is the count across that matters, and a
+	 * 42dp cell puts fifteen or more on a phone's landscape row.
 	 */
 	static final float ICON = 36f;
-	static final float CELL = 46f;
-	static final float GAP = 6f;
+	static final float CELL = 42f;
+	static final float GAP = 4f;
 	static final float MARGIN = 8f;
-	/**
-	 * One row of cells: the icon, the caption under it and the status line under that, plus the air between two rows.
-	 * The tall cell is what makes a ticket's words readable, so the strip is sized to hold all three.
-	 */
-	static final float STRIP = 64f;
+	/** The square a ticket's number sits in, and the one its minus sits in: both inside the cell's own bounds. */
+	static final float CHIP = 15f;
 
 	private MacroLayout() {
 	}
 
-	/** How many cells fit across a sheet this wide, at least one whatever the width says. */
+	/** How many cells fit across a sheet of this width: whole cells only, and never fewer than one. */
 	static int columns(final float widthDp) {
-		return Math.max(1, (int) Math.floor((widthDp - (2f * MARGIN) + GAP) / (CELL + GAP)));
+		final int fit = (int) Math.floor((widthDp - (2f * MARGIN) + GAP) / (CELL + GAP));
+		return Math.max(1, fit);
 	}
 
 	/** The top of a row, measured down from the first one: the row's cells start here. */
 	static float rowTopDp(final int row) {
-		return row * (STRIP + GAP);
+		return row * (CELL + GAP);
 	}
 
-	/** How tall a list of rows is, gaps included. */
+	/** How tall a grid of these rows is, gaps between rows included and none after the last. */
 	static float rowsHeightDp(final int rows) {
-		return (rows <= 0) ? 0f : ((rows * STRIP) + ((rows - 1) * GAP));
+		return (rows <= 0) ? 0f : ((rows * CELL) + ((rows - 1) * GAP));
 	}
 
-	/** The scroll the body can have: never negative, never past the end of its content. */
+	/** A scroll kept between the top of the content and its last screenful, so a page can never scroll into nothing. */
 	static float clampScroll(final float scrollDp, final float contentDp, final float bodyDp) {
-		if (contentDp <= bodyDp) {
-			return 0f;
-		}
-		return Math.max(0f, Math.min(scrollDp, contentDp - bodyDp));
+		final float furthest = Math.max(0f, contentDp - bodyDp);
+		return Math.min(Math.max(0f, scrollDp), furthest);
 	}
 }
