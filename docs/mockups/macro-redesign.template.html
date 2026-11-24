@@ -32,6 +32,9 @@ body {
 h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: .04em; font-weight: 600; }
 h1 span { color: var(--gold); }
 .lede { margin: 0 0 16px; max-width: 640px; color: var(--sub); font-size: 13px; }
+/* the page says out loud what it could not draw, so a viewer that blocks the embedded art is not silent */
+.art { display: block; margin-top: 6px; font-size: 12px; letter-spacing: 0.04em; color: #7e8570; }
+.art.bad { color: #e2685a; font-weight: 600; }
 .switch { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .switch button {
 	background: #1a140d; color: var(--sub); border: 1px solid #3a2f1c; border-radius: 5px;
@@ -64,7 +67,7 @@ h1 span { color: var(--gold); }
 	display: grid; place-items: center; cursor: pointer;
 	box-shadow: 0 calc(1 * var(--u)) calc(3 * var(--u)) rgba(0,0,0,.6);
 }
-.mbtn img { width: calc(34 * var(--u)); height: calc(30 * var(--u)); border-radius: 50%; }
+.mbtn img { width: calc(34 * var(--u)); height: calc(34 * var(--u)); border-radius: 50%; object-fit: cover; }
 .mbtn:active { border-color: var(--gold); }
 .mbtn .badge {
 	position: absolute; top: calc(-6 * var(--u)); right: calc(-6 * var(--u));
@@ -237,6 +240,7 @@ h1 span { color: var(--gold); }
 		760 × 360 dp (your phone), real game art from your 1.29.2 data, drawn over a mission screenshot.
 		Click things: a button opens its sheet, a tab switches, an available icon adds a ticket, a ticket takes
 		one tap to come sooner and a hold to go later, the × removes it. On a phone, pinch to zoom the frame.
+		<span class="art" id="art">art: counting…</span>
 	</p>
 	<div class="races">
 		race art: <button data-race="ne" class="on">Night Elf</button><button data-race="hu">Human</button><button data-race="orc">Orc</button><button data-race="ud">Undead</button>
@@ -430,6 +434,7 @@ function render() {
 	if (view === 'closed') { sheet.innerHTML = ''; return; }
 	sheet.innerHTML = (view === 'A') ? fullSheet() : bottomSheet();
 	wire(sheet);
+	watchArt();
 }
 
 const head = () => `
@@ -567,6 +572,29 @@ function later(index) {
 	render();
 }
 
+/* Say whether the art arrived. Everything is a data: URI inside this one file, so a blank icon means the
+   viewer refused embedded images -- and the page should say that instead of quietly drawing empty boxes. */
+function watchArt() {
+	const imgs = Array.prototype.slice.call(document.images);
+	let waiting = 0, bad = 0;
+	const line = el('art');
+	if (!line) { return; }
+	const report = () => {
+		line.textContent = bad
+			? `art: ${bad} of ${imgs.length} pictures did not load — this viewer is blocking the images embedded in the page`
+			: `art: ${imgs.length} pictures, all loaded`;
+		line.classList.toggle('bad', bad > 0);
+	};
+	imgs.forEach(img => {
+		if (img.complete && img.naturalWidth > 0) { return; }
+		waiting++;
+		img.addEventListener('load', () => { waiting--; report(); });
+		img.addEventListener('error', () => { bad++; waiting--; report(); });
+	});
+	report();
+	setTimeout(report, 1500);
+}
+
 /* the two round buttons */
 document.querySelectorAll('[data-open]').forEach(n => n.onclick = () => {
 	tab = (n.dataset.open === 'army') ? 'army' : 'build';
@@ -586,6 +614,7 @@ document.querySelectorAll('.races button').forEach(n => n.onclick = () => wearRa
 const wanted = (location.hash || '').replace('#', '');
 if (wanted === 'A' || wanted === 'B' || wanted === 'closed') { view = wanted; }
 render();
+watchArt();
 document.querySelectorAll('.switch button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
 
 /* ---------------------------------------------------------------------------------------------
