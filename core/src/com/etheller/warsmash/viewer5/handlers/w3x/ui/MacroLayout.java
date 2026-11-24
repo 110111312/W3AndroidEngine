@@ -16,6 +16,14 @@ final class MacroLayout {
 	static final float MARGIN = 8f;
 	/** The square a ticket's number sits in, and the one its minus sits in: both inside the cell's own bounds. */
 	static final float CHIP = 15f;
+	/**
+	 * Air between the top of the hero tray and the lower of the two round macro buttons. The tray's learn badge is the
+	 * topmost thing it draws, so a button sitting on that badge reads as part of the skill arc: the pair starts a clear
+	 * 50dp above it instead of being tuned by eye against a screenshot.
+	 */
+	static final float BUTTON_AIR = 50f;
+	/** Gap between the two round buttons, which stack up the interface's right edge. */
+	static final float BUTTON_GAP = 8f;
 
 	private MacroLayout() {
 	}
@@ -34,6 +42,15 @@ final class MacroLayout {
 	/** How tall a grid of these rows is, gaps between rows included and none after the last. */
 	static float rowsHeightDp(final int rows) {
 		return (rows <= 0) ? 0f : ((rows * CELL) + ((rows - 1) * GAP));
+	}
+
+	/**
+	 * The centre of one of the two round buttons, in dp above the interface's bottom edge: index 0 is the lower one.
+	 *
+	 * @param trayTopDp the highest point the hero tray draws at, which is the floor the pair has to clear
+	 */
+	static float buttonCentreDp(final int index, final float trayTopDp, final float radius) {
+		return trayTopDp + BUTTON_AIR + radius + (index * ((2f * radius) + BUTTON_GAP));
 	}
 
 	/** A scroll kept between the top of the content and its last screenful, so a page can never scroll into nothing. */

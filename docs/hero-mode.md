@@ -356,6 +356,12 @@ Settled, and no longer up for renegotiation without a good reason:
     than scrolling, since a scroll would have to swallow drags. Edits are local-player state for now; when multiplayer
     is targeted they become commands, which is why every edit goes through `MacroPlanExecutor`'s own add/sooner/later/
     remove and not through the panel's drawing code.
+    **Where the pair sits is computed, not judged by eye.** The hero tray's topmost drawing is not a circle but the
+    ultimate's learn badge, 172.7dp above the interface's bottom edge, and the first build put the lower button 23dp
+    over it — close enough to read as part of the arc. `HeroTray.clusterTopDp()` now reports that height and
+    `MacroLayout.buttonCentreDp` stacks the pair a documented `BUTTON_AIR` (50dp) above it, so the buttons cannot end
+    up on the skills again when the tray's numbers change; `MacroButtonPlacementTest` pins the arithmetic, and the
+    sketch's closed view is drawn from the same numbers.
 Two consequences that were not obvious when the design was written:
 
 - **the hero must be able to attack.** With no right-click and no attack button she could never fight, which is why

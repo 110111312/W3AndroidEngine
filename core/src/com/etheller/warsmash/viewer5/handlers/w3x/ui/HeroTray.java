@@ -250,6 +250,26 @@ final class HeroTray {
 	}
 
 	/**
+	 * The highest point the cluster draws at, in dp above the interface's bottom edge, badge included.
+	 * <p>
+	 * The macro panel's two round buttons hang above the tray, so this is what keeps them off it. The topmost thing the
+	 * cluster puts on the screen is not a circle but the ultimate's learn badge, drawn up and to the right of its slot.
+	 */
+	static float clusterTopDp() {
+		float top = 0f;
+		for (int i = 0; i < SKILL_SLOTS; i++) {
+			final float slot = (float) (Math.sin(Math.toRadians(SKILL_ANGLE[i])) * SKILL_RING);
+			top = Math.max(top, slot + SKILL_RADIUS);
+			top = Math.max(top, slot + BADGE_OFFSET + BADGE_RADIUS);
+		}
+		top = Math.max(top, (float) (Math.sin(Math.toRadians(ATTACK_ANGLE)) * ATTACK_RING) + ATTACK_RADIUS);
+		for (int i = 0; i < HeroItemSlots.INNER_ARC_BUTTONS; i++) {
+			top = Math.max(top, (float) (Math.sin(Math.toRadians(ITEM_INNER_ANGLE[i])) * ITEM_INNER_RING) + ITEM_RADIUS);
+		}
+		return Math.max(top, ITEM_ROW_Y + ITEM_RADIUS);
+	}
+
+	/**
 	 * A point a ring's radius from the corner, at an angle of degrees measured from the interface's right edge going
 	 * up, which is the way the layout picture reads: every button of the cluster is left of the corner and above it,
 	 * so every angle is between 90 and 180.

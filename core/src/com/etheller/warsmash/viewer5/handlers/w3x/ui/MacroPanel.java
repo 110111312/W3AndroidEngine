@@ -52,11 +52,13 @@ final class MacroPanel {
 		NONE, BUILD, ARMY
 	}
 
-	// The two buttons, above the skill arc. The arc reaches 171dp above the corner at its highest point.
+	// The two buttons, stacked up the right edge a clear gap above the hero tray. The height is not tuned by eye: it
+	// comes from the tray's own topmost point (its ultimate's learn badge), so the pair cannot end up drawn over the
+	// skill arc again when the tray's numbers change.
 	private static final float BUTTON_RADIUS = 20f;
 	private static final float BUTTON_INSET = 14f;
-	private static final float ARMY_BOTTOM = 196f;
-	private static final float BUILD_BOTTOM = 248f;
+	private static final float ARMY_CENTRE = MacroLayout.buttonCentreDp(0, HeroTray.clusterTopDp(), BUTTON_RADIUS);
+	private static final float BUILD_CENTRE = MacroLayout.buttonCentreDp(1, HeroTray.clusterTopDp(), BUTTON_RADIUS);
 	// The sheet: the whole screen bar a margin, and the resource bar left visible along the top.
 	private static final float INSET = 6f;
 	private static final float TOP_RESERVE = 26f;
@@ -248,7 +250,7 @@ final class MacroPanel {
 	}
 
 	private float buttonCentreY(final Sheet which) {
-		return ((which == Sheet.BUILD) ? BUILD_BOTTOM : ARMY_BOTTOM) + BUTTON_RADIUS;
+		return (which == Sheet.BUILD) ? BUILD_CENTRE : ARMY_CENTRE;
 	}
 
 	private boolean insideButton(final float xDp, final float yDp, final Sheet which) {
@@ -494,7 +496,7 @@ final class MacroPanel {
 		title.setColor(GOLD);
 		centred(batch, title, (count < 0) ? "-" : Integer.toString(count), cx, sy(buttonCentreY(which) + 4f));
 		caption.setColor(SUB);
-		centred(batch, caption, label, cx, sy(((which == Sheet.BUILD) ? BUILD_BOTTOM : ARMY_BOTTOM) - 2f));
+		centred(batch, caption, label, cx, sy(buttonCentreY(which) - BUTTON_RADIUS - 2f));
 	}
 
 	private void drawPanel(final ShapeRenderer shapes) {

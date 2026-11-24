@@ -3,6 +3,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Macro panel — redesign sketch</title>
+<!-- Macro panel redesign sketch. Open THIS file (macro-redesign.html): it carries every icon inside it. To change the sketch, edit macro-redesign.template.html and run: python docs/mockups/build-sketch.py -->
+
 <style>
 /* ---------------------------------------------------------------------------------------------
    A 760 x 360 dp phone (Realme RMX3357, 2400 x 1080 px at 3x). Everything below is written in dp
@@ -58,16 +60,20 @@ h1 span { color: var(--gold); }
 }
 
 /* the two buttons, closed state --------------------------------------------------------------- */
-.buttons { position: absolute; right: calc(12 * var(--u)); bottom: calc(140 * var(--u)); display: flex; flex-direction: column-reverse; gap: calc(12 * var(--u)); }
+.buttons {
+	/* MacroPanel: army centre = tray top (172.7dp) + 50dp air + 20dp radius, build one button + 8dp above it */
+	position: absolute; right: calc(14 * var(--u)); bottom: calc(222.7 * var(--u));
+	display: flex; flex-direction: column-reverse; gap: calc(8 * var(--u));
+}
 .sheet-open .buttons { display: none; }
 .mbtn {
-	position: relative; width: calc(44 * var(--u)); height: calc(44 * var(--u)); border-radius: 50%;
+	position: relative; width: calc(40 * var(--u)); height: calc(40 * var(--u)); border-radius: 50%;
 	border: calc(1.5 * var(--u)) solid var(--gold-dim);
 	background: radial-gradient(circle at 38% 32%, #2b2213, #100c07 72%);
 	display: grid; place-items: center; cursor: pointer;
 	box-shadow: 0 calc(1 * var(--u)) calc(3 * var(--u)) rgba(0,0,0,.6);
 }
-.mbtn img { width: calc(34 * var(--u)); height: calc(34 * var(--u)); border-radius: 50%; object-fit: cover; }
+.mbtn img { width: calc(32 * var(--u)); height: calc(32 * var(--u)); border-radius: 50%; object-fit: cover; }
 .mbtn:active { border-color: var(--gold); }
 .mbtn .badge {
 	position: absolute; top: calc(-6 * var(--u)); right: calc(-6 * var(--u));
